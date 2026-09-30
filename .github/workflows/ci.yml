@@ -1,0 +1,81 @@
+# PurplePie CI: formatting, lints, compilation and tests.
+#
+# - `lint` runs once on Linux: formatting and Clippy are platform-independent
+#   for this crate (no cfg(target_os) code of its own).
+# - `test` runs `cargo check` + `cargo test` on Linux, Windows and macOS.
+#   winit and wgpu compile different platform backends on each OS
+#   (X11/Wayland + Vulkan/GL, Win32 + DX12/Vulkan, AppKit + Metal), so a
+#   per-OS build is the only way to catch platform-specific breakage.
+#   Windows is the primary development platform; macOS cannot be tested locally.
+#   No GPU or display is needed: the tests are pure logic, and window-opening
+#   examples are compile-only doctests.
+#
+# The toolchain comes from the rustup preinstalled on GitHub-hosted runners.
+# `--locked` makes CI fail if Cargo.lock is out of date with Cargo.toml.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# bash on every OS (Git Bash on Windows) so multi-line steps stop at the first
+# failing command, which PowerShell does not guarantee for native commands.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Format and Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (stable, rustfmt, clippy)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustc --version
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  test:
+    name: Check and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (stable)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: Check
+        run: cargo check --locked --all-targets --all-features
+
+      - name: Test
+        run: cargo test --locked --all-features
