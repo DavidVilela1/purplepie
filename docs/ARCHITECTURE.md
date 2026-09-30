@@ -1,273 +1,243 @@
 # PurplePie Architecture
 
-Status: **Stage 0 baseline** (2026-09-30). This document describes the target
-architecture. Modules listed here do not exist in `src/` until the stage that
-introduces them (see [ROADMAP.md](ROADMAP.md)).
+Last reviewed: **2026-09-30** against the repository at the end of Stage 0.
+
+Every section separates **Current** (exists and is validated in the repository)
+from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
+When code and this file disagree, the code plus validation wins, and this file
+must be corrected ([DEVELOPMENT.md §7](DEVELOPMENT.md#7-architectural-drift)).
 
 ---
 
-## 1. Goals and non-goals
+## 1. System Overview
 
-PurplePie is a **2D** engine. `wgpu` is only the GPU abstraction; nothing in
-the game-facing API is 3D-shaped (no meshes, no depth-sorted 3D cameras, no
-`Transform3D`).
+**PurplePie is** a small, modular, desktop 2D game engine library in Rust.
+Games are separate binaries that implement a `Game` trait. The engine owns the
+window, event loop, time, ECS world, input state and GPU renderer.
 
-Priority order for every decision: simplicity → correctness → compilability →
-clear architecture → maintainability → extensibility → performance.
+**PurplePie is not:**
+- a 3D engine, even though wgpu could do 3D;
+- a general application framework or a Bevy-style plugin/scheduler system;
+- a web or mobile engine (not a goal for now);
+- an editor (possible much later).
 
-Non-goals for the foreseeable future: a scheduler/plugin framework ("mini-Bevy"),
-multithreaded systems, a scripting layer, web/mobile targets, an editor.
-Desktop (Windows, macOS, Linux X11/Wayland) is the target.
-
----
-
-## 2. Crate layout
-
-One Cargo package, two targets ([ADR-0001](adr/0001-crate-layout.md)):
-
-```text
-PurplePie/
-├── Cargo.toml          package `purplepie`
-├── src/lib.rs          ── library target `purplepie`  (the ENGINE)
-├── src/main.rs         ── binary target `sandbox`     (a GAME)
-├── src/<modules>/      engine modules, added stage by stage
-├── assets/             textures/, fonts/, shaders/
-└── docs/               architecture, roadmap, status, ADRs
-```
-
-`main.rs` can only reach `pub` items of the library, exactly like an external
-game crate. The engine/game boundary is enforced by the compiler, not by
-convention.
+**Current reality:** a compiling scaffold. `purplepie` exposes only `VERSION`,
+and the `sandbox` binary prints it. There is no window, no ECS and no GPU code yet.
 
 ---
 
-## 3. Modules and responsibilities
+## 2. Architectural Principles
 
-| Module | Owns | Public (game-facing) | Crate-private | Depends on | Stage |
+Priority order when principles conflict: **simplicity → correctness →
+compilability → clear architecture → maintainability → extensibility → performance.**
+
+| Principle | What it means here |
+|---|---|
+| 2D-only scope | Public types are 2D (`Transform2D`, `Camera2D`, `Sprite`). No depth buffer or 3D camera in the API. |
+| Rust-first | Stable Rust, edition 2024, `unsafe_code = "forbid"` (ADR-001). |
+| Modularity | One responsibility per module. A module exists only once it has a user (ADR-003). |
+| Composition | Behavior comes from ECS components + plain-function systems, not inheritance-like trait hierarchies. |
+| Low coupling | `winit` only in `app`, `wgpu` only in `render`. ECS and math never depend on rendering. |
+| Explicit APIs | No implicit systems, no global state, no hidden schedulers. Game code calls systems itself. |
+| Incremental development | One verified stage at a time, each a runnable vertical slice ([ROADMAP.md](ROADMAP.md)). |
+| No premature overengineering | No traits, generics, `Arc`/`Mutex`/`RefCell` or dependencies without a present need. |
+
+---
+
+## 3. Module Responsibilities
+
+### Current
+
+| Path | Responsibility | Status |
+|---|---|---|
+| `src/lib.rs` | Crate root: `pub const VERSION`, crate docs, one unit test + one doctest | VERIFIED |
+| `src/main.rs` | `sandbox` binary: prints the version using only the public API | VERIFIED |
+| `assets/{textures,fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
+
+### Planned (ADR-003)
+
+| Module | Responsibility | May depend on | Must NOT depend on | Future extension points | Stage |
 |---|---|---|---|---|---|
-| `error` | The single engine error type | `Error`, `Result<T>` | — | `thiserror`, `winit`/`wgpu` error types (wrapped, not re-exported) | 1 |
-| `app` | Event loop, window, frame orchestration | `Engine`, `EngineConfig`, `Game`, `Context` | `Runner` (the `winit::ApplicationHandler` impl) | everything below | 1 |
-| `time` | Clock, frame delta, fixed-step accumulator | `Time` | `FixedTimestep` | `std` only | 2 |
-| `math` | 2D math types | `Transform2D`, re-exported `Vec2`, `Mat4`, … | — | `glam` | 3 |
-| `ecs` | The world and engine-generic components/systems | `World`, `Entity` (from `hecs`), `Velocity` | built-in systems (`integrate_velocity`) | `hecs`, `math` | 3 |
-| `render` | All GPU state and drawing | `Color`, `Sprite`, `Camera2D` (plain data) | `Renderer`, `GpuContext`, pipelines, buffers | `wgpu`, `math`, `ecs` (read-only extraction) | 4–7 |
-| `input` | Keyboard/mouse state for the current frame | `Input`, `KeyCode`, `MouseButton` | event translation from winit | `math` | 8 |
-| `assets` | Loading & handles | `Handle<T>`, `Assets` | loaders | `render` (upload), `std::fs` | 9 |
+| `error` | `Error` enum, `Result<T>` | `thiserror`; wraps winit/wgpu error types | any internal module | new variants per failure domain | 1 |
+| `app` | `Engine`, `EngineConfig`, `Game`, `Context`, `Runner` (winit `ApplicationHandler`), frame orchestration | all engine modules, `winit` | — (top of the engine) | multiple windows (not planned), headless runner for tests | 1 |
+| `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
+| `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
+| `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
+| `render` | `pub(crate) Renderer`, `GpuContext`, pipelines; public data types `Color`, `Sprite`, `Camera2D` | `wgpu`, `pollster`, `math`, `ecs` (read-only) | `app`, `input`, `winit` types beyond the `Arc<Window>` handed in | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
+| `input` | `Input` state (pressed / just_pressed / just_released), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
+| `assets` | `Handle<T>`, `Assets` store, loaders | `render` (GPU upload), `std::fs` | `app`, `input` | hot reload, async loading | 9 |
 
-Deliberate deviations from the initial sketch in the brief:
-
-* **No `core/` module.** "Core" has no single responsibility, and a module
-  named `core` collides with Rust's built-in `core` crate in `use` paths
-  (`use core::fmt` becomes ambiguous inside the crate). Its likely contents are
-  split into `error` (errors) and `app::EngineConfig` (configuration).
-* **`app` is the only module that knows about `winit`.** `input` defines its
-  own key/button types; `app` translates winit events into them.
-* **Game-facing render types are plain data.** `Sprite`, `Color`, `Camera2D`
-  contain no `wgpu` handles, so game code and ECS components never touch GPU
-  types. The `Renderer` itself is `pub(crate)`.
-* **`assets/` (runtime data folder) ≠ `src/assets/` (loader module).** The module
-  is created in Stage 9.
-
-Empty modules are not created ahead of time. Each module arrives with the stage
-that gives it a job.
+**Not present: `core`.** See ADR-003. It had no single responsibility and
+shadows Rust's built-in `core` crate.
 
 ---
 
-## 4. Dependency direction
+## 4. Dependency Direction
 
-```text
-            ┌──────────────────────────────┐
-  GAME      │ src/main.rs (sandbox) / games│
-            └──────────────┬───────────────┘
-                           │ public API only
-            ┌──────────────▼───────────────┐
-  FACADE    │ app  (Engine, Game, Context) │   ← only module that sees winit
-            └──┬─────────┬─────────┬───────┘
-               │         │         │
-  SYSTEMS   ┌──▼───┐ ┌───▼───┐ ┌───▼────┐ ┌────────┐
-            │render│ │ input │ │  time  │ │ assets │
-            └──┬───┘ └───┬───┘ └────────┘ └───┬────┘
-               │ reads   │                    │
-            ┌──▼─────────▼──┐                 │
-  DATA      │  ecs   math   │◄────────────────┘
-            └───────┬───────┘
-  EXTERNAL     hecs, glam, wgpu (render only), winit (app only)
-            error ← used by every layer, depends on nothing internal
+Planned graph (arrows mean "depends on"). Nothing here exists in `src/` yet except the
+lib/bin split.
+
+```mermaid
+graph TD
+    Game["Game code<br/>(src/main.rs, examples/)"] -->|public API only| App
+    App[app] --> Render[render]
+    App --> Input[input]
+    App --> Time[time]
+    App --> Assets[assets]
+    App --> ECS[ecs]
+    App --> Winit[(winit)]
+    Assets --> Render
+    Render --> ECS
+    Render --> Math[math]
+    Render --> WGPU[(wgpu)]
+    Input --> Math
+    ECS --> Math
+    ECS --> Hecs[(hecs)]
+    Math --> Glam[(glam)]
+    App -.-> Error["error<br/>(used by every module)"]
 ```
 
 Rules:
+1. Edges only point downward. An upward import is a design bug.
+2. `ecs` and `math` never depend on `render`, `app`, `input` or GPU/window crates.
+3. `render` reads the `World` but never writes game state (ADR-009).
+4. `time` depends only on `std`.
+5. Forbidden cycles: `render → ecs → render`, `app ↔ error`, `game → render internals → game`.
 
-1. Arrows point downward only. No module imports from a layer above it.
-2. `ecs` and `math` never depend on `render`, `app`, `input`, or GPU types.
-3. `render` reads the `World` (extraction); it never writes game state.
-4. `time` depends on nothing but `std`, so it is fully unit-testable.
-5. Forbidden cycles, explicitly: `render → ecs → render`, `app ↔ error`,
-   `game → render internals → game`.
-
----
-
-## 5. Ownership model
-
-```text
-Engine (owned by main, consumed by run)
-└── Runner<G: Game>          implements winit::ApplicationHandler
-    ├── game: G              the game's own state (owned, generic, no dyn)
-    ├── world: hecs::World
-    ├── time: Time
-    ├── input: Input
-    ├── fixed: FixedTimestep
-    ├── window: Option<Arc<Window>>     None until `resumed`
-    └── renderer: Option<Renderer>      None until `resumed` (Stage 4)
-```
-
-* Single-threaded. No `Mutex`, `RefCell`, `Rc`, or global state.
-* The one `Arc` is `Arc<Window>`: `wgpu::Surface<'static>` must share ownership
-  of the window. It never leaves `app`/`render`.
-* `Window` and `Renderer` are `Option` because winit 0.30 only allows window
-  creation once the event loop is running (`resumed`).
-* Each callback into the game builds a short-lived `Context<'_>` from
-  **disjoint field borrows** of `Runner`, so the borrow checker proves there is
-  no aliasing, with no interior mutability needed.
+Currently enforced by the compiler: `main.rs` can reach only `pub` items of `purplepie` (ADR-002).
 
 ---
 
-## 6. Game-facing API (target shape)
+## 5. Runtime Flow
 
-Accepted direction in [ADR-0004](adr/0004-engine-game-api.md); refined in Stage 10.
-
-```rust
-use purplepie::{Context, Engine, EngineConfig, Game, Result};
-
-#[derive(Default)]
-struct Sandbox { player: Option<purplepie::Entity> }
-
-impl Game for Sandbox {
-    fn init(&mut self, ctx: &mut Context) -> Result<()> {
-        self.player = Some(ctx.world.spawn((Transform2D::default(), Velocity::default())));
-        Ok(())
-    }
-    fn fixed_update(&mut self, ctx: &mut Context) { /* gameplay at 60 Hz */ }
-    fn update(&mut self, ctx: &mut Context) { /* per-frame, variable dt */ }
-}
-
-fn main() -> purplepie::Result<()> {
-    let engine = Engine::new(EngineConfig::new("Sandbox").with_size(1280, 720))?;
-    engine.run(Sandbox::default())
-}
+### Current
+```text
+main() → println!("PurplePie sandbox v{VERSION} …") → exit 0
 ```
 
-`Context` exposes `world: &mut World`, `time: &Time`, `input: &Input`, and
-`request_exit()`. The engine runs **no gameplay systems implicitly**. Built-in
-systems such as `ecs::integrate_velocity` are plain functions that the game
-calls from `fixed_update`, so execution order is always visible in game code. It deliberately does **not** expose `wgpu` or `winit` types.
-Rendering is engine-driven: the renderer draws whatever `Sprite` +
-`Transform2D` entities exist after the update phase.
+### Planned (ADR-008, ADR-010): winit 0.30 `ApplicationHandler`
+```mermaid
+sequenceDiagram
+    participant M as main (game)
+    participant E as Engine / Runner
+    participant W as winit
+    participant G as Game
+    participant R as Renderer
+    M->>E: Engine::new(config)? then run(game)
+    E->>W: EventLoop::run_app(&mut runner)
+    W->>E: resumed
+    E->>W: create_window (once)
+    E->>R: Renderer::new (Stage 4)
+    E->>G: init(ctx)
+    loop every frame
+        W->>E: about_to_wait → request_redraw
+        W->>E: RedrawRequested
+        E->>E: time.tick, fixed.advance → n
+        E->>G: fixed_update(ctx) × n
+        E->>G: update(ctx)
+        E->>R: render(&world) → queue.present
+        E->>E: input.end_frame
+    end
+    W->>E: CloseRequested → exit
+    W->>E: exiting → drop renderer, then window
+    E-->>M: Result<()>
+```
+
+Fixed-step constants: `FIXED_DT = 1/60 s`, `MAX_FRAME_DT = 0.25 s`,
+`MAX_FIXED_STEPS = 5`, backlog clamped to below one step when the cap is hit.
+Stages 1–3 use `ControlFlow::WaitUntil`. From Stage 4, `Poll` + vsync (`Fifo`).
 
 ---
 
-## 7. Frame lifecycle
+## 6. Engine/Game Boundary
 
-winit 0.30 `ApplicationHandler` with `ControlFlow::Poll` (Stage 1 may use
-`WaitUntil` until vsync provides pacing; see RISKS R-06).
-
-```text
-resumed ─────────────► create Window (once) ─► (Stage 4) create Renderer
-                                               ─► game.init(ctx)
-window_event:
-  CloseRequested ─────► event_loop.exit()
-  Resized ────────────► renderer.resize (ignore 0×0 / minimized)
-  keyboard/mouse ─────► input.record(...)
-  RedrawRequested ────► FRAME:
-      time.tick()                     measure real frame delta (clamped)
-      n = fixed.advance(frame_dt)     accumulator, capped at MAX_STEPS
-      repeat n: game.fixed_update(ctx)   the game calls systems explicitly,
-                                         e.g. ecs::integrate_velocity(ctx.world, FIXED_DT)
-      game.update(ctx)                variable-rate logic
-      renderer.render(world, alpha)   extract → draw → queue.present
-      input.end_frame()               clear just_pressed/just_released
-about_to_wait ────────► window.request_redraw()
-suspended ────────────► (Stage 4) drop surface; recreate on resumed
-exiting ──────────────► drop renderer before window (clean shutdown)
-```
-
-### Fixed timestep ([ADR-0005](adr/0005-game-loop.md))
-
-```text
-FIXED_DT         = 1.0 / 60.0  (f64 seconds)
-MAX_FRAME_DT     = 0.25 s      clamp after a stall (debugger, window drag)
-MAX_FIXED_STEPS  = 5 per frame
-accumulator     += min(frame_dt, MAX_FRAME_DT)
-while accumulator >= FIXED_DT && steps < MAX_FIXED_STEPS { step; accumulator -= FIXED_DT }
-if steps == MAX_FIXED_STEPS { accumulator = accumulator.min(FIXED_DT) }  // drop backlog
-alpha = accumulator / FIXED_DT   // for optional render interpolation later
-```
-
-Time uses `f64` for accumulated/elapsed values (no precision drift over long
-sessions); `f32` is used only where values enter `glam`/GPU math.
-
----
-
-## 8. Rendering architecture (Stage 4+)
-
-Initialization order, as verified against wgpu 30.0.1:
-
-```text
-Instance::new(InstanceDescriptor::new_with_display_handle(Box::new(event_loop.owned_display_handle())))
-  → instance.create_surface(Arc<Window>)                 -> Result<_, CreateSurfaceError>
-  → instance.request_adapter(&RequestAdapterOptions{ compatible_surface, ..Default })  -> Result<_, RequestAdapterError>
-  → adapter.request_device(&DeviceDescriptor{..})         -> Result<(Device, Queue), RequestDeviceError>
-  → surface.get_default_config(&adapter, w, h)            -> Option<SurfaceConfiguration>
-  → surface.configure(&device, &config)
-frame:
-  surface.get_current_texture() -> CurrentSurfaceTexture::{Success, Suboptimal, Timeout,
-                                   Occluded, Outdated, Lost, Validation}
-  → encoder.begin_render_pass(clear purple) → queue.submit → window.pre_present_notify()
-  → queue.present(frame)
-```
-
-Handling policy:
-
-| Condition | Action |
+| Game code **may** use | Game code **may not** see |
 |---|---|
-| `Success` | draw and present |
-| `Suboptimal` | draw and present, then reconfigure |
+| `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
+| `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
+| `Time`, `Input`, `KeyCode`, `Color`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `GpuContext` (`pub(crate)`) |
+| built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
+
+The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
+
+---
+
+## 7. Rendering Architecture
+
+**Current:** none. A throwaway spike (outside `src/`) verified the wgpu 30 path
+and rendered a purple clear under Xvfb + lavapipe
+([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md)).
+
+**Planned (ADR-005, ADR-009):**
+```text
+Instance::new(InstanceDescriptor::new_with_display_handle(owned_display_handle))
+ → create_surface(Arc<Window>) → request_adapter(compatible_surface)
+ → request_device → surface.get_default_config → configure
+frame: get_current_texture() → render pass → queue.submit → pre_present_notify → queue.present
+```
+
+| `CurrentSurfaceTexture` / condition | Action |
+|---|---|
+| `Success` | draw, present |
+| `Suboptimal` | draw, present, then reconfigure |
 | `Timeout`, `Occluded` | skip the frame |
-| `Outdated` | reconfigure, skip the frame |
-| `Lost` | recreate the surface from the instance, reconfigure, skip |
-| `Validation` | log and skip; repeated failures become `Error::Render` |
-| Out-of-memory / device lost | wgpu 30 reports these through `Device::on_uncaptured_error` and `set_device_lost_callback`, not the acquire result. The renderer records them and the loop exits with `Error::Render` |
-| width or height = 0 | never call `configure`; skip rendering while minimized |
+| `Outdated` | reconfigure, skip |
+| `Lost` | recreate the surface, reconfigure, skip |
+| `Validation` | log, skip. Repeated failures become `Error::Render` |
+| OOM / device lost | reported via `on_uncaptured_error` / `set_device_lost_callback`, which become `Error::Render` and exit |
+| size 0×0 (minimized) | never configure. Skip rendering. |
 
-Future internal structure, built only when a stage needs it:
-`Renderer { gpu: GpuContext, sprites: SpriteRenderer, shapes: ShapeRenderer,
-text: TextRenderer, debug: DebugRenderer }`.
-
-Color: public `Color` values are sRGB. The renderer converts to linear when the
-surface format is `*Srgb` (proposed in [ADR-0008](adr/0008-color-space.md);
-the Stage 0 spike showed linear `(0.35, 0.10, 0.55)` displays as sRGB `#A059C4`).
+Evolution, each part added only when a stage needs it:
+`Renderer { gpu, sprites (Stage 5–6), shapes, text, debug (later) }`.
 
 ---
 
-## 9. Error handling ([ADR-0006](adr/0006-errors-and-logging.md))
+## 8. ECS Architecture
 
-* One public `purplepie::Error` enum (`thiserror`), `purplepie::Result<T>`.
-* Variants by failure domain: `EventLoop`, `Window`, `Surface`, `Adapter`,
-  `Device`, `SurfaceUnsupported`, `Render`, `Asset`, `Game(Box<dyn Error + Send + Sync>)`.
-* Errors raised inside winit callbacks, which cannot return `Result`, are
-  stored in the runner. The loop is asked to exit, and `Engine::run` returns
-  the error after `run_app` completes.
-* No `unwrap()` in engine code (`clippy::unwrap_used = "warn"`). `expect` is
-  allowed only for true invariants, with a message explaining why.
-* Diagnostics use the `log` facade, which wgpu and winit already depend on. The
-  engine does not pick a logger; the sandbox may install one.
+**Current:** none (no `hecs` dependency yet).
+
+**Planned (ADR-006, ADR-008):**
+- **Implementation:** `hecs 0.11.1`, archetypal storage.
+- **World ownership:** exactly one `hecs::World`, owned by the runner, lent to
+  the game as `ctx.world: &mut World` for each callback.
+- **Components:** plain data structs. The first set is `Transform2D`, `Velocity`, then `Sprite`.
+  No wgpu handles in components.
+- **Systems:** free functions, e.g. `fn integrate_velocity(world: &mut World, dt: f32)`,
+  called explicitly by the game. There is no scheduler.
+- **Resources:** hecs has none. Engine-wide state (`Time`, `Input`, later
+  `Assets`) lives in `Context`. Game-specific state lives in the `Game` struct.
+- **Structural changes during iteration:** `hecs::CommandBuffer` or collect-then-apply.
 
 ---
 
-## 10. Testing strategy
+## 9. Error Handling
 
-| Layer | How |
-|---|---|
-| `time`, `math`, `ecs` systems, `input` state machine | pure unit tests, no window |
-| `Game` logic | construct `World`/`Time`/`Input` headless and call game methods |
-| `app` + `render` | `cargo build`, plus a smoke run under Xvfb + Mesa lavapipe (proven in the Stage 0 spike) |
-| Every stage | `cargo fmt --check`, `cargo check`, `cargo clippy`, `cargo test`, `cargo build` |
+**Current:** lints only: `unsafe_code = "forbid"`, `clippy::unwrap_used = "warn"`.
+
+**Planned (ADR-011):** one `purplepie::Error` (`thiserror`) and
+`purplepie::Result<T>`. Callback errors are stored and returned from
+`Engine::run`. Diagnostics use the `log` facade, and the engine never installs a logger.
+
+---
+
+## 10. Async Strategy
+
+**Current:** no async code.
+
+**Planned (ADR-012):** only the two wgpu init futures, resolved with
+`pollster::block_on` in `resumed`. No async runtime and no `async` in the public API.
+
+---
+
+## 11. Testing Architecture
+
+| Layer | Approach | Current |
+|---|---|---|
+| Crate sanity | unit test `version_matches_manifest`, doctest on `VERSION` | ✅ 2 tests pass |
+| `time`, `math`, `ecs` systems, `input` state | pure unit tests, no window/GPU | planned (Stages 2, 3, 8) |
+| Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
+| `app`, `render` | `cargo build` + smoke run: Linux Xvfb + Mesa lavapipe in Cowork; Windows by the owner | planned (Stages 1, 4) |
+| Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |
+
+Tests live next to code in `#[cfg(test)] mod tests`. Integration tests go in `tests/`
+once the public API has behavior worth testing.

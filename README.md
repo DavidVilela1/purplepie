@@ -3,9 +3,10 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 0 (Architecture & Planning) complete.** The repository
-> contains the architecture, roadmap and decisions, plus a compiling scaffold.
-> There is no window or renderer yet. See [docs/STATUS.md](docs/STATUS.md).
+> **Status: Milestone M0 (Architecture Ready) verified. Stage 0 complete.**
+> The repository contains the architecture, roadmap, decision log and task
+> tracker, plus a compiling scaffold. There is no window or renderer yet.
+> Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph
 
@@ -43,14 +44,19 @@ PurplePie/
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── assets/           textures/, fonts/, shaders/
 └── docs/
-    ├── ARCHITECTURE.md   modules, dependency rules, ownership, frame lifecycle
+    ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
+    ├── TASKS.md          task tracker (PP-xxx), the single next task
+    ├── DEVELOPMENT.md    working protocol, Definition of Done, env setup, archives
+    ├── ARCHITECTURE.md   modules, dependency rules, runtime flow (current vs planned)
+    ├── DECISIONS.md      ADR log (ADR-001…) + pending decisions
+    ├── ROADMAP.md        Stages 0–10, milestones M0–M10
+    ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
-    ├── ROADMAP.md        Stages 0–10
-    ├── STATUS.md         current state and validation log
-    ├── RISKS.md          architectural risks
-    ├── adr/              architecture decision records
     └── spikes/           Stage 0 compatibility spike (reference only)
 ```
+
+Windows needs the Visual Studio **"Desktop development with C++"** workload for
+the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-setup).
 
 ## Stack
 

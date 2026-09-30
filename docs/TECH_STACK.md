@@ -8,10 +8,10 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | Rust (edition 2024) | stable, **1.95.0** used | 0 | — | — |
 | `winit` | **0.30.13** | 1 | window + event loop | 1.70 |
 | `thiserror` | **2.0.21** | 1 | structured `Error` enum | 1.77 |
-| `hecs` | **0.11.1** | 3 | ECS ([ADR-0002](adr/0002-ecs-hecs.md)) | 1.81 |
+| `hecs` | **0.11.1** | 3 | ECS (ADR-006 in [DECISIONS.md](DECISIONS.md)) | 1.81 |
 | `glam` | **0.33** (0.33.11) | 3 | `Vec2`, `Mat4`, `Affine2` | 1.68.2 |
 | `wgpu` | **30.0.1** | 4 | GPU abstraction | 1.87 |
-| `pollster` | **1.0.1** | 4 | block on wgpu init futures ([ADR-0007](adr/0007-async-pollster.md)) | 1.69 |
+| `pollster` | **1.0.1** | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
 | `log` | 0.4 (already transitive) | 1 | diagnostics facade | — |
 | `bytemuck` | TBD | 5 | vertex/uniform casting | decide in Stage 5 |
 | `image` | TBD (PNG only) | 6/9 | texture decoding | decide in Stage 6 |
@@ -25,9 +25,9 @@ download other toolchains. Raise the value if a lower toolchain fails.
 
 | Candidate | Reason |
 |---|---|
-| `winit 0.31.0-beta.3` | Pre-release. 0.31 redesigns the API (trait-based windows, `can_create_surfaces`). Revisit when 0.31.0 is stable, as a dedicated migration ([ADR-0003](adr/0003-winit-wgpu-versions.md)). |
-| `bevy_ecs 0.19.1` / `0.20.0-rc` | ~76 transitive deps vs 4 for hecs, MSRV 1.95, breaking release every ~3–5 months ([ADR-0002](adr/0002-ecs-hecs.md)). |
-| `tokio` / `async-std` | No async I/O requirement ([ADR-0007](adr/0007-async-pollster.md)). |
+| `winit 0.31.0-beta.3` | Pre-release. 0.31 redesigns the API (trait-based windows, `can_create_surfaces`). Revisit when 0.31.0 is stable, as a dedicated migration (ADR-004 in [DECISIONS.md](DECISIONS.md)). |
+| `bevy_ecs 0.19.1` / `0.20.0-rc` | ~76 transitive deps vs 4 for hecs, MSRV 1.95, breaking release every ~3–5 months (ADR-006 in [DECISIONS.md](DECISIONS.md)). |
+| `tokio` / `async-std` | No async I/O requirement (ADR-012 in [DECISIONS.md](DECISIONS.md)). |
 | `anyhow` in the engine | The engine exposes typed errors. Games may use anyhow themselves. |
 
 ## Compatibility evidence
