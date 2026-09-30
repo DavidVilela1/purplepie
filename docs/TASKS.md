@@ -10,11 +10,12 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-003: Stage 1 · Minimal application (window + lifecycle)** · P1 · TODO ← **next task**
+- [ ] **PP-004: Stage 2 · Time & fixed update** · P1 · TODO ← **next task**
 
 ## In Progress
 
-_None._
+- [ ] **PP-003: Stage 1 · Minimal application (window + lifecycle)** · P1 · IN_PROGRESS
+  All work is implemented and verified on Linux/Xvfb. **The only remaining item is AC 10: the owner runs `cargo test` + `cargo run` on Windows.**
 
 ## Blocked
 
@@ -28,7 +29,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-004: Stage 2 · Time & fixed update** · P2 · TODO
 - [ ] **PP-005: Stage 3 · ECS integration** · P2 · TODO
 - [ ] **PP-006: Stage 4 · wgpu initialization + purple clear** · P2 · TODO
 - [ ] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · P3 · TODO
@@ -65,19 +65,24 @@ _None._
 | Dependencies | PP-000 |
 | Acceptance criteria | ✅ Owner-reported: `cargo clippy --all-targets -- -D warnings` passed. After the VS C++ workload was installed, `cargo run` printed the sandbox line, which proves linking works. ⚠️ Owner has not reported `cargo test` on Windows since the fix. That check is included in PP-003. |
 
-### PP-003: Minimal application (window + lifecycle) ← NEXT
+### PP-003: Minimal application (window + lifecycle)
 | Field | Value |
 |---|---|
-| Stage | 1 → Milestone M1 · Priority P1 · **TODO** |
+| Stage | 1 → Milestone M1 · Priority P1 · **IN_PROGRESS**. Implemented 2026-09-30. AC 1–9 and 11 met. AC 10 awaits the owner. |
 | Dependencies | PP-000, PP-002 (both DONE). No blockers. |
 | Scope | Add `winit 0.30.13` and `thiserror 2`. Create `src/error.rs` (`Error`, `Result`) and `src/app/` (`EngineConfig` with title/size builders; `Engine::new`/`run`; `Game` trait with `init` + `update` only; `Context` with `request_exit()`; `Runner` implementing `ApplicationHandler`). Update the sandbox to `Engine::new(..)?.run(Sandbox)`. Decide PD-04 (logger). |
 | Out of scope | Fixed timestep, ECS, GPU, input abstraction |
+| Result | `src/error.rs`, `src/app/{mod,config,game,pacer,runner}.rs`, sandbox rewritten, 15 unit tests + 5 doctests. Xvfb smoke runs: window 1280×720 titled "PurplePie Sandbox". About 0.04 s CPU over 3 s idle. Resize OK. Escape → exit 0. Close (WM_DELETE_WINDOW) → exit 0. Other keys ignored. 120 frames in 1.99 s. `init` error returned as `Error::Game` with no `update` afterwards. `update` never runs after `request_exit`. Zero-size config rejected. Second `Engine::new` → `Error::EventLoop`. No display → error chain, exit 1. PD-04 deferred to PP-006 (nothing to log yet). |
+| Bug found and fixed | `event_loop.exit()` does not stop queued events, so `update` ran after a failed `init`. Game callbacks are now gated on `!event_loop.exiting()`. |
 | Acceptance criteria | 1. Window created only in `resumed`, exactly once. 2. Close button and Escape exit with code 0. 3. `Resized` handled (0×0 tolerated). 4. `about_to_wait` → `request_redraw`; `RedrawRequested` calls `game.update`. 5. `ControlFlow::WaitUntil` pacing, no busy loop. 6. An error raised in a callback is returned from `Engine::run`. 7. No `unwrap()` in engine code. 8. Unit tests for `EngineConfig`. 9. Checks in Cowork: fmt, check, clippy `-D warnings`, test, build, plus an Xvfb smoke run with automated exit. 10. Owner runs `cargo test` + `cargo run` on Windows and confirms the window. 11. Docs, PROJECT_STATUS and TASKS updated. `PurplePie-stage-1.zip` delivered. |
 
-### PP-004: Time & fixed update
-| Stage 2 → M2 · P2 · TODO | Depends on PP-003 |
+### PP-004: Time & fixed update ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | `src/time/` with `Time` + pure `FixedTimestep`. `Game::fixed_update` wired per ADR-010. Unit tests cover 0, 1, N and capped steps, backlog clamp, `MAX_FRAME_DT` clamp, and alpha range. |
+| Stage | 2 → Milestone M2 · Priority P1 · **TODO** |
+| Dependencies | PP-003 (implemented; only the Windows run is outstanding, and it does not block this work). |
+| Scope | New `src/time/` (`Time`: frame delta, elapsed, frame count; pure `FixedTimestep` with accumulator, `MAX_FRAME_DT` clamp, `MAX_FIXED_STEPS` cap, backlog clamp, alpha). Add `Game::fixed_update`, `Context::time()`. Wire into `Runner::frame` per ADR-010. Put the constants in `EngineConfig`. Sandbox shows fixed-step vs frame counts. |
+| Acceptance criteria | 1. `time` depends only on `std`. 2. Unit tests: 0, 1 and N steps, cap reached, backlog clamp, `MAX_FRAME_DT` clamp, alpha in [0, 1). 3. Loop order: tick → fixed × n → update. 4. Xvfb smoke: about 60 fixed steps per second of real time. 5. DoD and docs updated. |
 
 ### PP-005: ECS integration
 | Stage 3 → M3 · P2 · TODO | Depends on PP-004 |
@@ -87,7 +92,7 @@ _None._
 ### PP-006: wgpu initialization + purple clear
 | Stage 4 → M4 · P2 · TODO | Depends on PP-003 (PP-004/005 expected done first) |
 |---|---|
-| Acceptance criteria | Init chain with typed errors. Acquire-result policy (ARCHITECTURE §7). Resize/minimize safe. Device-lost capture. PD-01 decided. Xvfb pixel check. Owner confirms on a real GPU. |
+| Acceptance criteria | Init chain with typed errors. Acquire-result policy (ARCHITECTURE §7). Resize/minimize safe. Device-lost capture. PD-01 and PD-04 decided. Replace `FramePacer`/`WaitUntil` with vsync pacing (remove the pacer if unused). Xvfb pixel check. Owner confirms on a real GPU. |
 
 ### PP-007: First 2D primitive
 | Stage 5 → M5 · P3 · TODO | Depends on PP-005, PP-006 |

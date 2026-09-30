@@ -16,14 +16,14 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
 | ADR-002 | Single package: engine library + `sandbox` binary | Accepted | Yes (Stage 0) |
 | ADR-003 | Module boundaries and dependency direction | Accepted | Partially: rules only, no modules yet |
-| ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | No (Stage 1) |
+| ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | No (Stage 4) |
 | ADR-006 | `hecs` as the ECS | Accepted | No (Stage 3) |
 | ADR-007 | `glam` for math | Accepted | No (Stage 3) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | No (Stages 1–10) |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stage 1 subset |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | No (Stage 4) |
-| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | No (Stages 1–2) |
-| ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: lints active |
+| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | Partially: frame hook + `WaitUntil` pacing (Stage 1); timestep in Stage 2 |
+| ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: `Error` + lints (Stage 1); logging deferred |
 | ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | No (Stage 4) |
 | ADR-013 | Dependency admission: add per stage, pin, commit the lockfile | Accepted | Yes (Stage 0) |
 
@@ -143,7 +143,8 @@ A module needs to depend upward, which indicates a missing abstraction or a misp
 # ADR-004: `winit` 0.30.13 for windowing and events
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 1).
+Accepted (2026-09-30). Implemented in PP-003 (Stage 1): `src/app/runner.rs` is the only
+code that handles winit events, and winit types appear nowhere in the public API.
 
 ## Context
 PurplePie needs cross-platform windows, an event loop and input events. On
@@ -288,7 +289,13 @@ None expected.
 # ADR-008: Engine/game API: `Game` trait + per-call `Context`
 
 ## Status
-Accepted (2026-09-30). Not implemented. It is built incrementally from Stage 1 and refined in Stage 10.
+Accepted (2026-09-30). Partially implemented in PP-003 (Stage 1). Refined in Stage 10.
+
+**Implementation note (Stage 1):** `Game` currently has `init` (default `Ok(())`)
+and a required `update`. `Context` carries only the exit flag (`request_exit`,
+`exit_requested`). `fixed_update`, `time`, `world` and `input` arrive with their
+stages. `Engine::run` returns `Result<()>` as decided. `Error::game(e)` and
+`BoxError` were added so games can return their own errors from `init`.
 
 ## Context
 Game code needs mutable ECS access plus read access to time and input, and
@@ -373,7 +380,12 @@ command buffer, not raw wgpu access.
 # ADR-010: Fixed-timestep game loop driven by `RedrawRequested`
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stages 1–2).
+Accepted (2026-09-30). Partially implemented in PP-003 (Stage 1).
+
+**Implementation note (Stage 1):** the frame runs in `RedrawRequested` as decided.
+Stage 1 pacing is a pure `FramePacer` (60 Hz `WaitUntil` deadlines; after a
+stall it restarts the schedule instead of bursting), measured at about 0.04 s CPU
+per 3 s idle under Xvfb. The fixed timestep itself is Stage 2 (PP-004).
 
 ## Context
 Gameplay must be frame-rate independent. Rendering should run at display rate.
@@ -412,7 +424,7 @@ Visible stutter that interpolation cannot fix, or a need for simulation rates ot
 # ADR-011: Error handling: one `thiserror` enum, `log` facade, no `unwrap`
 
 ## Status
-Accepted (2026-09-30). Partially implemented: lints are active, `Error` arrives in Stage 1.
+Accepted (2026-09-30). Partially implemented: lints (Stage 0); `Error`/`BoxError`/`Result` and callback-error propagation (Stage 1, PP-003). Logging is deferred (PD-04).
 
 ## Context
 Window, GPU and asset initialization can fail. winit callbacks cannot return errors.
@@ -426,8 +438,13 @@ Window, GPU and asset initialization can fail. winit callbacks cannot return err
   `event_loop.exit()`. `Engine::run` returns the error.
 - `clippy::unwrap_used = "warn"` (active). `expect` is allowed only for
   invariants, with a message explaining why.
-- Diagnostics use the `log` facade, which winit and wgpu already depend on. The
-  engine never installs a logger.
+- Diagnostics use the `log` facade, which wgpu already depends on. The engine never installs a logger.
+
+**Correction (2026-09-30, PP-003):** this ADR originally said winit also depends
+on `log`. In fact winit 0.30 logs through `tracing`. `log` is in the graph only via
+`calloop` on Linux, and via wgpu from Stage 4. The decision is unchanged. The
+choice between `log` and `tracing` for the engine's own diagnostics is part of
+PD-04, which was deferred to PP-006 because Stage 1 has nothing to log.
 
 ## Alternatives Considered
 - **`anyhow` in the engine.** Loses typed matching for games.
@@ -523,7 +540,7 @@ one is resolved (and becomes an ADR) inside the task listed.
 | PD-01 | Color space of public `Color` | Public colors are sRGB. The renderer converts to linear once. The spike showed linear `(0.35, 0.10, 0.55)` displays as `#A059C4` on an sRGB surface. | PP-006 / PP-007 (Stage 4–5) |
 | PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | PP-009 (Stage 7) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
-| PD-04 | Logger in the sandbox | Possibly `env_logger` in the sandbox binary only | PP-003 (Stage 1) |
+| PD-04 | Engine diagnostics (`log` vs `tracing`) and a logger in the sandbox | Use the `log` facade (wgpu uses it). Possibly `env_logger` in the sandbox only. Deferred from PP-003 because Stage 1 emits no diagnostics. | PP-006 (Stage 4) |
 | PD-05 | Sprite batching strategy | Instanced quads per texture, sorted by layer | PP-008 (Stage 6) |
 | PD-06 | Asset handle design | Typed `Handle<T>` + `Assets` store, synchronous loading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

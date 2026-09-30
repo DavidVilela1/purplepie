@@ -6,13 +6,13 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | Crate | Version | Added in | Why | MSRV (crate metadata) |
 |---|---|---|---|---|
 | Rust (edition 2024) | stable, **1.95.0** used | 0 | — | — |
-| `winit` | **0.30.13** | 1 | window + event loop | 1.70 |
-| `thiserror` | **2.0.21** | 1 | structured `Error` enum | 1.77 |
+| `winit` | **0.30.13** ✅ added | 1 | window + event loop | 1.70 |
+| `thiserror` | **2.0.21** ✅ added | 1 | structured `Error` enum | 1.77 |
 | `hecs` | **0.11.1** | 3 | ECS (ADR-006 in [DECISIONS.md](DECISIONS.md)) | 1.81 |
 | `glam` | **0.33** (0.33.11) | 3 | `Vec2`, `Mat4`, `Affine2` | 1.68.2 |
 | `wgpu` | **30.0.1** | 4 | GPU abstraction | 1.87 |
 | `pollster` | **1.0.1** | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
-| `log` | 0.4 (already transitive) | 1 | diagnostics facade | — |
+| `log` | 0.4 (transitive via `calloop` on Linux; via wgpu from Stage 4) | 4 | diagnostics facade (PD-04). Note that winit 0.30 itself logs through `tracing`. | — |
 | `bytemuck` | TBD | 5 | vertex/uniform casting | decide in Stage 5 |
 | `image` | TBD (PNG only) | 6/9 | texture decoding | decide in Stage 6 |
 

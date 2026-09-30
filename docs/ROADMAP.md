@@ -29,7 +29,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | Milestone | Working state | Stage | Task | Status |
 |---|---|---|---|---|
 | **M0: Architecture Ready** | Structure, decisions, roadmap documented; scaffold compiles | 0 | PP-000, PP-001 | VERIFIED |
-| **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | NOT_STARTED |
+| **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | NOT_STARTED |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | NOT_STARTED |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006 | NOT_STARTED |
@@ -60,17 +60,17 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Plans drifting from reality (R-16) |
 | **Definition of Done** | Met on 2026-09-30 (see PROJECT_STATUS) |
 
-## Stage 1: Minimal Application → M1
+## Stage 1: Minimal Application → M1 (implemented; awaiting Windows confirmation)
 
 | | |
 |---|---|
 | **Objective** | A real window with a correct winit 0.30 lifecycle and clean shutdown |
 | **Prerequisites** | M0 |
 | **Tasks** | PP-003 |
-| **Files** | `Cargo.toml` (+`winit 0.30.13`, `thiserror 2`), new `src/error.rs`, new `src/app/` (`mod.rs`, `config.rs`, `runner.rs`), `src/lib.rs`, `src/main.rs`, docs |
+| **Files** | `Cargo.toml` (+`winit 0.30.13`, `thiserror 2.0.21`), new `src/error.rs`, new `src/app/` (`mod.rs`, `config.rs`, `game.rs`, `pacer.rs`, `runner.rs`), `src/lib.rs`, `src/main.rs`, docs. As built, `game.rs` and `pacer.rs` were split out of the plan for testability. |
 | **Expected result** | `cargo run` opens a titled window. Close button or Escape exits with code 0. |
 | **Validation** | Standard checks + unit tests for `EngineConfig` defaults/builders + Xvfb smoke run (timed exit) in Cowork + owner run on Windows |
-| **Acceptance criteria** | Window created only in `resumed`. `CloseRequested` → exit. Resize handled without panic. `RedrawRequested` frame hook exists. `WaitUntil` pacing (no 100% CPU spin). Callback errors are returned from `Engine::run`. Sandbox uses only `Engine`/`EngineConfig`/`Game`. PD-04 (logger) decided. |
+| **Acceptance criteria** | Window created only in `resumed`. `CloseRequested` → exit. Resize handled without panic. `RedrawRequested` frame hook exists. `WaitUntil` pacing (no 100% CPU spin). Callback errors are returned from `Engine::run`. Sandbox uses only `Engine`/`EngineConfig`/`Game`. PD-04 (logger) was deferred to Stage 4 because Stage 1 has nothing to log. |
 | **Risks** | winit lifecycle misuse (R-02), busy loop (R-06), OneDrive build folder (R-15) |
 | **Definition of Done** | Project DoD + M1 behavior confirmed by a smoke run |
 

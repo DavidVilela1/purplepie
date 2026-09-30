@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-09-30** against the repository at the end of Stage 0.
+Last reviewed: **2026-09-30** against the repository after the Stage 1 implementation (PP-003).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -21,8 +21,9 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality:** a compiling scaffold. `purplepie` exposes only `VERSION`,
-and the `sandbox` binary prints it. There is no window, no ECS and no GPU code yet.
+**Current reality (Stage 1):** `purplepie` provides `Engine`, `EngineConfig`,
+`Game`, `Context` and `Error`. The `sandbox` game opens a window, runs a paced
+60 Hz frame loop and exits cleanly. There is no timestep, ECS, GPU or input abstraction yet.
 
 ---
 
@@ -50,8 +51,14 @@ compilability → clear architecture → maintainability → extensibility → p
 
 | Path | Responsibility | Status |
 |---|---|---|
-| `src/lib.rs` | Crate root: `pub const VERSION`, crate docs, one unit test + one doctest | VERIFIED |
-| `src/main.rs` | `sandbox` binary: prints the version using only the public API | VERIFIED |
+| `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
+| `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Game`), `BoxError`, `Result`. winit errors are boxed sources, not public types. | VERIFIED |
+| `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | FUNCTIONAL (Linux) |
+| `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape` + builders + `validate` | VERIFIED |
+| `src/app/game.rs` | `Game` trait (`init` default, `update` required); `Context` (`request_exit`, `exit_requested`) | VERIFIED |
+| `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
+| `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
+| `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
 | `assets/{textures,fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
 
 ### Planned (ADR-003)
@@ -110,12 +117,22 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current
+### Current (Stage 1)
 ```text
-main() → println!("PurplePie sandbox v{VERSION} …") → exit 0
+main → Engine::new(config)?          validate config, EventLoop::new()
+     → engine.run(game)              EventLoop::run_app(&mut Runner)
+resumed          → create Window (once) → game.init(ctx) (once; error → exit)
+about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
+RedrawRequested  → game.update(ctx)  (skipped once exit has begun)
+CloseRequested / Escape (if enabled) / ctx.request_exit() → event_loop.exit()
+exiting          → drop Window
+run returns      → first stored error, else any event-loop error, else Ok(())
 ```
+Game callbacks are never invoked after `event_loop.exiting()` becomes true.
+`exit()` does not discard events that are already queued, and a bug caused by
+this was found and fixed in PP-003.
 
-### Planned (ADR-008, ADR-010): winit 0.30 `ApplicationHandler`
+### Planned full frame (ADR-008, ADR-010)
 ```mermaid
 sequenceDiagram
     participant M as main (game)
@@ -153,7 +170,7 @@ Stages 1–3 use `ControlFlow::WaitUntil`. From Stage 4, `Poll` + vsync (`Fifo`)
 
 | Game code **may** use | Game code **may not** see |
 |---|---|
-| `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
+| `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
 | `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
 | `Time`, `Input`, `KeyCode`, `Color`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `GpuContext` (`pub(crate)`) |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
@@ -212,7 +229,11 @@ Evolution, each part added only when a stage needs it:
 
 ## 9. Error Handling
 
-**Current:** lints only: `unsafe_code = "forbid"`, `clippy::unwrap_used = "warn"`.
+**Current:** `purplepie::Error` with boxed `source`s. `Error::game(e)` wraps game errors.
+Errors raised inside winit callbacks are stored by the runner (first one wins),
+followed by `event_loop.exit()`, and returned from `Engine::run`. The sandbox
+prints the full `source()` chain. There is no logging yet (PD-04, deferred to Stage 4).
+The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply, and `src/` contains no `unwrap`/`expect`.
 
 **Planned (ADR-011):** one `purplepie::Error` (`thiserror`) and
 `purplepie::Result<T>`. Callback errors are stored and returned from
@@ -233,10 +254,10 @@ Evolution, each part added only when a stage needs it:
 
 | Layer | Approach | Current |
 |---|---|---|
-| Crate sanity | unit test `version_matches_manifest`, doctest on `VERSION` | ✅ 2 tests pass |
+| `error`, `app::{config, game, pacer}` | pure unit tests + doctests | ✅ 15 unit tests + 5 doctests |
 | `time`, `math`, `ecs` systems, `input` state | pure unit tests, no window/GPU | planned (Stages 2, 3, 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
-| `app`, `render` | `cargo build` + smoke run: Linux Xvfb + Mesa lavapipe in Cowork; Windows by the owner | planned (Stages 1, 4) |
+| `app` runner, `render` | Xvfb smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling; lavapipe from Stage 4); Windows by the owner | ✅ Stage 1 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |
 
 Tests live next to code in `#[cfg(test)] mod tests`. Integration tests go in `tests/`

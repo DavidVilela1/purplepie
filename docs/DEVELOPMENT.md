@@ -22,7 +22,11 @@ document is corrected.
 ## 2. Session start checklist
 
 1. Read [PROJECT_STATUS.md](PROJECT_STATUS.md), then [TASKS.md](TASKS.md), then the relevant parts of [DECISIONS.md](DECISIONS.md).
-2. Inspect the repository: `Cargo.toml`, `src/`, tests, `docs/`. Do not assume docs are current.
+2. Get the current project: Claude works only in its own session workspace (§3,
+   owner rule). If the workspace has no `PurplePie/` copy, or the owner may have
+   changed files since the last delivered ZIP, ask the owner to attach a ZIP of the
+   repo (without `target/`). Then inspect `Cargo.toml`, `src/`, tests and `docs/`.
+   Do not assume docs are current.
 3. Run the validation suite (§8) **before** changing anything, so pre-existing failures are known.
 4. Confirm which single task the session is for. If none was requested, propose the task marked "next" in TASKS.md and wait.
 
@@ -38,6 +42,16 @@ document is corrected.
   something could not be executed, say: *"This code has been reviewed for
   consistency but has not been executed in this environment,"* and list what remains unverified.
 - **Label owner-reported results** as owner-reported, never as executed.
+- **Owner rule: never touch the owner's computer.** Claude does not read, write,
+  stage or commit files in the owner's repo or any folder on the owner's computer,
+  even when a folder is connected. All work happens in Claude's own workspace.
+- **Owner rule: every delivery is a ZIP + an expand command, always.** At the end
+  of every task, send the complete project as a ZIP (§10) together with the exact
+  PowerShell `Expand-Archive` command that updates the owner's repo in place. The
+  owner extracts it and commits it themselves.
+- **Commit messages (owner rule):** never add AI attribution lines such as
+  `Co-Authored-By: Claude …` or `Claude-Session: …`. Use conventional style
+  (`feat:`, `fix:`, `docs:` …): a subject line, then a body listing what changed and why.
 - **Stop after the requested task** and report.
 
 ## 4. Definition of Done
@@ -109,14 +123,25 @@ cargo build
 cargo run            # sandbox
 ```
 
-Windowed stages in Cowork (Linux, no display) use a virtual display and software Vulkan:
+Windowed stages in Cowork (Linux, no display) use a virtual X server:
 
 ```bash
-sudo apt-get install -y xvfb mesa-vulkan-drivers imagemagick   # once per container, if missing
-xvfb-run -a -s "-screen 0 1024x768x24" cargo run
+sudo apt-get install -y xvfb mesa-vulkan-drivers xdotool x11-utils   # once per container if missing
+pip install --break-system-packages python-xlib                     # to simulate the close button
+
+# timed run (sandbox requests exit after N frames); expect exit 0 and ~N/60 s
+PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=120 xvfb-run -a cargo run
 ```
 
-Automated smoke runs need a timed-exit hook, which is added in PP-003.
+Interactive checks inside `xvfb-run` (there is no window manager):
+- **Find the window:** `xdotool search --name "PurplePie Sandbox"`. Check attributes with `xwininfo -id <id>`.
+- **Keys:** `xdotool windowfocus --sync <id>; xdotool key Escape`. XTEST input is
+  required, because `xdotool key --window` sends synthetic events that winit (XInput2) ignores.
+- **Close button:** send a `WM_DELETE_WINDOW` ClientMessage with python-xlib, which is what a WM does.
+- **Busy-loop check:** read `utime+stime` from `/proc/<pid>/stat` after a few idle seconds.
+- **Resize:** `xdotool windowsize <id> 640 360`.
+
+The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.
 
 ## 9. Environment setup
 
@@ -152,6 +177,18 @@ Before delivery, verify:
 - the extracted copy builds and tests.
 
 Deliver the ZIP as a downloadable file, and report Created/Verified/Downloadable/Location factually.
+
+**Delivery (owner rule, always):** send the ZIP as a downloadable file, and
+give the exact commands to apply it to the owner's repo:
+
+```powershell
+# ZIP root is PurplePie/, so the destination is the folder that CONTAINS the repo
+Expand-Archive -Path "$HOME\Downloads\<zip name>" -DestinationPath "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0" -Force
+```
+
+Extracting never deletes files. If the task removed or renamed files, also give
+the exact `Remove-Item` commands. A ZIP never contains `.git/` or `target/`, so
+extracting leaves the owner's Git history and build cache untouched.
 
 ## 11. Session end report
 

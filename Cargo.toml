@@ -20,13 +20,14 @@ path = "src/lib.rs"
 name = "sandbox"
 path = "src/main.rs"
 
-# Stage 0 intentionally has no dependencies. Each stage adds only what it uses.
-# Versions verified on 2026-09-30 (see docs/TECH_STACK.md):
-#   Stage 1: winit = "0.30.13", thiserror = "2.0.21"
+# Each stage adds only the dependencies it uses (ADR-013).
+# Versions verified on 2026-09-30 (see docs/TECH_STACK.md). Still to come:
 #   Stage 2: (std only)
 #   Stage 3: hecs = "0.11.1", glam = "0.33"
 #   Stage 4: wgpu = "30.0.1", pollster = "1.0.1"
 [dependencies]
+thiserror = "2.0.21" # Stage 1: `Error` enum (ADR-011)
+winit = "0.30.13"    # Stage 1: window + event loop, used only in `app` (ADR-004)
 
 [lints.rust]
 unsafe_code = "forbid"

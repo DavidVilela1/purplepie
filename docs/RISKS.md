@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-09-30 (end of Stage 0).
+Last reviewed: 2026-09-30 (Stage 1 implementation, PP-003).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -15,7 +15,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-03 | GPU API compatibility and outdated examples | OPEN | High | Medium | 1–7 |
 | R-04 | Rust ownership/borrowing constraints in `Context` | OPEN | Medium | Medium | 1, 3, 10 |
 | R-05 | Input edges under fixed timestep | OPEN | High | Medium | 8 |
-| R-06 | Frame pacing / busy loop | OPEN | High | Low | 1–4 |
+| R-06 | Frame pacing / busy loop | MITIGATED | — | Low | 1–4 |
 | R-07 | Spiral of death | OPEN | Medium | Medium | 2 |
 | R-08 | Color-space errors | OPEN | High | Low | 4–6 |
 | R-09 | Surface/device loss handling | OPEN | Medium | Medium | 4 |
@@ -25,7 +25,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-13 | Future public API stability | OPEN | Medium | Medium | 10 |
 | R-14 | Windows build environment (MSVC linker) | MITIGATED | — | High | 0 |
 | R-15 | Project inside OneDrive | MATERIALIZED | Medium | Medium | 1+ |
-| R-16 | Documentation drift | OPEN | Medium | Medium | all |
+| R-16 | Documentation drift | MONITORING | Medium | Medium | all |
 | R-17 | Resource and asset lifetime management | OPEN | Medium | Medium | 6, 9 |
 | R-18 | Performance: per-frame allocations and draw calls | OPEN | Medium | Low | 5–6 |
 | R-19 | Declared MSRV untested | OPEN | Low | Low | all |
@@ -61,7 +61,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-06: Frame pacing / busy loop
 - **Trigger:** `ControlFlow::Poll` without a vsync swapchain (Stages 1–3) spins at 100% CPU.
-- **Mitigation:** Stages 1–3 use `ControlFlow::WaitUntil(next frame)`. From Stage 4, `Fifo` present mode paces frames.
+- **Mitigation (implemented in PP-003):** `FramePacer` + `ControlFlow::WaitUntil`. Measured under Xvfb at 0.04 s CPU per 3 s, and 120 frames took 1.99 s. From Stage 4, `Fifo` present mode paces frames.
 - **Fallback:** A frame-rate cap in `EngineConfig`.
 
 ### R-07: Spiral of death
@@ -85,7 +85,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Remove unused abstractions during stage review.
 
 ### R-11: Headless-only validation in Cowork
-- **Trigger:** Now. Cowork runs Linux without a GPU or display. Only Xvfb + Mesa lavapipe is available, which is proven to work.
+- **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. Stage 1 behavior is verified only on Linux/X11.
 - **Mitigation:** Smoke runs under Xvfb with pixel checks. The owner runs every windowed stage on Windows with a real GPU and reports the result.
 - **Fallback:** Mark platform behavior as unverified in PROJECT_STATUS until the owner confirms it.
 
@@ -110,8 +110,9 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Pause OneDrive sync while building.
 
 ### R-16: Documentation drift
-- **Trigger:** Code changes without doc updates. Known duplication: the module table in `src/lib.rs` mirrors ARCHITECTURE §3.
-- **Mitigation:** The DoD includes doc updates. Repository and validation outrank docs. The per-session start checklist is in DEVELOPMENT.md.
+- **Trigger:** Code changes without doc updates.
+- **Evidence:** PP-003 found one real drift. ADR-011/TECH_STACK claimed winit depends on `log`, but it uses `tracing`. Now corrected. The duplicated module table in `src/lib.rs` was removed.
+- **Mitigation:** The DoD includes doc updates. Repository and validation outrank docs. The per-session start checklist is in DEVELOPMENT.md, and each loop run ends with a drift check.
 - **Fallback:** A full doc-vs-code review at each stage boundary.
 
 ### R-17: Resource and asset lifetime management

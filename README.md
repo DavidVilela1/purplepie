@@ -3,12 +3,12 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Milestone M0 (Architecture Ready) verified. Stage 0 complete.**
-> The repository contains the architecture, roadmap, decision log and task
-> tracker, plus a compiling scaffold. There is no window or renderer yet.
+> **Status: Stage 1 (Minimal Application) implemented.** `cargo run` opens a
+> window through PurplePie's own `Engine`/`Game` API. Close it or press Escape to exit.
+> It is verified on Linux, and Windows confirmation is pending. There is no renderer, ECS or timestep yet.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
-## Design in one paragraph
+## Design in one paragraph (target; see PROJECT_STATUS for what exists)
 
 The engine is the `purplepie` library. Games are separate binaries (starting
 with `sandbox`) that implement a small `Game` trait and receive a `Context`
@@ -18,10 +18,19 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 `wgpu` or `winit`.
 
 ```rust
-// Target API (Stage 1–10). Not implemented yet.
+// Works today (Stage 1).
+use purplepie::{Context, Engine, EngineConfig, Game};
+
+struct Sandbox;
+
+impl Game for Sandbox {
+    fn update(&mut self, _ctx: &mut Context<'_>) {
+        // called once per frame (~60 Hz); ctx.request_exit() to quit
+    }
+}
+
 fn main() -> purplepie::Result<()> {
-    let engine = Engine::new(EngineConfig::new("Sandbox").with_size(1280, 720))?;
-    engine.run(Sandbox::default())
+    Engine::new(EngineConfig::new("Sandbox").with_size(1280, 720))?.run(Sandbox)
 }
 ```
 
@@ -30,7 +39,7 @@ fn main() -> purplepie::Result<()> {
 Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95).
 
 ```bash
-cargo run            # runs the sandbox binary
+cargo run            # opens the sandbox window (Escape or close to quit)
 cargo test
 cargo fmt --check && cargo clippy --all-targets
 ```
