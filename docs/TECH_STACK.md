@@ -10,8 +10,8 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | `thiserror` | **2.0.21** ✅ added | 1 | structured `Error` enum | 1.77 |
 | `hecs` | **0.11.1** ✅ added | 3 | ECS (ADR-006 in [DECISIONS.md](DECISIONS.md)), default features (`std`) | 1.81 |
 | `glam` | **0.33** (0.33.11) ✅ added | 3 | `Vec2`, `Mat4`, `Affine2`; `default-features = false, features = ["std"]`, which omits the f64/integer types of the default `all-types` feature | 1.68.2 |
-| `wgpu` | **30.0.1** | 4 | GPU abstraction | 1.87 |
-| `pollster` | **1.0.1** | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
+| `wgpu` | **30.0.1** ✅ added | 4 | GPU abstraction; default features (all native backends + `wgsl`) | 1.87 |
+| `pollster` | **1.0.1** ✅ added | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
 | `log` | 0.4 (transitive via `calloop` on Linux; via wgpu from Stage 4) | 4 | diagnostics facade (PD-04). Note that winit 0.30 itself logs through `tracing`. | — |
 | `bytemuck` | TBD | 5 | vertex/uniform casting | decide in Stage 5 |
 | `image` | TBD (PNG only) | 6/9 | texture decoding | decide in Stage 6 |
@@ -67,3 +67,14 @@ download other toolchains. Raise the value if a lower toolchain fails.
 `World::query_mut::<(&mut A, &B)>()` yields component tuples **without** the
 `Entity` (verified in the spike). Add `Entity` to the query tuple when the id
 is needed.
+
+## wgpu observations from PP-006 (Xvfb + Mesa lavapipe, llvmpipe LLVM 20)
+
+- Surface formats offered: `[Bgra8UnormSrgb, Bgra8Unorm]`. Present modes: `[Immediate, Mailbox, Fifo, FifoRelaxed]`.
+  `get_default_config` picks the **first** present mode (`Immediate`), so PurplePie sets `AutoVsync` explicitly (ADR-014).
+- `Fifo` did not throttle on this path: 544 fps with `ControlFlow::Poll`.
+- wgpu 30's default uncaptured-error handler panics (`backend/wgpu_core.rs: default_error_handler`). Replacing it is PP-014.
+- Passing the display through `InstanceDescriptor` means surfaces are created with `SurfaceTarget::from_window_without_display`.
+  `wgpu::WindowHandle` is `HasWindowHandle + Send + Sync`, so `Arc<dyn wgpu::WindowHandle>` works as a winit-free window parameter.
+- With no usable backend (Vulkan ICDs and EGL vendors hidden), `create_surface` fails with "Failed to create surface for any enabled backend", which becomes `Error::Surface` and exit 1.
+

@@ -32,7 +32,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
-| **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006 | NOT_STARTED |
+| **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | IN_PROGRESS (PP-006 functional on Linux; PP-014 next; Windows pending) |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | NOT_STARTED |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008 | NOT_STARTED |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | NOT_STARTED |
@@ -102,17 +102,17 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Borrow conflicts in `Context` (R-04) |
 | **Definition of Done** | Project DoD |
 
-## Stage 4: WGPU Initialization → M4
+## Stage 4: WGPU Initialization → M4 (in progress)
 
 | | |
 |---|---|
 | **Objective** | GPU renderer that clears the window to PurplePie purple |
 | **Prerequisites** | M1 (M2 and M3 done by then) |
 | **Tasks** | PP-006 (GPU context + purple clear), then PP-014 (GPU error/device-loss handling + logging decision). Split on 2026-09-30 when Stage 4 became current. |
-| **Files** | `Cargo.toml` (+`wgpu 30.0.1`, `pollster 1.0.1`), new `src/render/` (`Renderer`, `GpuContext`, `Color`), `src/error.rs`, `src/app/runner.rs` |
+| **Files** | `Cargo.toml` (+`wgpu 30.0.1`, `pollster 1.0.1`), new `src/render/` (`mod.rs`, `color.rs`, `renderer.rs`), `src/error.rs`, `src/app/{config,runner}.rs`, `src/lib.rs`. As built (PP-006): no separate `GpuContext`, and the `FramePacer` is kept (ADR-014). |
 | **Expected result** | Purple window. Resize, minimize and restore work. Clean shutdown. |
 | **Validation** | Build + Xvfb/lavapipe smoke run with pixel color check + owner run on Windows (real GPU) |
-| **Acceptance criteria** | Full init chain with typed errors. `CurrentSurfaceTexture` policy as in ARCHITECTURE §7. Device-lost/uncaptured error capture. 0×0 size never configured. Renderer dropped before window. PD-01 (color space) decided. |
+| **Acceptance criteria** | Full init chain with typed errors. `CurrentSurfaceTexture` policy as in ARCHITECTURE §7. Device-lost/uncaptured error capture (PP-014). 0×0 size never configured. Renderer dropped before window. PD-01 (color space) decided → ADR-015 ✅. |
 | **Risks** | wgpu API churn (R-01), surface loss (R-09), color space (R-08), headless-only validation (R-11) |
 | **Definition of Done** | Project DoD + owner confirms on real hardware |
 
@@ -140,7 +140,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `src/render/` (texture, sampler, sprite batcher), `Sprite` component, `Cargo.toml` (+`image` with PNG only) |
 | **Expected result** | Many sprites drawn efficiently from one or a few textures |
 | **Validation** | Tests for batching and sorting. Smoke run. Rough sprite-count timing noted. |
-| **Acceptance criteria** | PD-05 decided. sRGB texture format per PD-01. |
+| **Acceptance criteria** | PD-05 decided. sRGB texture format per ADR-015. |
 | **Risks** | Resource lifetime (R-17), per-frame allocations (R-18) |
 | **Definition of Done** | Project DoD |
 

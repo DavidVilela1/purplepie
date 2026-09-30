@@ -15,17 +15,19 @@ directory on 2026-09-30, with no decision content changed.
 |---|---|---|---|
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
 | ADR-002 | Single package: engine library + `sandbox` binary | Accepted | Yes (Stage 0) |
-| ADR-003 | Module boundaries and dependency direction | Accepted | Partially: rules only, no modules yet |
+| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`; `input`/`assets` in later stages |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
-| ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | No (Stage 4) |
+| ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
 | ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset |
-| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | No (Stage 4) |
-| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | Yes: Stage 1 (frame hook, pacing) + Stage 2 (timestep); vsync pacing in Stage 4 |
+| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Partially: ownership, lifecycle, drop order (Stage 4); world reading starts in Stage 5 |
+| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: `Error` + lints (Stage 1); logging deferred |
-| ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | No (Stage 4) |
+| ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | Yes (Stage 4, renderer init) |
 | ADR-013 | Dependency admission: add per stage, pin, commit the lockfile | Accepted | Yes (Stage 0) |
+| ADR-014 | Frame pacing: vsync (`AutoVsync`) plus a 60 Hz redraw cap | Accepted | Yes (Stage 4) |
+| ADR-015 | Public colors are sRGB; the renderer converts per target format | Accepted | Yes (Stage 4) |
 
 ---
 
@@ -180,7 +182,7 @@ winit 0.31.0 stable is released and wgpu supports it, or a platform bug in 0.30 
 # ADR-005: `wgpu` 30.0.1 as the GPU abstraction
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 4).
+Accepted (2026-09-30). Implemented in PP-006 (Stage 4): `src/render/renderer.rs` is the only code that uses wgpu. It receives the window through wgpu's `WindowHandle` trait and the display through `wgt::WgpuHasDisplayHandle`, so `render` never imports winit.
 
 ## Context
 The renderer needs a modern, portable GPU API (Vulkan, Metal, DX12, GL) without
@@ -359,7 +361,7 @@ Stage 10 review with a real example game, or a borrow conflict that disjoint bor
 # ADR-009: Renderer is engine-owned, crate-private, and reads the world
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 4).
+Accepted (2026-09-30). Partially implemented in PP-006 (Stage 4): `Renderer` is `pub(crate)`, owned by the runner as `Option<Renderer>`, created in `resumed`, and dropped in `suspended` and in `exiting` (before the window). Public `render::Color` is plain data. The renderer does not read the `World` yet, because Stage 4 only clears the frame. Reading the world starts with the first primitive (Stage 5).
 
 ## Context
 The renderer holds `Surface`, `Device`, `Queue` and pipelines. Its lifetime is
@@ -423,7 +425,9 @@ winit 0.30 recommends drawing in `RedrawRequested` and requesting redraws from `
 - `alpha = accumulator / FIXED_DT` is exposed. Interpolation is not implemented until needed.
 - `FixedTimestep` is a pure struct with no winit/wgpu dependency.
 - Stages 1–3 use `ControlFlow::WaitUntil` (no swapchain yet, so no busy loop).
-  From Stage 4, `Poll` + `Fifo` present mode provides frame pacing.
+  ~~From Stage 4, `Poll` + `Fifo` present mode provides frame pacing.~~
+  **Superseded by ADR-014 (2026-09-30):** measurements showed vsync alone does
+  not reliably pace the loop, so the `WaitUntil` cap stays.
 
 ## Alternatives Considered
 - **Variable timestep only.** Non-deterministic and frame-rate dependent.
@@ -492,7 +496,7 @@ Structured diagnostics or profiling spans become a measured need.
 # ADR-012: Async: `pollster::block_on`, no async runtime
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 4).
+Accepted (2026-09-30). Implemented in PP-006 (Stage 4): `pollster::block_on` wraps `request_adapter` and `request_device` in `Renderer::new`, called from `resumed`.
 
 ## Context
 `Instance::request_adapter` and `Adapter::request_device` return futures. On
@@ -554,14 +558,106 @@ None expected.
 
 ---
 
+# ADR-014: Frame pacing: vsync (`AutoVsync`) plus a 60 Hz redraw cap
+
+## Status
+Accepted (2026-09-30, PP-006). Supersedes the pacing clause of ADR-010.
+
+## Context
+ADR-010 planned to drop the Stage 1 `FramePacer` (`ControlFlow::WaitUntil`,
+60 Hz) once a swapchain existed and to rely on `Poll` + `Fifo` for pacing.
+Before implementing that, the Stage 4 spike was measured under Xvfb + Mesa lavapipe:
+- With `Fifo` and `Poll`, the loop ran at **544 fps**, using about one full CPU
+  core. `Fifo` does not block on this presentation path.
+- The adapter's **first** reported present mode was `Immediate`, and
+  `Surface::get_default_config` picks the first mode. So the default
+  configuration would have had no vsync at all.
+- `CurrentSurfaceTexture::Occluded` and `Timeout` return immediately, so an
+  occluded or minimized window would spin under `Poll` even on real hardware.
+
+## Decision
+- The surface uses `PresentMode::AutoVsync` explicitly (Fifo-family, always supported).
+- The `FramePacer` stays. `about_to_wait` requests a redraw at most every
+  1/60 s and sleeps with `ControlFlow::WaitUntil` in between.
+- Minimized (0×0) frames skip rendering but keep the same pacing.
+
+## Alternatives Considered
+- **`Poll` + `Fifo` only (the original plan):** busy-loops where Fifo doesn't block
+  (measured) and while occluded.
+- **`Poll` + `Fifo`, falling back to `WaitUntil` only after a skipped frame:** more
+  states to reason about, and it still busy-loops where Fifo doesn't block.
+- **Uncapped `Immediate`/`Mailbox`:** tearing or wasted power, with no benefit for a 60 Hz simulation.
+
+## Rationale
+It is correct everywhere that was measured, and it is simple: one pacing
+mechanism, with vsync only preventing tearing. The fixed simulation already
+runs at 60 Hz (ADR-010), so rendering faster adds no new game state.
+
+## Consequences
+### Positive
+- No busy loop in any measured state. 300 frames took 5.1 s under Xvfb.
+- Behavior is identical with and without a vsync-capable presentation path.
+### Negative
+- Rendering is capped at 60 fps even on 120/144 Hz displays. Smoother
+  high-refresh output would need both a higher cap and render interpolation
+  (`Time::alpha`).
+- On a 60 Hz display, the timer and vsync are two clocks. Occasional
+  frame-time jitter is possible (not measurable here; owner to observe on real hardware).
+
+## Revisit Conditions
+High-refresh support is wanted (then add a configurable cap plus interpolation),
+or the owner sees stutter on real hardware.
+
+---
+
+# ADR-015: Public colors are sRGB; the renderer converts per target format
+
+## Status
+Accepted (2026-09-30, PP-006). Resolves pending decision PD-01.
+
+## Context
+Surfaces commonly use an `*Srgb` format (lavapipe offered `Bgra8UnormSrgb`
+first), and the GPU then encodes shader/clear values from linear light. The
+Stage 0 spike showed intended `#591A8C` appearing as `#A059C4` when sRGB numbers
+were passed straight through. Games and artists think in sRGB hex values.
+
+## Decision
+- `render::Color` stores **sRGB-encoded** components (`0.0..=1.0`) with
+  straight alpha. Constructors: `rgb`, `rgba`, `rgb8`, `rgba8`, `hex(0xRRGGBB)`.
+  Constants: `PURPLEPIE` (`#6A0DAD`), `BLACK`, `WHITE`, `TRANSPARENT`.
+- Conversion happens in one place: `Color::to_wgpu(target_is_srgb)`. For sRGB
+  targets it applies the IEC 61966-2-1 transfer function (`to_linear`). For
+  `Unorm` targets it passes the values unchanged. Alpha is never gamma-converted.
+- The clear color is configurable: `EngineConfig::clear_color` (default `Color::PURPLEPIE`).
+
+## Alternatives Considered
+- **Linear public colors:** mathematically convenient, but surprising for users (hex values look wrong).
+- **Force a non-sRGB surface format:** avoids conversion for clears, but blending
+  and texture filtering would then happen in the wrong space.
+
+## Rationale
+Colors look the same as in image editors, and blending stays correct in linear space.
+
+## Consequences
+### Positive
+- Verified: the sandbox window is exactly `#6A0DAD` (921,600 of 921,600 pixels) under Xvfb + lavapipe.
+### Negative
+- Sprite textures (Stage 6) must be uploaded as `*Srgb` formats to match.
+
+## Revisit Conditions
+HDR or wide-gamut output (`SurfaceColorSpace`) becomes a goal.
+
+---
+
 # Pending Decisions
+
+PD-01 (color space) was resolved by ADR-015 on 2026-09-30.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-01 | Color space of public `Color` | Public colors are sRGB. The renderer converts to linear once. The spike showed linear `(0.35, 0.10, 0.55)` displays as `#A059C4` on an sRGB surface. | PP-006 / PP-007 (Stage 4–5) |
 | PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | PP-009 (Stage 7) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
 | PD-04 | Engine diagnostics (`log` vs `tracing`) and a logger in the sandbox | Use the `log` facade (wgpu uses it). Possibly `env_logger` in the sandbox only. Deferred from PP-003 because Stage 1 emits no diagnostics. | PP-014 (Stage 4) |

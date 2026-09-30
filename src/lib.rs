@@ -7,8 +7,8 @@
 //! `fixed_update` at a fixed rate (default 60 Hz) for simulation, then
 //! `update` once per frame.
 //! Game state lives in an ECS [`ecs::World`] owned by the engine and reached
-//! through [`Context::world_mut`]. Game code never touches `winit` (or, later,
-//! `wgpu`) types.
+//! through [`Context::world_mut`]. The engine owns the GPU (`wgpu`) and draws
+//! every frame. Game code never touches `winit` or `wgpu` types.
 //!
 //! ```no_run
 //! use purplepie::{Context, Engine, EngineConfig, Game};
@@ -33,6 +33,7 @@ mod app;
 pub mod ecs;
 mod error;
 pub mod math;
+pub mod render;
 mod time;
 
 pub use app::{Context, Engine, EngineConfig, Game};

@@ -1,6 +1,7 @@
 //! Engine configuration supplied by the game.
 
 use crate::error::{Error, Result};
+use crate::render::Color;
 
 /// Settings for [`Engine::new`](crate::Engine::new).
 ///
@@ -36,6 +37,8 @@ pub struct EngineConfig {
     /// Maximum fixed steps run in one frame (default `5`). Any backlog beyond
     /// this is dropped rather than caught up. Must be ≥ 1.
     pub max_fixed_steps: u32,
+    /// Color the window is cleared to every frame (default [`Color::PURPLEPIE`]).
+    pub clear_color: Color,
 }
 
 impl EngineConfig {
@@ -50,7 +53,7 @@ impl EngineConfig {
 
     /// Creates a configuration with the given window title and defaults for
     /// everything else: 1280×720, resizable, Escape exits, 60 Hz fixed step,
-    /// 0.25 s frame clamp, at most 5 fixed steps per frame.
+    /// 0.25 s frame clamp, at most 5 fixed steps per frame, purple clear color.
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
@@ -61,6 +64,7 @@ impl EngineConfig {
             fixed_dt: Self::DEFAULT_FIXED_DT,
             max_frame_dt: Self::DEFAULT_MAX_FRAME_DT,
             max_fixed_steps: Self::DEFAULT_MAX_FIXED_STEPS,
+            clear_color: Color::PURPLEPIE,
         }
     }
 
@@ -104,6 +108,13 @@ impl EngineConfig {
     #[must_use]
     pub fn with_max_fixed_steps(mut self, max_fixed_steps: u32) -> Self {
         self.max_fixed_steps = max_fixed_steps;
+        self
+    }
+
+    /// Sets the color the window is cleared to every frame.
+    #[must_use]
+    pub fn with_clear_color(mut self, clear_color: Color) -> Self {
+        self.clear_color = clear_color;
         self
     }
 
@@ -153,6 +164,7 @@ mod tests {
         assert_eq!(config.fixed_dt, 1.0 / 60.0);
         assert_eq!(config.max_frame_dt, 0.25);
         assert_eq!(config.max_fixed_steps, 5);
+        assert_eq!(config.clear_color, Color::PURPLEPIE);
     }
 
     #[test]
@@ -168,7 +180,9 @@ mod tests {
             .with_exit_on_escape(false)
             .with_fixed_dt(0.5)
             .with_max_frame_dt(2.0)
-            .with_max_fixed_steps(3);
+            .with_max_fixed_steps(3)
+            .with_clear_color(Color::BLACK);
+        assert_eq!(config.clear_color, Color::BLACK);
         assert_eq!(
             (config.fixed_dt, config.max_frame_dt, config.max_fixed_steps),
             (0.5, 2.0, 3)

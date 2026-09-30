@@ -30,6 +30,22 @@ pub enum Error {
     #[error("failed to create the window")]
     Window(#[source] BoxError),
 
+    /// The GPU drawing surface for the window could not be created.
+    #[error("failed to create the GPU surface")]
+    Surface(#[source] BoxError),
+
+    /// No GPU adapter (graphics card or software renderer) can draw to the window.
+    #[error("no suitable GPU adapter found")]
+    Adapter(#[source] BoxError),
+
+    /// The GPU adapter refused to open a device.
+    #[error("failed to open the GPU device")]
+    Device(#[source] BoxError),
+
+    /// The selected GPU adapter cannot present to this window's surface.
+    #[error("the GPU adapter does not support presenting to this window")]
+    SurfaceUnsupported,
+
     /// An error returned by game code, e.g. from [`Game::init`](crate::Game::init).
     #[error("game error")]
     Game(#[source] BoxError),

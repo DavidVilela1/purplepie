@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-09-30** against the repository after Stage 2 (PP-004).
+Last reviewed: **2026-09-30** against the repository after Stage 4 part 1 (PP-006).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -21,12 +21,13 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 3):** `purplepie` provides `Engine`, `EngineConfig`,
-`Game`, `Context`, `Time`, `Error`, and the public modules `ecs` (`World`,
-`Entity`, `Velocity`, `integrate_velocity`) and `math` (`Transform2D`, `Vec2`).
-The `sandbox` game opens a window, runs a paced 60 Hz frame loop, and moves an
-ECS entity in its fixed-timestep `fixed_update`. It exits cleanly. Nothing is
-drawn yet, and there is no GPU or input abstraction.
+**Current reality (Stage 4, PP-006):** `purplepie` provides `Engine`,
+`EngineConfig`, `Game`, `Context`, `Time`, `Error`, and the public modules `ecs`
+(`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`,
+`Vec2`) and `render` (`Color`). The `sandbox` game opens a window that the engine
+clears to `#6A0DAD` every frame via wgpu, runs a 60 Hz-capped, vsync'd frame loop,
+and moves an ECS entity in its fixed-timestep `fixed_update`. It exits cleanly.
+Entities are not drawn yet (Stage 5), and there is no input abstraction.
 
 ---
 
@@ -63,6 +64,9 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders), re-exported `glam::Vec2` | VERIFIED |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
+| `src/render/mod.rs` | `pub mod render`: public `Color`; crate-private `Renderer` | VERIFIED |
+| `src/render/color.rs` | `Color` (sRGB, straight alpha): constructors, `PURPLEPIE` `#6A0DAD`, `to_linear`, `to_wgpu(target_is_srgb)` (ADR-015) | VERIFIED |
+| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu instance/surface/device/queue/config; `new`, `resize`, `render(before_present)`; acquire-result policy; `AutoVsync` (ADR-014) | FUNCTIONAL (Linux/lavapipe; Windows pending) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
@@ -77,7 +81,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
-| `render` | `pub(crate) Renderer`, `GpuContext`, pipelines; public data types `Color`, `Sprite`, `Camera2D` | `wgpu`, `pollster`, `math`, `ecs` (read-only) | `app`, `input`, `winit` types beyond the `Arc<Window>` handed in | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
+| `render` | `pub(crate) Renderer`, pipelines; public data types `Color`, `Sprite`, `Camera2D` | `wgpu`, `pollster`, `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
 | `input` | `Input` state (pressed / just_pressed / just_released), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | `Handle<T>`, `Assets` store, loaders | `render` (GPU upload), `std::fs` | `app`, `input` | hot reload, async loading | 9 |
 
@@ -124,11 +128,12 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current (Stage 2)
+### Current (Stage 4, PP-006)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
-resumed          → create Window (once) → game.init(ctx) (once; error → exit)
+resumed          → create Arc<Window> (once) → Renderer::new (if none; error → exit)
+                   → game.init(ctx) (once; error → exit)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
 RedrawRequested  → FRAME (skipped once exit has begun):
                      raw = now − last_frame (0 on the first frame)
@@ -137,8 +142,11 @@ RedrawRequested  → FRAME (skipped once exit has begun):
                      repeat n: game.fixed_update(ctx, dt = fixed_dt)   stop early on request_exit
                      time.set_alpha(fixed.alpha())
                      game.update(ctx, dt = delta)                      unless exit requested
+                     renderer.render(pre_present_notify)               unless exit requested; Err → exit
+Resized          → renderer.resize(w, h)                               0×0 = minimized: skip rendering
 CloseRequested / Escape (if enabled) / ctx.request_exit() → event_loop.exit()
-exiting          → drop Window
+suspended        → drop Renderer (recreated in resumed; world and time are kept)
+exiting          → drop Renderer, then Window
 run returns      → first stored error, else any event-loop error, else Ok(())
 ```
 Game callbacks are never invoked after `event_loop.exiting()` becomes true.
@@ -175,7 +183,7 @@ sequenceDiagram
 
 Fixed-step constants: `FIXED_DT = 1/60 s`, `MAX_FRAME_DT = 0.25 s`,
 `MAX_FIXED_STEPS = 5`, backlog clamped to below one step when the cap is hit.
-Stages 1–3 use `ControlFlow::WaitUntil`. From Stage 4, `Poll` + vsync (`Fifo`).
+All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMode::AutoVsync` from Stage 4 (ADR-014, which supersedes the original plan of switching to `Poll` + `Fifo`).
 
 ---
 
@@ -185,7 +193,7 @@ Stages 1–3 use `ControlFlow::WaitUntil`. From Stage 4, `Poll` + vsync (`Fifo`)
 |---|---|
 | `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
 | `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
-| `Time`, `Input`, `KeyCode`, `Color`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `GpuContext` (`pub(crate)`) |
+| `Time`, `Input`, `KeyCode`, `Color`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner` (`pub(crate)`) |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
@@ -194,11 +202,14 @@ The engine runs no gameplay systems implicitly. Order is visible in the game's `
 
 ## 7. Rendering Architecture
 
-**Current:** none. A throwaway spike (outside `src/`) verified the wgpu 30 path
-and rendered a purple clear under Xvfb + lavapipe
-([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md)).
+**Current (Stage 4, PP-006; ADR-005, ADR-009, ADR-014, ADR-015):** a single
+crate-private `Renderer` that clears the window to `EngineConfig::clear_color`
+every frame. Verified pixel-exact under Xvfb + lavapipe. The chain below is
+implemented as shown, with `SurfaceTarget::from_window_without_display` because
+the display handle goes through the `InstanceDescriptor`.
+Not yet: drawing entities (Stage 5), uncaptured-error and device-loss handling (PP-014).
+wgpu's default handler currently **panics** on an uncaptured error.
 
-**Planned (ADR-005, ADR-009):**
 ```text
 Instance::new(InstanceDescriptor::new_with_display_handle(owned_display_handle))
  → create_surface(Arc<Window>) → request_adapter(compatible_surface)
@@ -246,8 +257,10 @@ Evolution, each part added only when a stage needs it:
 **Current:** `purplepie::Error` with boxed `source`s. `Error::game(e)` wraps game errors.
 Errors raised inside winit callbacks are stored by the runner (first one wins),
 followed by `event_loop.exit()`, and returned from `Engine::run`. The sandbox
-prints the full `source()` chain. There is no logging yet (PD-04, deferred to Stage 4).
-The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply, and `src/` contains no `unwrap`/`expect`.
+prints the full `source()` chain. GPU setup failures map to `Error::{Surface,
+Adapter, Device, SurfaceUnsupported}`. Unrecoverable render errors (surface
+recreation failure) end the loop the same way. There is no logging yet (PD-04, PP-014).
+The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `src/` contains no `unwrap`, and `expect` is used only in tests.
 
 **Planned (ADR-011):** one `purplepie::Error` (`thiserror`) and
 `purplepie::Result<T>`. Callback errors are stored and returned from
@@ -268,10 +281,10 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply, and
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs` | pure unit tests + doctests | ✅ 37 unit tests + 8 doctests |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::Color` | pure unit tests + doctests | ✅ 41 unit tests + 9 doctests |
 | `input` state | pure unit tests, no window/GPU | planned (Stage 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
-| `app` runner, `render` | Xvfb smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling; lavapipe from Stage 4); Windows by the owner | ✅ Stage 1 on Linux; Windows pending |
+| `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–4 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |
 
 Tests live next to code in `#[cfg(test)] mod tests`. Integration tests go in `tests/`

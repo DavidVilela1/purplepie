@@ -3,10 +3,11 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 3 (ECS) complete.** `cargo run` opens a window driven by
-> PurplePie's own `Engine`/`Game` API. It has a 60 Hz fixed-timestep `fixed_update`,
-> a per-frame `update`, and an engine-owned ECS world (`hecs`). Close it or press Escape to exit.
-> It is verified on Linux, and Windows confirmation is pending. Nothing is drawn yet: the renderer is Stage 4.
+> **Status: Stage 4 (GPU) in progress.** `cargo run` opens a window that the
+> engine clears to PurplePie purple (`#6A0DAD`) with wgpu every frame. Game logic
+> runs in a 60 Hz fixed-timestep `fixed_update` over an engine-owned ECS world.
+> Close it or press Escape to exit. It is verified on Linux, and Windows confirmation is pending.
+> Entities are not drawn yet (Stage 5).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -19,7 +20,7 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 `wgpu` or `winit`.
 
 ```rust
-// Works today (Stage 3).
+// Works today (Stage 4).
 use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::{Context, Engine, EngineConfig, Game};
@@ -46,7 +47,9 @@ impl Game for Sandbox {
 }
 
 fn main() -> purplepie::Result<()> {
-    Engine::new(EngineConfig::new("Sandbox").with_size(1280, 720))?.run(Sandbox)
+    let config = EngineConfig::new("Sandbox").with_size(1280, 720);
+    // .with_clear_color(purplepie::render::Color::hex(0x202030)) to change the background
+    Engine::new(config)?.run(Sandbox)
 }
 ```
 

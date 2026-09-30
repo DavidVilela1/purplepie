@@ -10,12 +10,14 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-006: Stage 4 · GPU context + purple clear** · P1 · TODO ← **next task**
+- [ ] **PP-014: Stage 4 · GPU error & device-loss handling + logging decision** · P1 · TODO ← **next task**
 
 ## In Progress
 
 - [ ] **PP-003: Stage 1 · Minimal application (window + lifecycle)** · P1 · IN_PROGRESS
   All work is implemented and verified on Linux/Xvfb. **The only remaining item is AC 10: the owner runs `cargo test` + `cargo run` on Windows.**
+- [ ] **PP-006: Stage 4 · GPU context + purple clear** · P1 · IN_PROGRESS
+  Implemented and verified on Linux/Xvfb + lavapipe (pixel-exact purple). **The only remaining item is AC 5: the owner confirms the purple window on Windows (real GPU).** The same Windows run also closes PP-003.
 
 ## Blocked
 
@@ -31,7 +33,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-014: Stage 4 · GPU error & device-loss handling + logging decision** · P2 · TODO
 - [ ] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · P3 · TODO
 - [ ] **PP-008: Stage 6 · Textures & sprite rendering** · P3 · TODO
 - [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P3 · TODO
@@ -96,18 +97,24 @@ _None._
 | Acceptance criteria | ✅ 1. Tests: spawn/attach/query, `integrate_velocity` = `v·dt`, entities lacking a component are ignored, rotation/scale untouched, `Transform2D` defaults and builders, world changes via `Context` persist, plus 2 compiled doctests. ✅ 2. `math`/`ecs` import only `glam`/`hecs`/`crate::math`. ✅ 3. The game calls the system explicitly. ✅ 4. Xvfb: after 297 fixed steps the mover is at x = 4.9500 (= 297 · 1/60 · 1.0). ✅ 5. Docs updated. |
 | Notes | Borrow pattern: `let dt = ctx.dt(); ecs::integrate_velocity(ctx.world_mut(), dt);`, because `world_mut` borrows the context exclusively. This is documented in the API docs and doctest. `Context` now implements `Debug` by hand (it prints the entity count) because `hecs::World` is not `Debug`. |
 
-### PP-006: GPU context + purple clear ← NEXT
+### PP-006: GPU context + purple clear
 | Field | Value |
 |---|---|
-| Stage | 4 → Milestone M4 · Priority P1 · **TODO**. Stage 4 was split into PP-006 + PP-014 on 2026-09-30 to keep each session verifiable. |
+| Stage | 4 → Milestone M4 · Priority P1 · **IN_PROGRESS**. Implemented 2026-09-30. AC 1–4 and 6 met. AC 5 awaits the owner. Stage 4 was split into PP-006 + PP-014 on 2026-09-30. |
 | Dependencies | PP-003 (implemented; Windows run outstanding), PP-004, PP-005 (DONE) |
-| Scope | Re-verify and add `wgpu 30.0.1` + `pollster 1.0.1`. New `src/render/` (`pub(crate) Renderer`/`GpuContext`, public `Color`). Init chain from ARCHITECTURE §8 using the owned display handle and `Arc<Window>`. Configure on resize; skip 0×0 (minimized). Acquire policy for all `CurrentSurfaceTexture` variants (`Lost` → recreate surface). Clear pass in PurplePie purple. Drop the renderer before the window. Replace `FramePacer`/`WaitUntil` with vsync (`Fifo`) pacing and remove the pacer if unused. Decide PD-01 (color space) and record it as an ADR. |
-| Acceptance criteria | 1. Typed `Error` variants for surface/adapter/device/unsupported-surface failures. 2. Xvfb + lavapipe: window pixels equal the documented purple. 3. Resize and minimize/restore cause no panic or validation error. 4. Stage 1–3 smoke runs unchanged (idle CPU without busy loop, Escape, close, fixed rate, mover position). 5. Owner confirms the purple window on Windows (real GPU). 6. DoD and docs updated. |
+| Scope (as built) | Added `wgpu 30.0.1` + `pollster 1.0.1`. New `src/render/`: public `Color` (sRGB) and a crate-private `Renderer` that owns instance, surface, device, queue and config. A separate `GpuContext` was planned but dropped: a single struct suffices. The window is received as `Arc<dyn wgpu::WindowHandle>` and the display as `impl wgpu::wgt::WgpuHasDisplayHandle`, so `render` never imports winit. `PresentMode::AutoVsync`. Acquire policy for every `CurrentSurfaceTexture` variant (`Lost` → recreate the surface from the kept instance and window). 0×0 skips rendering. New `Error::{Surface, Adapter, Device, SurfaceUnsupported}`. `EngineConfig::clear_color` (default `Color::PURPLEPIE` = `#6A0DAD`). The runner creates the renderer in `resumed`, drops it in `suspended`/`exiting` before the window, resizes on `Resized`, and renders after `update`. |
+| Deviation | **`FramePacer` kept** instead of removed (ADR-014). Measured under Xvfb: `Fifo` + `Poll` ran at 544 fps using about one core, the default present mode would be `Immediate`, and `Occluded` returns immediately. |
+| Acceptance criteria | ✅ 1. Typed error variants. With no usable backend, the sandbox exits 1 with "failed to create the GPU surface" and its cause, no panic. ✅ 2. Xvfb + lavapipe: 921,600 of 921,600 window pixels are `#6A0DAD` (PD-01 → ADR-015). ✅ 3. Resize to 640×360, 1×1 → 1600×900, and unmap/map: no panic, repainted with exact pixel counts. ✅ 4. Stage 1–3 runs unchanged: 300 frames in 5.1 s (60 Hz cap), mover = 299 · 1/60, Escape/close/other key OK. ⏳ 5. Owner confirms the purple window on Windows. ✅ 6. Docs updated. |
+| Known gap (PP-014) | wgpu's default uncaptured-error handler **panics**, and device loss is not handled yet. |
 
-### PP-014: GPU error & device-loss handling + logging decision
-| Stage 4 → M4 · P2 · TODO | Depends on PP-006 |
+### PP-014: GPU error & device-loss handling + logging decision ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | `Device::on_uncaptured_error` and `set_device_lost_callback` captured into `Error::Render` with a clean exit. Repeated `Validation` acquire results escalate. PD-04 decided (`log` facade vs `tracing`) and recorded as an ADR. Tests for the escalation logic. |
+| Stage | 4 → Milestone M4 · Priority P1 · **TODO** |
+| Dependencies | PP-006 (implemented; only the owner's Windows run is outstanding, which does not block this work) |
+| Why now | Today any uncaptured wgpu error (e.g. a validation error) **panics** through wgpu's default handler, and a lost device is not detected. It must be fixed before Stage 5 adds pipelines and buffers, which can raise such errors. |
+| Scope | Install `Device::on_uncaptured_error` and `set_device_lost_callback` handlers that record the error (no panic). The runner turns a recorded error into a new `Error::Render` and exits cleanly. Escalate repeated `CurrentSurfaceTexture::Validation` results (N in a row) to `Error::Render`. Decide PD-04 (`log` facade vs `tracing`; sandbox logger) and record it as an ADR. |
+| Acceptance criteria | 1. No panic path from wgpu error callbacks. 2. Unit tests for the escalation counter and error recording. 3. Forced-error probe under Xvfb (e.g. an invalid command submitted deliberately in a throwaway test) → `Error::Render` and exit 1. 4. Stage 1–4 runs unchanged. 5. DoD and docs updated. |
 
 ### PP-007: First 2D primitive
 | Stage 5 → M5 · P3 · TODO | Depends on PP-005, PP-006 |

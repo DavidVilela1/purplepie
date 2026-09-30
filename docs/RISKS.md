@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-09-30 (Stage 2, PP-004).
+Last reviewed: 2026-09-30 (Stage 4, PP-006).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -15,10 +15,10 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-03 | GPU API compatibility and outdated examples | OPEN | High | Medium | 1–7 |
 | R-04 | Rust ownership/borrowing constraints in `Context` | OPEN | Medium | Medium | 1, 3, 10 |
 | R-05 | Input edges under fixed timestep | OPEN | High | Medium | 8 |
-| R-06 | Frame pacing / busy loop | MITIGATED | — | Low | 1–4 |
+| R-06 | Frame pacing / busy loop | MITIGATED | — | Low | all |
 | R-07 | Spiral of death | MITIGATED | — | Medium | 2 |
-| R-08 | Color-space errors | OPEN | High | Low | 4–6 |
-| R-09 | Surface/device loss handling | OPEN | Medium | Medium | 4 |
+| R-08 | Color-space errors | MITIGATED | — | Low | 4–6 |
+| R-09 | Surface/device loss and uncaptured GPU errors | OPEN (partly mitigated) | Medium | High | 4 |
 | R-10 | Renderer overengineering / scope creep | OPEN | Medium | High | all |
 | R-11 | Headless-only validation in Cowork | MATERIALIZED | High | Medium | 1+ |
 | R-12 | Cross-platform window behavior | OPEN | Medium | Medium | 1, 4, 7 |
@@ -61,9 +61,10 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Document that edge checks belong in `update()` only.
 
 ### R-06: Frame pacing / busy loop
-- **Trigger:** `ControlFlow::Poll` without a vsync swapchain (Stages 1–3) spins at 100% CPU.
-- **Mitigation (implemented in PP-003):** `FramePacer` + `ControlFlow::WaitUntil`. Measured under Xvfb at 0.04 s CPU per 3 s, and 120 frames took 1.99 s. From Stage 4, `Fifo` present mode paces frames.
-- **Fallback:** A frame-rate cap in `EngineConfig`.
+- **Trigger:** A loop without a working throttle spins at 100% CPU.
+- **Evidence (PP-006):** with a swapchain, `Fifo` + `Poll` still ran at **544 fps** under Xvfb + lavapipe. The default present mode there was `Immediate`, and `Occluded` returns immediately.
+- **Mitigation (ADR-014):** keep `FramePacer` + `ControlFlow::WaitUntil` (60 Hz cap) and use `PresentMode::AutoVsync`. Measured: 300 frames in 5.1 s. Remaining idle CPU under lavapipe (~0.75 s per 3 s) is software GPU work, not spinning.
+- **Fallback:** Lower the cap, or pause rendering while unfocused.
 
 ### R-07: Spiral of death
 - **Trigger:** Long frames (debugger, window drag, slow machine) cause ever more fixed steps.
@@ -71,14 +72,15 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Lower the caps via `EngineConfig`.
 
 ### R-08: Color-space errors
-- **Trigger:** An sRGB surface encodes linear values. The spike showed intended `#591A8C` displayed as `#A059C4`.
-- **Mitigation:** PD-01: public colors are sRGB and converted in one place. Textures use sRGB formats.
+- **Trigger:** An sRGB surface encodes linear values, so the Stage 0 spike showed intended `#591A8C` as `#A059C4`.
+- **Mitigation (ADR-015, implemented):** public colors are sRGB and converted once, per target format. Verified pixel-exact (`#6A0DAD`, 921,600/921,600 px). Textures (Stage 6) must use `*Srgb` formats.
 - **Fallback:** Choose a non-sRGB surface format explicitly.
 
-### R-09: Surface/device loss handling
-- **Trigger:** `CurrentSurfaceTexture::Lost`, GPU reset, or driver update. In wgpu 30, OOM and device loss arrive through callbacks, not through the acquire result.
-- **Mitigation:** Recreate the surface on `Lost`. Capture `on_uncaptured_error` and `set_device_lost_callback` and turn them into `Error::Render`.
-- **Fallback:** Exit cleanly with a descriptive error. Full device recreation is deferred.
+### R-09: Surface/device loss and uncaptured GPU errors
+- **Trigger:** `CurrentSurfaceTexture::Lost`, GPU reset or driver update, or any wgpu validation error.
+- **Mitigated (PP-006):** `Outdated` → reconfigure. `Lost` → recreate the surface from the kept instance and window. `Suboptimal` → reconfigure after present. 0×0 → skip.
+- **Still open (PP-014, next):** wgpu 30's default uncaptured-error handler **panics** (`default_error_handler` → `panic!("wgpu error: …")`, verified in source). Device loss is not detected. `Validation` acquire results are skipped silently.
+- **Fallback:** Exit cleanly with a descriptive `Error::Render`. Full device recreation is deferred.
 
 ### R-10: Renderer overengineering / scope creep
 - **Trigger:** Adding render graphs, plugin systems or generic resource registries before a stage needs them.
@@ -86,7 +88,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Remove unused abstractions during stage review.
 
 ### R-11: Headless-only validation in Cowork
-- **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. Stage 1 behavior is verified only on Linux/X11.
+- **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. Stages 1–4 are verified only on Linux/X11 with a software GPU. Vsync behavior on real hardware is unverified.
 - **Mitigation:** Smoke runs under Xvfb with pixel checks. The owner runs every windowed stage on Windows with a real GPU and reports the result.
 - **Fallback:** Mark platform behavior as unverified in PROJECT_STATUS until the owner confirms it.
 
@@ -132,7 +134,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Raise `rust-version` to the lowest version actually verified.
 
 ### R-20: Compile-time growth in a single crate
-- **Trigger:** wgpu is added (the spike took about 1m21s for a clean debug build in Cowork).
+- **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux. The spike took about 1m21s for a clean debug build in Cowork.
 - **Mitigation:** Incremental builds. Measure at Stage 10.
 - **Fallback:** Workspace split (ADR-002 revisit).
 

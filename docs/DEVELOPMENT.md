@@ -132,7 +132,7 @@ cargo run            # sandbox
 Windowed stages in Cowork (Linux, no display) use a virtual X server:
 
 ```bash
-sudo apt-get install -y xvfb mesa-vulkan-drivers xdotool x11-utils   # once per container if missing
+sudo apt-get install -y xvfb mesa-vulkan-drivers xdotool x11-utils imagemagick   # once per container if missing
 pip install --break-system-packages python-xlib                     # to simulate the close button
 
 # timed run (sandbox requests exit after N frames); expect exit 0 and ~N/60 s
@@ -146,6 +146,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
 - **Close button:** send a `WM_DELETE_WINDOW` ClientMessage with python-xlib, which is what a WM does.
 - **Busy-loop check:** read `utime+stime` from `/proc/<pid>/stat` after a few idle seconds.
 - **Resize:** `xdotool windowsize <id> 640 360`.
+- **Pixels (Stage 4+):** `import -window root shot.png; convert shot.png -format "%c" histogram:info:- | sort -rn | head`.
+  The window area must be exactly the clear color, e.g. 921,600 px `#6A0DAD` for 1280×720.
+  Needs `imagemagick` and the lavapipe Vulkan driver (`mesa-vulkan-drivers`).
+- **No-GPU error path:** run with `VK_ICD_FILENAMES=/nonexistent.json VK_DRIVER_FILES=/nonexistent.json __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent.json`. Expect `Error::Surface` and exit 1, no panic.
 
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.
 

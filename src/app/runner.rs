@@ -2,6 +2,7 @@
 //!
 //! This is the only place in the engine that handles winit events.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::application::ApplicationHandler;
@@ -16,6 +17,7 @@ use super::game::{Context, Game};
 use super::pacer::{FRAME_INTERVAL, FramePacer};
 use crate::ecs::World;
 use crate::error::{Error, Result};
+use crate::render::Renderer;
 use crate::time::{FixedTimestep, Time};
 
 /// Owns the game and all engine state for the lifetime of the event loop.
@@ -23,7 +25,10 @@ pub(crate) struct Runner<G: Game> {
     config: EngineConfig,
     game: G,
     /// `None` until winit calls `resumed`. Windows may only be created then.
-    window: Option<Window>,
+    /// `Arc` because the GPU surface shares ownership of the window (ADR-009).
+    window: Option<Arc<Window>>,
+    /// `None` until `resumed`, and dropped again on `suspended` and `exiting`.
+    renderer: Option<Renderer>,
     initialized: bool,
     exit_requested: bool,
     pacer: FramePacer,
@@ -42,6 +47,7 @@ impl<G: Game> Runner<G> {
         Self {
             game,
             window: None,
+            renderer: None,
             initialized: false,
             exit_requested: false,
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
@@ -82,12 +88,38 @@ impl<G: Game> Runner<G> {
         let window = event_loop
             .create_window(attributes)
             .map_err(|e| Error::Window(Box::new(e)))?;
-        self.window = Some(window);
+        self.window = Some(Arc::new(window));
         Ok(())
     }
 
-    /// One frame (ADR-010): measure time → fixed updates × n → update.
-    /// Stage 4 adds rendering after `update`.
+    /// Creates the GPU renderer for the current window (ADR-012: blocks briefly).
+    fn create_renderer(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        let Some(window) = &self.window else {
+            return Ok(());
+        };
+        let size = window.inner_size();
+        let renderer = Renderer::new(
+            event_loop.owned_display_handle(),
+            window.clone(),
+            size.width,
+            size.height,
+            self.config.clear_color,
+        )?;
+        self.renderer = Some(renderer);
+        Ok(())
+    }
+
+    /// Draws the current frame, if a renderer exists.
+    fn render(&mut self, event_loop: &ActiveEventLoop) {
+        let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
+            return;
+        };
+        if let Err(error) = renderer.render(|| window.pre_present_notify()) {
+            self.fail(event_loop, error);
+        }
+    }
+
+    /// One frame (ADR-010): measure time → fixed updates × n → update → render.
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         // The first frame has no predecessor, so it gets a zero delta rather
@@ -120,7 +152,11 @@ impl<G: Game> Runner<G> {
                 Context::new(&mut self.exit_requested, &self.time, &mut self.world, delta);
             self.game.update(&mut ctx);
         }
-        self.exit_if_requested(event_loop);
+        if self.exit_requested {
+            event_loop.exit();
+        } else {
+            self.render(event_loop);
+        }
     }
 }
 
@@ -128,6 +164,12 @@ impl<G: Game> ApplicationHandler for Runner<G> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none()
             && let Err(error) = self.create_window(event_loop)
+        {
+            self.fail(event_loop, error);
+            return;
+        }
+        if self.renderer.is_none()
+            && let Err(error) = self.create_renderer(event_loop)
         {
             self.fail(event_loop, error);
             return;
@@ -149,7 +191,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        if self.window.as_ref().map(Window::id) != Some(window_id) {
+        if self.window.as_ref().map(|w| w.id()) != Some(window_id) {
             return;
         }
         match event {
@@ -164,9 +206,11 @@ impl<G: Game> ApplicationHandler for Runner<G> {
                     },
                 ..
             } if self.config.exit_on_escape => event_loop.exit(),
-            // Nothing to resize yet. Stage 4 reconfigures the GPU surface here
-            // and must ignore 0×0 sizes (minimized window).
-            WindowEvent::Resized(_) => {}
+            WindowEvent::Resized(size) => {
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(size.width, size.height);
+                }
+            }
             // `exit()` does not stop the loop immediately: already-queued events
             // still arrive. Never call the game again once exit has begun
             // (after `request_exit`, a failed `init`, Escape or close).
@@ -192,9 +236,16 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         event_loop.set_control_flow(ControlFlow::WaitUntil(wake_at));
     }
 
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        // Platforms may invalidate surfaces while suspended. Drop the renderer
+        // and recreate it in `resumed`. Game state (world, time) is kept.
+        self.renderer = None;
+    }
+
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        // Drop the window while the event loop is still alive. Stage 4 must
-        // drop the renderer (surface) before this line.
+        // Drop order matters: GPU surface first, then the window it draws to,
+        // both while the event loop is still alive.
+        self.renderer = None;
         self.window = None;
     }
 }
