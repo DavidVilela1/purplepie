@@ -23,11 +23,13 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Partially: ownership, lifecycle, drop order (Stage 4); world reading starts in Stage 5 |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
-| ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: `Error` + lints (Stage 1); logging deferred |
+| ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
 | ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | Yes (Stage 4, renderer init) |
 | ADR-013 | Dependency admission: add per stage, pin, commit the lockfile | Accepted | Yes (Stage 0) |
 | ADR-014 | Frame pacing: vsync (`AutoVsync`) plus a 60 Hz redraw cap | Accepted | Yes (Stage 4) |
 | ADR-015 | Public colors are sRGB; the renderer converts per target format | Accepted | Yes (Stage 4) |
+| ADR-016 | Diagnostics: `log` facade in the engine; games choose the logger | Accepted | Yes (Stage 4, PP-014) |
+| ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
 
 ---
 
@@ -468,6 +470,8 @@ Window, GPU and asset initialization can fail. winit callbacks cannot return err
   invariants, with a message explaining why.
 - Diagnostics use the `log` facade, which wgpu already depends on. The engine never installs a logger.
 
+**Implemented (PP-014):** logging per ADR-016. GPU runtime failures surface as `Error::Render` per ADR-017.
+
 **Correction (2026-09-30, PP-003):** this ADR originally said winit also depends
 on `log`. In fact winit 0.30 logs through `tracing`. `log` is in the graph only via
 `calloop` on Linux, and via wgpu from Stage 4. The decision is unchanged. The
@@ -649,18 +653,124 @@ HDR or wide-gamut output (`SurfaceColorSpace`) becomes a goal.
 
 ---
 
+# ADR-016: Diagnostics: `log` facade in the engine; games choose the logger
+
+## Status
+Accepted (2026-09-30, PP-014). Resolves pending decision PD-04.
+
+## Context
+Stage 4 is the first stage with diagnostics worth reporting: the chosen GPU,
+surface state changes, and the details of GPU faults. wgpu already logs through
+the `log` crate. winit 0.30 logs through `tracing`. The engine must not force a
+logging backend on games (ADR-011), and new dependencies must earn their place (ADR-013).
+
+## Decision
+- Engine code logs with the **`log` facade** (`log = "0.4"`, already in the tree
+  via wgpu, so no new crate). Levels: `error` for fatal GPU faults, `warn` for
+  degraded operation, `info` for one-time facts (GPU name/backend, surface
+  format, present mode), `debug` for per-event detail (suboptimal/outdated surface).
+- The engine **never installs a logger**. Choosing one is the game's decision.
+- The `sandbox` game installs a ~20-line built-in stderr logger. Its level comes
+  from `PURPLEPIE_LOG=off|error|warn|info|debug|trace`, default `warn`. No `env_logger` dependency.
+- `tracing` is not adopted. winit's `tracing` events are dropped when no subscriber is installed.
+
+## Alternatives Considered
+- **`tracing` for the engine:** richer (spans), but adds a dependency and a second
+  ecosystem, and wgpu would still log via `log`.
+- **`env_logger` in the sandbox:** it cannot be a sandbox-only dependency, because
+  the library and binary share one package, so every game using the library would
+  pull it in (several extra crates).
+- **No logging at all:** hides wgpu's own explanations (e.g. "Found no drivers!").
+
+## Rationale
+It costs nothing new in the dependency graph and keeps games free to choose.
+wgpu's diagnostics show up alongside PurplePie's in whatever logger the game installs.
+
+## Consequences
+### Positive
+- Verified: with `PURPLEPIE_LOG=info` the sandbox prints
+  `GPU: llvmpipe (…) (Vulkan, Cpu); surface Bgra8UnormSrgb, AutoVsync`. With no
+  GPU driver, wgpu's own loader errors now appear before the PurplePie error.
+### Negative
+- winit's `tracing` diagnostics stay invisible unless a game installs a `tracing` subscriber itself.
+
+## Revisit Conditions
+Structured or span-based profiling becomes a need, or the package is split into a
+workspace (ADR-002), at which point the sandbox could use `env_logger`.
+
+---
+
+# ADR-017: GPU faults are fatal and reported as `Error::Render`
+
+## Status
+Accepted (2026-09-30, PP-014).
+
+## Context
+wgpu 30's default uncaptured-error handler **panics**
+(`backend/wgpu_core.rs: default_error_handler`, verified in source and by a
+control run that panics with `wgpu error: Validation Error`). Device loss has a
+separate callback. PP-006 skipped `Validation` acquire results and recreated
+the surface on `Lost`. Testing PP-014 showed the second is unsafe: destroying
+the X11 window under a running sandbox produced `Lost`, and recreating the
+surface **panicked inside wgpu-hal 30.0.1** (`vulkan/instance.rs:407`, an
+`expect` on `create_xlib_surface`: `ERROR_OUT_OF_HOST_MEMORY`). PurplePie cannot catch that cleanly.
+
+## Decision
+- Right after device creation, the renderer installs its own
+  `on_uncaptured_error` and `set_device_lost_callback` handlers. They record the
+  **first** fault in a `FaultSlot` (`Arc<Mutex<Option<GpuFault>>>`, required
+  because wgpu callbacks must be `Send + Sync + 'static`) and log it at `error`.
+- `Renderer::new` and `Renderer::render` (before and after each frame) turn a
+  recorded fault into `Error::Render(source)`. The runner then exits the event loop
+  cleanly, and `Engine::run` returns the error.
+- Fatal: any uncaptured wgpu error (validation, out-of-memory, internal),
+  device loss with reason `Unknown`, `CurrentSurfaceTexture::Validation`, and
+  **`CurrentSurfaceTexture::Lost`** (no recreation attempt).
+- Not fatal: `DeviceLostReason::Destroyed` (only caused by PurplePie itself),
+  and `Timeout`, `Occluded`, `Outdated`, `Suboptimal`, minimized (unchanged from PP-006).
+- No device recreation. No "N validation failures in a row" counter: wgpu
+  routes acquire validation through the uncaptured-error handler, so the first one is already recorded.
+
+## Alternatives Considered
+- **Keep wgpu's panic:** abrupt, and no `Error` for the game to report.
+- **Log and continue after validation errors:** they indicate engine bugs, and later frames would render garbage.
+- **Recreate the surface on `Lost` (wgpu's documented recovery):** panics in wgpu-hal when the window is gone (measured).
+- **`catch_unwind` around surface recreation:** unwinding through wgpu internals
+  leaves unknown state, and the panic hook still prints a crash report.
+- **Error scopes (`push_error_scope`) around every call:** more code on every
+  path, with no benefit over a global handler when every error is fatal anyway.
+
+## Rationale
+Fail fast, but cleanly: one error type, one exit path, and a readable cause chain.
+
+## Consequences
+### Positive
+- Verified: destroying the window mid-run → `error: GPU rendering failed` /
+  `caused by: the window's GPU surface was lost`, exit 1, no panic (3/3 runs).
+- The ignored GPU test proves an invalid call is captured instead of panicking.
+### Negative
+- A transient `Lost` on a still-living window (possible with some drivers on
+  display changes) ends the game instead of recovering.
+- One `Arc<Mutex<…>>` in the renderer (justified above).
+
+## Revisit Conditions
+`Lost` is observed on live windows on real hardware (then recover, but only
+while the window is known to exist), or a wgpu upgrade makes surface recreation
+return errors instead of panicking.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 on 2026-09-30.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | PP-009 (Stage 7) |
+| PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | Core (units, axes, origin) in PP-007 (Stage 5), because the first quad needs it. Camera controls in PP-009 (Stage 7). |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
-| PD-04 | Engine diagnostics (`log` vs `tracing`) and a logger in the sandbox | Use the `log` facade (wgpu uses it). Possibly `env_logger` in the sandbox only. Deferred from PP-003 because Stage 1 emits no diagnostics. | PP-014 (Stage 4) |
 | PD-05 | Sprite batching strategy | Instanced quads per texture, sorted by layer | PP-008 (Stage 6) |
 | PD-06 | Asset handle design | Typed `Handle<T>` + `Assets` store, synchronous loading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

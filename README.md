@@ -3,11 +3,11 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 4 (GPU) in progress.** `cargo run` opens a window that the
-> engine clears to PurplePie purple (`#6A0DAD`) with wgpu every frame. Game logic
-> runs in a 60 Hz fixed-timestep `fixed_update` over an engine-owned ECS world.
-> Close it or press Escape to exit. It is verified on Linux, and Windows confirmation is pending.
-> Entities are not drawn yet (Stage 5).
+> **Status: Stage 4 (GPU foundation) complete.** `cargo run` opens a window that
+> the engine clears to PurplePie purple (`#6A0DAD`) with wgpu every frame. It is verified on
+> Linux, and the owner confirmed it on Windows. Game logic runs in a 60 Hz fixed-timestep
+> `fixed_update` over an engine-owned ECS world. GPU failures end the game with a
+> clean error instead of a panic. Entities are not drawn yet (Stage 5, next).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -59,9 +59,13 @@ Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95).
 
 ```bash
 cargo run            # opens the sandbox window (Escape or close to quit)
+# PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details
+cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets
 ```
+
+CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) on every push.
 
 ## Layout
 
@@ -71,6 +75,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── assets/           textures/, fonts/, shaders/
+├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
     ├── TASKS.md          task tracker (PP-xxx), the single next task

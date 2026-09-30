@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-09-30** against the repository after Stage 4 part 1 (PP-006).
+Last reviewed: **2026-09-30** against the repository after Stage 4 (PP-006 + PP-014).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -66,7 +66,8 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
 | `src/render/mod.rs` | `pub mod render`: public `Color`; crate-private `Renderer` | VERIFIED |
 | `src/render/color.rs` | `Color` (sRGB, straight alpha): constructors, `PURPLEPIE` `#6A0DAD`, `to_linear`, `to_wgpu(target_is_srgb)` (ADR-015) | VERIFIED |
-| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu instance/surface/device/queue/config; `new`, `resize`, `render(before_present)`; acquire-result policy; `AutoVsync` (ADR-014) | FUNCTIONAL (Linux/lavapipe; Windows pending) |
+| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(before_present)`; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe; purple window confirmed on Windows by the owner) |
+| `src/render/faults.rs` | `FaultSlot` (first-fault-wins `Arc<Mutex<Option<GpuFault>>>`) + `GpuFault`; installs wgpu's uncaptured-error and device-lost callbacks (ADR-017) | VERIFIED (unit tests + ignored GPU test under lavapipe) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
@@ -202,13 +203,14 @@ The engine runs no gameplay systems implicitly. Order is visible in the game's `
 
 ## 7. Rendering Architecture
 
-**Current (Stage 4, PP-006; ADR-005, ADR-009, ADR-014, ADR-015):** a single
+**Current (Stage 4; ADR-005, ADR-009, ADR-014, ADR-015, ADR-017):** a single
 crate-private `Renderer` that clears the window to `EngineConfig::clear_color`
-every frame. Verified pixel-exact under Xvfb + lavapipe. The chain below is
-implemented as shown, with `SurfaceTarget::from_window_without_display` because
-the display handle goes through the `InstanceDescriptor`.
-Not yet: drawing entities (Stage 5), uncaptured-error and device-loss handling (PP-014).
-wgpu's default handler currently **panics** on an uncaptured error.
+every frame. It is verified pixel-exact under Xvfb + lavapipe, and the owner confirmed the
+same purple on Windows with a real GPU. The chain below is implemented as
+shown, with `SurfaceTarget::from_window_without_display` because the display
+handle goes through the `InstanceDescriptor`. Right after `request_device`,
+PurplePie's `FaultSlot` replaces wgpu's panicking uncaptured-error handler
+and the device-lost callback. Not yet: drawing entities (Stage 5).
 
 ```text
 Instance::new(InstanceDescriptor::new_with_display_handle(owned_display_handle))
@@ -223,9 +225,10 @@ frame: get_current_texture() → render pass → queue.submit → pre_present_no
 | `Suboptimal` | draw, present, then reconfigure |
 | `Timeout`, `Occluded` | skip the frame |
 | `Outdated` | reconfigure, skip |
-| `Lost` | recreate the surface, reconfigure, skip |
-| `Validation` | log, skip. Repeated failures become `Error::Render` |
-| OOM / device lost | reported via `on_uncaptured_error` / `set_device_lost_callback`, which become `Error::Render` and exit |
+| `Lost` | **fatal:** `Error::Render(SurfaceLost)`. No recreation, because it panics in wgpu-hal 30.0.1 when the window is gone (ADR-017) |
+| `Validation` | **fatal:** `Error::Render` with the recorded uncaptured error (or `AcquireValidation`) |
+| Uncaptured wgpu error (validation / OOM / internal) | recorded by `FaultSlot`, checked before and after each frame and after init, becomes `Error::Render`, clean exit |
+| Device lost, `Unknown` | same as above. `Destroyed` (self-inflicted) is ignored |
 | size 0×0 (minimized) | never configure. Skip rendering. |
 
 Evolution, each part added only when a stage needs it:
@@ -258,8 +261,10 @@ Evolution, each part added only when a stage needs it:
 Errors raised inside winit callbacks are stored by the runner (first one wins),
 followed by `event_loop.exit()`, and returned from `Engine::run`. The sandbox
 prints the full `source()` chain. GPU setup failures map to `Error::{Surface,
-Adapter, Device, SurfaceUnsupported}`. Unrecoverable render errors (surface
-recreation failure) end the loop the same way. There is no logging yet (PD-04, PP-014).
+Adapter, Device, SurfaceUnsupported}`. GPU runtime faults map to `Error::Render`
+(ADR-017) and end the loop the same way. Diagnostics use the `log` facade
+(ADR-016). The engine never installs a logger, and the sandbox has a built-in stderr
+logger controlled by `PURPLEPIE_LOG` (default `warn`).
 The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `src/` contains no `unwrap`, and `expect` is used only in tests.
 
 **Planned (ADR-011):** one `purplepie::Error` (`thiserror`) and
@@ -281,7 +286,9 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::Color` | pure unit tests + doctests | ✅ 41 unit tests + 9 doctests |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, faults}` | pure unit tests + doctests | ✅ 45 unit tests + 9 doctests |
+| GPU-dependent code paths (`FaultSlot` on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 1 ignored test passes under lavapipe |
+| Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | configured; first run pending |
 | `input` state | pure unit tests, no window/GPU | planned (Stage 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
 | `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–4 on Linux; Windows pending |

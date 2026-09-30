@@ -8,6 +8,7 @@
 //! Drawing primitives and sprites from ECS data follows in Stages 5–6.
 
 mod color;
+mod faults;
 mod renderer;
 
 pub use color::Color;

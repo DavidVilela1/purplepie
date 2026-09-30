@@ -32,7 +32,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
-| **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | IN_PROGRESS (PP-006 functional on Linux; PP-014 next; Windows pending) |
+| **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | VERIFIED (Linux; purple window confirmed on Windows) |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | NOT_STARTED |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008 | NOT_STARTED |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | NOT_STARTED |
@@ -102,7 +102,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Borrow conflicts in `Context` (R-04) |
 | **Definition of Done** | Project DoD |
 
-## Stage 4: WGPU Initialization → M4 (in progress)
+## Stage 4: WGPU Initialization → M4 ✅
 
 | | |
 |---|---|
@@ -112,7 +112,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `Cargo.toml` (+`wgpu 30.0.1`, `pollster 1.0.1`), new `src/render/` (`mod.rs`, `color.rs`, `renderer.rs`), `src/error.rs`, `src/app/{config,runner}.rs`, `src/lib.rs`. As built (PP-006): no separate `GpuContext`, and the `FramePacer` is kept (ADR-014). |
 | **Expected result** | Purple window. Resize, minimize and restore work. Clean shutdown. |
 | **Validation** | Build + Xvfb/lavapipe smoke run with pixel color check + owner run on Windows (real GPU) |
-| **Acceptance criteria** | Full init chain with typed errors. `CurrentSurfaceTexture` policy as in ARCHITECTURE §7. Device-lost/uncaptured error capture (PP-014). 0×0 size never configured. Renderer dropped before window. PD-01 (color space) decided → ADR-015 ✅. |
+| **Acceptance criteria** | Full init chain with typed errors. `CurrentSurfaceTexture` policy as in ARCHITECTURE §7. Device-lost/uncaptured error capture (PP-014 ✅, ADR-017: faults are fatal, including `Lost`). 0×0 size never configured. Renderer dropped before window. PD-01 (color space) decided → ADR-015 ✅. |
 | **Risks** | wgpu API churn (R-01), surface loss (R-09), color space (R-08), headless-only validation (R-11) |
 | **Definition of Done** | Project DoD + owner confirms on real hardware |
 
@@ -126,6 +126,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `assets/shaders/quad.wgsl` (or embedded), `src/render/` (pipeline, vertex/uniform buffers), a drawable component |
 | **Expected result** | A moving quad on the purple background |
 | **Validation** | Transform → matrix unit tests, smoke run with pixel check |
+| **Note** | Needs a minimal world → screen mapping, so PD-02's core (units, axes, origin) is decided here. Camera controls stay in Stage 7. |
 | **Acceptance criteria** | Renderer reads the world only. No wgpu types in components. Shader errors surface as `Error`. |
 | **Risks** | Premature renderer abstraction (R-10) |
 | **Definition of Done** | Project DoD |

@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-09-30 (Stage 4, PP-006).
+Last reviewed: 2026-09-30 (Stage 4 complete, PP-014).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -18,7 +18,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-06 | Frame pacing / busy loop | MITIGATED | — | Low | all |
 | R-07 | Spiral of death | MITIGATED | — | Medium | 2 |
 | R-08 | Color-space errors | MITIGATED | — | Low | 4–6 |
-| R-09 | Surface/device loss and uncaptured GPU errors | OPEN (partly mitigated) | Medium | High | 4 |
+| R-09 | Surface/device loss and uncaptured GPU errors | MITIGATED | — | Medium | 4+ |
 | R-10 | Renderer overengineering / scope creep | OPEN | Medium | High | all |
 | R-11 | Headless-only validation in Cowork | MATERIALIZED | High | Medium | 1+ |
 | R-12 | Cross-platform window behavior | OPEN | Medium | Medium | 1, 4, 7 |
@@ -31,6 +31,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-19 | Declared MSRV untested | OPEN | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
+| R-22 | Panics inside wgpu/wgpu-hal that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
+| R-23 | CI platform jobs never exercised yet | OPEN | Medium | Low | all |
 
 ## Details
 
@@ -77,10 +79,10 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Choose a non-sRGB surface format explicitly.
 
 ### R-09: Surface/device loss and uncaptured GPU errors
-- **Trigger:** `CurrentSurfaceTexture::Lost`, GPU reset or driver update, or any wgpu validation error.
-- **Mitigated (PP-006):** `Outdated` → reconfigure. `Lost` → recreate the surface from the kept instance and window. `Suboptimal` → reconfigure after present. 0×0 → skip.
-- **Still open (PP-014, next):** wgpu 30's default uncaptured-error handler **panics** (`default_error_handler` → `panic!("wgpu error: …")`, verified in source). Device loss is not detected. `Validation` acquire results are skipped silently.
-- **Fallback:** Exit cleanly with a descriptive `Error::Render`. Full device recreation is deferred.
+- **Trigger:** `CurrentSurfaceTexture::Lost`, a GPU reset or driver update, or any wgpu validation, OOM or internal error.
+- **Mitigation (PP-014, ADR-017):** `FaultSlot` replaces wgpu's panicking uncaptured-error handler and captures device loss. All of these become `Error::Render` and a clean exit. Verified with the ignored GPU test, a control run (panics without the handler) and an end-to-end window-destroy test (exit 1, readable cause).
+- **Residual:** no recovery. A transient `Lost` on a live window ends the game (ADR-017 revisit condition).
+- **Fallback:** Recover from `Lost` only when the window is known to still exist, if real hardware shows transient losses.
 
 ### R-10: Renderer overengineering / scope creep
 - **Trigger:** Adding render graphs, plugin systems or generic resource registries before a stage needs them.
@@ -88,7 +90,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Remove unused abstractions during stage review.
 
 ### R-11: Headless-only validation in Cowork
-- **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. Stages 1–4 are verified only on Linux/X11 with a software GPU. Vsync behavior on real hardware is unverified.
+- **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. On Windows with a real GPU, the owner confirmed the purple window by screenshot (pixel-checked). Vsync pacing and the GPU error paths are unverified on real hardware.
 - **Mitigation:** Smoke runs under Xvfb with pixel checks. The owner runs every windowed stage on Windows with a real GPU and reports the result.
 - **Fallback:** Mark platform behavior as unverified in PROJECT_STATUS until the owner confirms it.
 
@@ -142,3 +144,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** A need for resources, events or change detection that hecs lacks.
 - **Mitigation:** Resources live in `Context`. Events are plain `Vec`s owned by the engine or game.
 - **Fallback:** Revisit ADR-006.
+
+### R-22: Panics inside wgpu/wgpu-hal that PurplePie cannot intercept
+- **Trigger (occurred, PP-014):** recreating a surface for a destroyed X11 window panicked in wgpu-hal 30.0.1 (`vulkan/instance.rs:407`, an `expect`), not returning an error.
+- **Mitigation:** avoid the triggering call (`Lost` is fatal, ADR-017). Keep the end-to-end fault tests (DEVELOPMENT §8) and re-run them after every wgpu upgrade (R-01).
+- **Fallback:** Report upstream, or pin to a wgpu version without the panic.
+
+### R-23: CI platform jobs never exercised yet
+- **Trigger:** `.github/workflows/ci.yml` was added on 2026-09-30, but no run has happened yet. The Windows and macOS jobs have never executed anywhere.
+- **Mitigation:** the owner's first push runs it. Record the results in PROJECT_STATUS. The workflow passed actionlint + shellcheck, and its exact commands passed locally on Linux.
+- **Fallback:** Remove `macos-latest` from the matrix if runner minutes or macOS-specific failures become a burden.
+

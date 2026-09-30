@@ -27,6 +27,7 @@ path = "src/main.rs"
 # the default "all-types" feature (f64/integer vectors) is not needed.
 glam = { version = "0.33", default-features = false, features = ["std"] }
 hecs = "0.11.1"      # Stage 3: ECS (ADR-006)
+log = "0.4"          # Stage 4: diagnostics facade (ADR-016); already in the tree via wgpu
 pollster = "1.0.1"   # Stage 4: block on wgpu init futures (ADR-012)
 thiserror = "2.0.21" # Stage 1: `Error` enum (ADR-011)
 wgpu = "30.0.1"      # Stage 4: GPU, used only in `render` (ADR-005)

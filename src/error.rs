@@ -46,6 +46,12 @@ pub enum Error {
     #[error("the GPU adapter does not support presenting to this window")]
     SurfaceUnsupported,
 
+    /// The GPU failed while running: a wgpu validation, out-of-memory or
+    /// internal error, a lost device, or a surface that could not be recreated.
+    /// The source describes the details.
+    #[error("GPU rendering failed")]
+    Render(#[source] BoxError),
+
     /// An error returned by game code, e.g. from [`Game::init`](crate::Game::init).
     #[error("game error")]
     Game(#[source] BoxError),

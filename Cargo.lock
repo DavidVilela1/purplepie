@@ -1327,6 +1327,7 @@ version = "0.0.0"
 dependencies = [
  "glam",
  "hecs",
+ "log",
  "pollster",
  "thiserror 2.0.21",
  "wgpu",

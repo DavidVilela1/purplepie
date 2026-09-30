@@ -151,7 +151,19 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Needs `imagemagick` and the lavapipe Vulkan driver (`mesa-vulkan-drivers`).
 - **No-GPU error path:** run with `VK_ICD_FILENAMES=/nonexistent.json VK_DRIVER_FILES=/nonexistent.json __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent.json`. Expect `Error::Surface` and exit 1, no panic.
 
+- **GPU fault end to end (Stage 4+):** destroy the window from another X client
+  (python-xlib `window.destroy()`) while the sandbox runs. Expect `error: GPU rendering
+  failed` + cause, exit 1, and **no panic**. Re-run after every wgpu upgrade (R-22).
+- **GPU-dependent tests** are `#[ignore]` (CI has no GPU): `cargo test -- --ignored`.
+- **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
+
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.
+
+**CI** (`.github/workflows/ci.yml`) runs on every push and PR: `cargo fmt --all -- --check`
+and `cargo clippy --locked --all-targets --all-features -- -D warnings` on Linux, plus
+`cargo check --locked --all-targets --all-features` and `cargo test --locked --all-features`
+on Linux, Windows and macOS. It needs no GPU. Ignored GPU tests are not run.
+Keep local commands consistent with CI: use `--locked` and keep `Cargo.lock` committed.
 
 ## 9. Environment setup
 

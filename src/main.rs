@@ -6,6 +6,8 @@
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
 //!   (used for automated smoke runs).
+//! - `PURPLEPIE_LOG=off|error|warn|info|debug|trace`: log level for messages
+//!   from PurplePie, wgpu and other crates using the `log` facade (default `warn`).
 
 use std::error::Error as _;
 use std::process::ExitCode;
@@ -15,6 +17,40 @@ use purplepie::math::{Transform2D, Vec2};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
+const LOG_LEVEL_VAR: &str = "PURPLEPIE_LOG";
+
+/// Minimal `log` backend that prints to stderr. The engine never installs a
+/// logger (ADR-016). Choosing one is the game's job, and this is the sandbox's choice.
+struct StderrLogger;
+
+impl log::Log for StderrLogger {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() <= log::max_level()
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) {
+            eprintln!("[{} {}] {}", record.level(), record.target(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static LOGGER: StderrLogger = StderrLogger;
+
+/// Installs [`StderrLogger`] with the level from `PURPLEPIE_LOG` (default `warn`).
+fn init_logging() -> Result<(), String> {
+    let level = match std::env::var(LOG_LEVEL_VAR) {
+        Ok(value) => value.parse::<log::LevelFilter>().map_err(|_| {
+            format!("{LOG_LEVEL_VAR} must be off|error|warn|info|debug|trace, got {value:?}")
+        })?,
+        Err(_) => log::LevelFilter::Warn,
+    };
+    log::set_logger(&LOGGER).map_err(|e| e.to_string())?;
+    log::set_max_level(level);
+    Ok(())
+}
 
 /// The sandbox's moving test entity: 1 world unit per second along +X.
 const MOVER_VELOCITY: Vec2 = Vec2::new(1.0, 0.0);
@@ -67,6 +103,10 @@ impl Game for Sandbox {
 }
 
 fn main() -> ExitCode {
+    if let Err(message) = init_logging() {
+        eprintln!("error: {message}");
+        return ExitCode::FAILURE;
+    }
     let exit_after_frames = match std::env::var(EXIT_AFTER_FRAMES_VAR) {
         Ok(value) => match value.parse::<u64>() {
             Ok(frames) if frames > 0 => Some(frames),
