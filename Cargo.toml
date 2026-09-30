@@ -1,0 +1,35 @@
+[package]
+name = "purplepie"
+version = "0.0.0"
+edition = "2024"
+# Minimum supported Rust version, derived from the dependency graph that
+# Stage 1+ will pull in (wgpu 30.0.1 -> ordered-float 5.5 requires 1.90).
+# Only Rust 1.95.0 has actually been exercised. See docs/TECH_STACK.md.
+rust-version = "1.90"
+description = "PurplePie: a small, modular 2D game engine written in Rust."
+readme = "README.md"
+publish = false
+
+# The engine is a library crate; the sandbox binary is a *game* that may only
+# use the public `purplepie` API. See docs/adr/0001-crate-layout.md.
+[lib]
+name = "purplepie"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sandbox"
+path = "src/main.rs"
+
+# Stage 0 intentionally has no dependencies. Each stage adds only what it uses.
+# Versions verified on 2026-09-30 (see docs/TECH_STACK.md):
+#   Stage 1: winit = "0.30.13", thiserror = "2.0.21"
+#   Stage 2: (std only)
+#   Stage 3: hecs = "0.11.1", glam = "0.33"
+#   Stage 4: wgpu = "30.0.1", pollster = "1.0.1"
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
