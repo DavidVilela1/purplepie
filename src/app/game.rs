@@ -1,5 +1,6 @@
 //! The game-facing callback trait and the per-call context (ADR-008).
 
+use crate::ecs::World;
 use crate::error::Result;
 use crate::time::Time;
 
@@ -39,21 +40,52 @@ pub trait Game {
 /// What game code can see and do during a callback.
 ///
 /// Built fresh for every callback from engine-owned state. It never exposes
-/// `winit` or GPU types. More fields (world, input) are added by later stages.
-#[derive(Debug)]
+/// `winit` or GPU types. Input is added in Stage 8.
 pub struct Context<'a> {
     exit_requested: &'a mut bool,
     time: &'a Time,
+    world: &'a mut World,
     dt: f64,
 }
 
+impl std::fmt::Debug for Context<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("exit_requested", &self.exit_requested)
+            .field("time", &self.time)
+            .field("entities", &self.world.len())
+            .field("dt", &self.dt)
+            .finish()
+    }
+}
+
 impl<'a> Context<'a> {
-    pub(crate) fn new(exit_requested: &'a mut bool, time: &'a Time, dt: f64) -> Self {
+    pub(crate) fn new(
+        exit_requested: &'a mut bool,
+        time: &'a Time,
+        world: &'a mut World,
+        dt: f64,
+    ) -> Self {
         Self {
             exit_requested,
             time,
+            world,
             dt,
         }
+    }
+
+    /// The game world (read-only).
+    pub fn world(&self) -> &World {
+        self.world
+    }
+
+    /// The game world: spawn entities, attach components, run queries and systems.
+    ///
+    /// Read [`dt`](Self::dt) into a local first when passing both to a system,
+    /// because the world borrow is exclusive:
+    /// `let dt = ctx.dt(); ecs::integrate_velocity(ctx.world_mut(), dt);`
+    pub fn world_mut(&mut self) -> &mut World {
+        self.world
     }
 
     /// Timing information for the current frame.
@@ -88,8 +120,9 @@ mod tests {
     #[test]
     fn request_exit_sets_the_engine_flag() {
         let time = Time::new(0.25);
+        let mut world = World::new();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, 0.0);
+        let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
         assert!(!ctx.exit_requested());
         ctx.request_exit();
         assert!(ctx.exit_requested());
@@ -99,10 +132,24 @@ mod tests {
     #[test]
     fn exposes_time_and_callback_dt() {
         let time = Time::new(0.25);
+        let mut world = World::new();
         let mut flag = false;
-        let ctx = Context::new(&mut flag, &time, 0.25);
+        let ctx = Context::new(&mut flag, &time, &mut world, 0.25);
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
+    }
+
+    #[test]
+    fn world_changes_made_through_the_context_persist() {
+        let time = Time::new(0.25);
+        let mut world = World::new();
+        let mut flag = false;
+        {
+            let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
+            ctx.world_mut().spawn((1_u32,));
+            assert_eq!(ctx.world().len(), 1);
+        }
+        assert_eq!(world.len(), 1);
     }
 
     #[test]
@@ -110,8 +157,9 @@ mod tests {
         struct Minimal;
         impl Game for Minimal {}
         let time = Time::new(0.25);
+        let mut world = World::new();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, 0.0);
+        let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
         let mut game = Minimal;
         assert!(game.init(&mut ctx).is_ok());
         game.fixed_update(&mut ctx);

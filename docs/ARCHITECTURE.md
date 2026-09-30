@@ -21,10 +21,12 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 2):** `purplepie` provides `Engine`, `EngineConfig`,
-`Game`, `Context`, `Time` and `Error`. The `sandbox` game opens a window, runs a
-paced 60 Hz frame loop with a fixed-timestep `fixed_update` plus a per-frame
-`update`, and exits cleanly. There is no ECS, GPU or input abstraction yet.
+**Current reality (Stage 3):** `purplepie` provides `Engine`, `EngineConfig`,
+`Game`, `Context`, `Time`, `Error`, and the public modules `ecs` (`World`,
+`Entity`, `Velocity`, `integrate_velocity`) and `math` (`Transform2D`, `Vec2`).
+The `sandbox` game opens a window, runs a paced 60 Hz frame loop, and moves an
+ECS entity in its fixed-timestep `fixed_update`. It exits cleanly. Nothing is
+drawn yet, and there is no GPU or input abstraction.
 
 ---
 
@@ -59,6 +61,8 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`time()`, `dt()`, `request_exit()`, `exit_requested()`) | VERIFIED |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
+| `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders), re-exported `glam::Vec2` | VERIFIED |
+| `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
@@ -220,12 +224,13 @@ Evolution, each part added only when a stage needs it:
 
 ## 8. ECS Architecture
 
-**Current:** none (no `hecs` dependency yet).
-
-**Planned (ADR-006, ADR-008):**
+**Current (Stage 3, ADR-006, ADR-008):**
 - **Implementation:** `hecs 0.11.1`, archetypal storage.
-- **World ownership:** exactly one `hecs::World`, owned by the runner, lent to
-  the game as `ctx.world: &mut World` for each callback.
+- **World ownership:** exactly one `hecs::World`, owned by the runner and lent to
+  the game in every callback through `ctx.world()` / `ctx.world_mut()`. Because
+  `world_mut()` borrows the context exclusively, read `ctx.dt()` into a local first.
+- **Components so far:** `math::Transform2D`, `ecs::Velocity`. `Sprite` comes in Stage 6.
+- **Systems so far:** `ecs::integrate_velocity(world, dt)`, called by the sandbox from `fixed_update`.
 - **Components:** plain data structs. The first set is `Transform2D`, `Velocity`, then `Sprite`.
   No wgpu handles in components.
 - **Systems:** free functions, e.g. `fn integrate_velocity(world: &mut World, dt: f32)`,
@@ -263,8 +268,8 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply, and
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time` | pure unit tests + doctests | ✅ 30 unit tests + 5 doctests |
-| `math`, `ecs` systems, `input` state | pure unit tests, no window/GPU | planned (Stages 3, 8) |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs` | pure unit tests + doctests | ✅ 37 unit tests + 8 doctests |
+| `input` state | pure unit tests, no window/GPU | planned (Stage 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
 | `app` runner, `render` | Xvfb smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling; lavapipe from Stage 4); Windows by the owner | ✅ Stage 1 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |

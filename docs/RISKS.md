@@ -52,6 +52,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 ### R-04: Rust ownership/borrowing constraints in `Context`
 - **Trigger:** The game needs `&mut World` while the engine also needs a borrow of the same state.
 - **Mitigation:** The renderer is never in `Context`. Build `Context` from disjoint field borrows. Rendering reads the world after updates.
+- **Observed (PP-005):** `integrate_velocity(ctx.world_mut(), ctx.dt())` does not compile, because the context is borrowed twice. The documented pattern is `let dt = ctx.dt();` first. This is acceptable ergonomics. Revisit in Stage 10 (ADR-008).
 - **Fallback:** Split the runner state into a sub-struct and borrow it wholesale. Do not introduce `RefCell`.
 
 ### R-05: Input edges under fixed timestep

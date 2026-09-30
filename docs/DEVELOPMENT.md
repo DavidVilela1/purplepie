@@ -188,6 +188,9 @@ Deliver the ZIP as a downloadable file, and report Created/Verified/Downloadable
 give the exact commands to apply it to the owner's repo:
 
 ```powershell
+# ALWAYS first (owner rule): delete the copy the app may drop into the repo
+Remove-Item -Recurse -Force "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0\PurplePie\Claude outputs" -ErrorAction SilentlyContinue
+
 # ZIP root is PurplePie/, so the destination is the folder that CONTAINS the repo
 Expand-Archive -Path "$HOME\Downloads\<zip name>" -DestinationPath "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0" -Force
 ```

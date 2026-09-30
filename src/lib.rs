@@ -6,7 +6,9 @@
 //! the window and the main loop and calls the game back with a [`Context`]:
 //! `fixed_update` at a fixed rate (default 60 Hz) for simulation, then
 //! `update` once per frame.
-//! Game code never touches `winit` (or, later, `wgpu`) types.
+//! Game state lives in an ECS [`ecs::World`] owned by the engine and reached
+//! through [`Context::world_mut`]. Game code never touches `winit` (or, later,
+//! `wgpu`) types.
 //!
 //! ```no_run
 //! use purplepie::{Context, Engine, EngineConfig, Game};
@@ -28,7 +30,9 @@
 //! `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`.
 
 mod app;
+pub mod ecs;
 mod error;
+pub mod math;
 mod time;
 
 pub use app::{Context, Engine, EngineConfig, Game};

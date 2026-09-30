@@ -18,9 +18,9 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-003 | Module boundaries and dependency direction | Accepted | Partially: rules only, no modules yet |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | No (Stage 4) |
-| ADR-006 | `hecs` as the ECS | Accepted | No (Stage 3) |
-| ADR-007 | `glam` for math | Accepted | No (Stage 3) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–2 subset |
+| ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
+| ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | No (Stage 4) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | Yes: Stage 1 (frame hook, pacing) + Stage 2 (timestep); vsync pacing in Stage 4 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: `Error` + lints (Stage 1); logging deferred |
@@ -215,7 +215,7 @@ Each new major wgpu release: upgrade deliberately, not automatically, and note t
 # ADR-006: `hecs` as the ECS
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 3).
+Accepted (2026-09-30). Implemented in PP-005 (Stage 3): `purplepie::ecs` re-exports `World`, `Entity` and the `hecs` crate. The first component is `Velocity`, and the first system is `integrate_velocity`.
 
 ## Context
 Exactly one ECS library is needed. Candidates were measured on 2026-09-30:
@@ -257,7 +257,7 @@ Parallel system execution or change detection becomes a measured need.
 # ADR-007: `glam` for math
 
 ## Status
-Accepted (2026-09-30). Not implemented (Stage 3).
+Accepted (2026-09-30). Implemented in PP-005 (Stage 3): `purplepie::math::{Transform2D, Vec2}`. Per ADR-013 minimal-footprint rules, glam is built with `default-features = false, features = ["std"]`, which gives the f32 types only (`Vec2`, `Affine2`, `Mat4`).
 
 ## Context
 The engine needs 2D vectors, affine transforms and 4×4 matrices for GPU upload.
@@ -306,6 +306,12 @@ fields sketched above, which keeps its internals free to change. `dt()` returns 
 frame delta in `update`, and 0 in `init`) for direct use in glam math. Precise
 `f64` values are available from `Time`. These are API-shape refinements within
 this ADR, not new decisions.
+
+**Implementation note (Stage 3, PP-005):** the world is reached through
+`ctx.world()` / `ctx.world_mut()`, consistent with the Stage 2 accessor style.
+Known ergonomic cost, verified with the compiler: `integrate_velocity(ctx.world_mut(), ctx.dt())`
+fails with E0502, so games write `let dt = ctx.dt();` first. This is documented in the API docs
+and a doctest. Revisit in Stage 10 together with input access.
 
 ## Context
 Game code needs mutable ECS access plus read access to time and input, and
@@ -558,7 +564,7 @@ one is resolved (and becomes an ADR) inside the task listed.
 | PD-01 | Color space of public `Color` | Public colors are sRGB. The renderer converts to linear once. The spike showed linear `(0.35, 0.10, 0.55)` displays as `#A059C4` on an sRGB surface. | PP-006 / PP-007 (Stage 4–5) |
 | PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | PP-009 (Stage 7) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
-| PD-04 | Engine diagnostics (`log` vs `tracing`) and a logger in the sandbox | Use the `log` facade (wgpu uses it). Possibly `env_logger` in the sandbox only. Deferred from PP-003 because Stage 1 emits no diagnostics. | PP-006 (Stage 4) |
+| PD-04 | Engine diagnostics (`log` vs `tracing`) and a logger in the sandbox | Use the `log` facade (wgpu uses it). Possibly `env_logger` in the sandbox only. Deferred from PP-003 because Stage 1 emits no diagnostics. | PP-014 (Stage 4) |
 | PD-05 | Sprite batching strategy | Instanced quads per texture, sorted by layer | PP-008 (Stage 6) |
 | PD-06 | Asset handle design | Typed `Handle<T>` + `Assets` store, synchronous loading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

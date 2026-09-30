@@ -31,7 +31,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M0: Architecture Ready** | Structure, decisions, roadmap documented; scaffold compiles | 0 | PP-000, PP-001 | VERIFIED |
 | **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
-| **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | NOT_STARTED |
+| **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006 | NOT_STARTED |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | NOT_STARTED |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008 | NOT_STARTED |
@@ -88,14 +88,14 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Spiral of death (R-07), f32 drift (use f64 for accumulated time) |
 | **Definition of Done** | Project DoD |
 
-## Stage 3: ECS → M3
+## Stage 3: ECS → M3 ✅
 
 | | |
 |---|---|
 | **Objective** | A hecs world owned by the engine, lent to the game, with a first system |
 | **Prerequisites** | M2 |
 | **Tasks** | PP-005 |
-| **Files** | `Cargo.toml` (+`hecs 0.11.1`, `glam 0.33`), new `src/math/` (`Transform2D`), new `src/ecs/` (re-exports, `Velocity`, `integrate_velocity`), `Context.world`, sandbox |
+| **Files** | `Cargo.toml` (+`hecs 0.11.1`, `glam 0.33` with f32 types only), new `src/math/` (`Transform2D`, `Vec2`), new `src/ecs/` (re-exports, `Velocity`, `integrate_velocity`), `src/app/{game,runner}.rs` (`Context::world()`/`world_mut()`, runner-owned `World`), `src/lib.rs` (`pub mod ecs`, `pub mod math`), sandbox. As built: the world is reached through accessor methods, not a public field. |
 | **Expected result** | Sandbox spawns an entity whose position advances each fixed step |
 | **Validation** | Tests: spawn, attach components, query, `integrate_velocity` moves the transform by `v·dt`, `Transform2D` defaults |
 | **Acceptance criteria** | `ecs`/`math` have no render/app/winit imports. The game calls the system explicitly. |
@@ -108,7 +108,7 @@ driven by real ECS data rather than a throwaway draw call.
 |---|---|
 | **Objective** | GPU renderer that clears the window to PurplePie purple |
 | **Prerequisites** | M1 (M2 and M3 done by then) |
-| **Tasks** | PP-006 |
+| **Tasks** | PP-006 (GPU context + purple clear), then PP-014 (GPU error/device-loss handling + logging decision). Split on 2026-09-30 when Stage 4 became current. |
 | **Files** | `Cargo.toml` (+`wgpu 30.0.1`, `pollster 1.0.1`), new `src/render/` (`Renderer`, `GpuContext`, `Color`), `src/error.rs`, `src/app/runner.rs` |
 | **Expected result** | Purple window. Resize, minimize and restore work. Clean shutdown. |
 | **Validation** | Build + Xvfb/lavapipe smoke run with pixel color check + owner run on Windows (real GPU) |

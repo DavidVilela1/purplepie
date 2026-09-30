@@ -22,10 +22,12 @@ path = "src/main.rs"
 
 # Each stage adds only the dependencies it uses (ADR-013).
 # Versions verified on 2026-09-30 (see docs/TECH_STACK.md). Still to come:
-#   Stage 2: (std only)
-#   Stage 3: hecs = "0.11.1", glam = "0.33"
 #   Stage 4: wgpu = "30.0.1", pollster = "1.0.1"
 [dependencies]
+# Stage 3: 2D math (ADR-007). Only the always-built f32 types (Vec2, Affine2, Mat4);
+# the default "all-types" feature (f64/integer vectors) is not needed.
+glam = { version = "0.33", default-features = false, features = ["std"] }
+hecs = "0.11.1"      # Stage 3: ECS (ADR-006)
 thiserror = "2.0.21" # Stage 1: `Error` enum (ADR-011)
 winit = "0.30.13"    # Stage 1: window + event loop, used only in `app` (ADR-004)
 

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-005: Stage 3 · ECS integration** · P1 · TODO ← **next task**
+- [ ] **PP-006: Stage 4 · GPU context + purple clear** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -27,10 +27,11 @@ _None._
 - [x] **PP-001: Stage 0 · Engineering documentation and task-tracking system** · DONE
 - [x] **PP-002: Stage 0 · Windows toolchain able to build and run the scaffold** · DONE
 - [x] **PP-004: Stage 2 · Time & fixed update** · DONE (2026-09-30)
+- [x] **PP-005: Stage 3 · ECS integration** · DONE (2026-09-30)
 
 ## Future
 
-- [ ] **PP-006: Stage 4 · wgpu initialization + purple clear** · P2 · TODO
+- [ ] **PP-014: Stage 4 · GPU error & device-loss handling + logging decision** · P2 · TODO
 - [ ] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · P3 · TODO
 - [ ] **PP-008: Stage 6 · Textures & sprite rendering** · P3 · TODO
 - [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P3 · TODO
@@ -86,18 +87,27 @@ _None._
 | Extra verification | Throwaway probe game under Xvfb: 1 s stall → delta clamped to 0.25 s → 5 steps (cap). At 120 Hz: ~1.95 steps per frame and a cap of 8 after the stall. `request_exit` inside `fixed_update` → 0 further fixed calls and no `update` that frame. `init` sees `dt = 0`, `frame = 0`. |
 | API notes | `update` became a default method (it was required in Stage 1), so all three callbacks are optional. `EngineConfig` lost `Eq` (it now has `f64` fields), keeping `PartialEq`. |
 
-### PP-005: ECS integration ← NEXT
+### PP-005: ECS integration
 | Field | Value |
 |---|---|
-| Stage | 3 → Milestone M3 · Priority P1 · **TODO** |
+| Stage | 3 → Milestone M3 · Priority P1 · **DONE** (2026-09-30) |
 | Dependencies | PP-004 (DONE) |
-| Scope | Add `hecs 0.11.1` + `glam 0.33` (re-verify versions first, per ADR-013). New `src/math/` (`Transform2D { position: Vec2, rotation: f32, scale: Vec2 }`, re-export `Vec2`). New `src/ecs/` (re-export `World`/`Entity`, `Velocity`, `integrate_velocity(world, dt)`). Runner owns one `World`, and `Context::world()` gives `&mut World`. Sandbox spawns an entity and moves it in `fixed_update`. |
-| Acceptance criteria | 1. Tests: spawn, attach components, query, `integrate_velocity` moves by `v·dt`, `Transform2D` defaults. 2. `ecs`/`math` have no `app`/`winit`/render imports. 3. The game calls systems explicitly (no implicit engine systems). 4. Xvfb smoke: the sandbox entity's position after N fixed steps equals `N·v·fixed_dt`. 5. DoD and docs updated. |
+| Scope | Added `hecs 0.11.1` + `glam 0.33` (f32 types only: `default-features = false, features = ["std"]`). New `src/math/` (`Transform2D`, re-exported `Vec2`). New `src/ecs/` (re-exports `World`, `Entity`, the `hecs` crate; `Velocity`; `integrate_velocity`). Runner owns one `World`. `Context::world()` / `Context::world_mut()`. Sandbox spawns a mover in `init` and integrates it in `fixed_update`. |
+| Acceptance criteria | ✅ 1. Tests: spawn/attach/query, `integrate_velocity` = `v·dt`, entities lacking a component are ignored, rotation/scale untouched, `Transform2D` defaults and builders, world changes via `Context` persist, plus 2 compiled doctests. ✅ 2. `math`/`ecs` import only `glam`/`hecs`/`crate::math`. ✅ 3. The game calls the system explicitly. ✅ 4. Xvfb: after 297 fixed steps the mover is at x = 4.9500 (= 297 · 1/60 · 1.0). ✅ 5. Docs updated. |
+| Notes | Borrow pattern: `let dt = ctx.dt(); ecs::integrate_velocity(ctx.world_mut(), dt);`, because `world_mut` borrows the context exclusively. This is documented in the API docs and doctest. `Context` now implements `Debug` by hand (it prints the entity count) because `hecs::World` is not `Debug`. |
 
-### PP-006: wgpu initialization + purple clear
-| Stage 4 → M4 · P2 · TODO | Depends on PP-003 (PP-004/005 expected done first) |
+### PP-006: GPU context + purple clear ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | Init chain with typed errors. Acquire-result policy (ARCHITECTURE §7). Resize/minimize safe. Device-lost capture. PD-01 and PD-04 decided. Replace `FramePacer`/`WaitUntil` with vsync pacing (remove the pacer if unused). Xvfb pixel check. Owner confirms on a real GPU. |
+| Stage | 4 → Milestone M4 · Priority P1 · **TODO**. Stage 4 was split into PP-006 + PP-014 on 2026-09-30 to keep each session verifiable. |
+| Dependencies | PP-003 (implemented; Windows run outstanding), PP-004, PP-005 (DONE) |
+| Scope | Re-verify and add `wgpu 30.0.1` + `pollster 1.0.1`. New `src/render/` (`pub(crate) Renderer`/`GpuContext`, public `Color`). Init chain from ARCHITECTURE §8 using the owned display handle and `Arc<Window>`. Configure on resize; skip 0×0 (minimized). Acquire policy for all `CurrentSurfaceTexture` variants (`Lost` → recreate surface). Clear pass in PurplePie purple. Drop the renderer before the window. Replace `FramePacer`/`WaitUntil` with vsync (`Fifo`) pacing and remove the pacer if unused. Decide PD-01 (color space) and record it as an ADR. |
+| Acceptance criteria | 1. Typed `Error` variants for surface/adapter/device/unsupported-surface failures. 2. Xvfb + lavapipe: window pixels equal the documented purple. 3. Resize and minimize/restore cause no panic or validation error. 4. Stage 1–3 smoke runs unchanged (idle CPU without busy loop, Escape, close, fixed rate, mover position). 5. Owner confirms the purple window on Windows (real GPU). 6. DoD and docs updated. |
+
+### PP-014: GPU error & device-loss handling + logging decision
+| Stage 4 → M4 · P2 · TODO | Depends on PP-006 |
+|---|---|
+| Acceptance criteria | `Device::on_uncaptured_error` and `set_device_lost_callback` captured into `Error::Render` with a clean exit. Repeated `Validation` acquire results escalate. PD-04 decided (`log` facade vs `tracing`) and recorded as an ADR. Tests for the escalation logic. |
 
 ### PP-007: First 2D primitive
 | Stage 5 → M5 · P3 · TODO | Depends on PP-005, PP-006 |

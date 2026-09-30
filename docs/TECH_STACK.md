@@ -8,8 +8,8 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | Rust (edition 2024) | stable, **1.95.0** used | 0 | — | — |
 | `winit` | **0.30.13** ✅ added | 1 | window + event loop | 1.70 |
 | `thiserror` | **2.0.21** ✅ added | 1 | structured `Error` enum | 1.77 |
-| `hecs` | **0.11.1** | 3 | ECS (ADR-006 in [DECISIONS.md](DECISIONS.md)) | 1.81 |
-| `glam` | **0.33** (0.33.11) | 3 | `Vec2`, `Mat4`, `Affine2` | 1.68.2 |
+| `hecs` | **0.11.1** ✅ added | 3 | ECS (ADR-006 in [DECISIONS.md](DECISIONS.md)), default features (`std`) | 1.81 |
+| `glam` | **0.33** (0.33.11) ✅ added | 3 | `Vec2`, `Mat4`, `Affine2`; `default-features = false, features = ["std"]`, which omits the f64/integer types of the default `all-types` feature | 1.68.2 |
 | `wgpu` | **30.0.1** | 4 | GPU abstraction | 1.87 |
 | `pollster` | **1.0.1** | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
 | `log` | 0.4 (transitive via `calloop` on Linux; via wgpu from Stage 4) | 4 | diagnostics facade (PD-04). Note that winit 0.30 itself logs through `tracing`. | — |

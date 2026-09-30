@@ -14,6 +14,7 @@ use winit::window::{Window, WindowId};
 use super::config::EngineConfig;
 use super::game::{Context, Game};
 use super::pacer::{FRAME_INTERVAL, FramePacer};
+use crate::ecs::World;
 use crate::error::{Error, Result};
 use crate::time::{FixedTimestep, Time};
 
@@ -28,6 +29,8 @@ pub(crate) struct Runner<G: Game> {
     pacer: FramePacer,
     time: Time,
     fixed: FixedTimestep,
+    /// The single game world, lent to the game in every callback (ADR-008).
+    world: World,
     /// When the previous frame started; `None` before the first frame.
     last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
@@ -44,6 +47,7 @@ impl<G: Game> Runner<G> {
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
             time: Time::new(config.fixed_dt),
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
+            world: World::new(),
             last_frame: None,
             error: None,
             config,
@@ -98,7 +102,12 @@ impl<G: Game> Runner<G> {
         let fixed_dt = self.config.fixed_dt;
         for _ in 0..steps {
             self.time.record_fixed_step();
-            let mut ctx = Context::new(&mut self.exit_requested, &self.time, fixed_dt);
+            let mut ctx = Context::new(
+                &mut self.exit_requested,
+                &self.time,
+                &mut self.world,
+                fixed_dt,
+            );
             self.game.fixed_update(&mut ctx);
             if self.exit_requested {
                 break;
@@ -107,7 +116,8 @@ impl<G: Game> Runner<G> {
         self.time.set_alpha(self.fixed.alpha());
 
         if !self.exit_requested {
-            let mut ctx = Context::new(&mut self.exit_requested, &self.time, delta);
+            let mut ctx =
+                Context::new(&mut self.exit_requested, &self.time, &mut self.world, delta);
             self.game.update(&mut ctx);
         }
         self.exit_if_requested(event_loop);
@@ -124,7 +134,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         }
         if !self.initialized {
             self.initialized = true;
-            let mut ctx = Context::new(&mut self.exit_requested, &self.time, 0.0);
+            let mut ctx = Context::new(&mut self.exit_requested, &self.time, &mut self.world, 0.0);
             if let Err(error) = self.game.init(&mut ctx) {
                 self.fail(event_loop, error);
                 return;
