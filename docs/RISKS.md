@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-09-30 (Stage 1 implementation, PP-003).
+Last reviewed: 2026-09-30 (Stage 2, PP-004).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -16,7 +16,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-04 | Rust ownership/borrowing constraints in `Context` | OPEN | Medium | Medium | 1, 3, 10 |
 | R-05 | Input edges under fixed timestep | OPEN | High | Medium | 8 |
 | R-06 | Frame pacing / busy loop | MITIGATED | — | Low | 1–4 |
-| R-07 | Spiral of death | OPEN | Medium | Medium | 2 |
+| R-07 | Spiral of death | MITIGATED | — | Medium | 2 |
 | R-08 | Color-space errors | OPEN | High | Low | 4–6 |
 | R-09 | Surface/device loss handling | OPEN | Medium | Medium | 4 |
 | R-10 | Renderer overengineering / scope creep | OPEN | Medium | High | all |
@@ -66,7 +66,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-07: Spiral of death
 - **Trigger:** Long frames (debugger, window drag, slow machine) cause ever more fixed steps.
-- **Mitigation:** `MAX_FRAME_DT = 0.25 s`, `MAX_FIXED_STEPS = 5`, backlog clamp (ADR-010). Unit-tested in Stage 2.
+- **Mitigation (implemented in PP-004):** `max_frame_dt = 0.25 s`, `max_fixed_steps = 5`, backlog clamp (ADR-010). Unit-tested. A 1 s stall measured under Xvfb gave 5 steps and no burst afterwards.
 - **Fallback:** Lower the caps via `EngineConfig`.
 
 ### R-08: Color-space errors

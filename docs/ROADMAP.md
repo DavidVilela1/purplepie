@@ -30,7 +30,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 |---|---|---|---|---|
 | **M0: Architecture Ready** | Structure, decisions, roadmap documented; scaffold compiles | 0 | PP-000, PP-001 | VERIFIED |
 | **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
-| **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | NOT_STARTED |
+| **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | NOT_STARTED |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006 | NOT_STARTED |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | NOT_STARTED |
@@ -74,14 +74,14 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | winit lifecycle misuse (R-02), busy loop (R-06), OneDrive build folder (R-15) |
 | **Definition of Done** | Project DoD + M1 behavior confirmed by a smoke run |
 
-## Stage 2: Time & Fixed Update → M2
+## Stage 2: Time & Fixed Update → M2 ✅
 
 | | |
 |---|---|
 | **Objective** | Frame-rate-independent simulation via a fixed timestep |
 | **Prerequisites** | M1 |
 | **Tasks** | PP-004 |
-| **Files** | new `src/time/` (`Time`, `FixedTimestep`), `src/app/runner.rs`, `Game` trait (`fixed_update`, `update`), `Context.time`, sandbox |
+| **Files** | new `src/time/` (`mod.rs`: `Time`; `fixed.rs`: `FixedTimestep`), `src/app/runner.rs`, `src/app/game.rs` (`fixed_update`; `Context::time()`/`dt()`), `src/app/config.rs` (timestep settings), `src/lib.rs`, sandbox. As built: `Context` exposes accessor methods rather than public fields. |
 | **Expected result** | Sandbox logs or shows fixed-step counts at 60 Hz independent of frame rate |
 | **Validation** | Unit tests: 0 steps, 1 step, N steps, cap reached, backlog drop, `MAX_FRAME_DT` clamp, alpha range |
 | **Acceptance criteria** | `FixedTimestep` has no winit dependency. Constants live in `EngineConfig`. The loop order matches ADR-010. |

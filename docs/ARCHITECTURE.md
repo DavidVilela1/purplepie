@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-09-30** against the repository after the Stage 1 implementation (PP-003).
+Last reviewed: **2026-09-30** against the repository after Stage 2 (PP-004).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -21,9 +21,10 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 1):** `purplepie` provides `Engine`, `EngineConfig`,
-`Game`, `Context` and `Error`. The `sandbox` game opens a window, runs a paced
-60 Hz frame loop and exits cleanly. There is no timestep, ECS, GPU or input abstraction yet.
+**Current reality (Stage 2):** `purplepie` provides `Engine`, `EngineConfig`,
+`Game`, `Context`, `Time` and `Error`. The `sandbox` game opens a window, runs a
+paced 60 Hz frame loop with a fixed-timestep `fixed_update` plus a per-frame
+`update`, and exits cleanly. There is no ECS, GPU or input abstraction yet.
 
 ---
 
@@ -54,8 +55,10 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Game`), `BoxError`, `Result`. winit errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | FUNCTIONAL (Linux) |
-| `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape` + builders + `validate` | VERIFIED |
-| `src/app/game.rs` | `Game` trait (`init` default, `update` required); `Context` (`request_exit`, `exit_requested`) | VERIFIED |
+| `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps` + builders + `validate` | VERIFIED |
+| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`time()`, `dt()`, `request_exit()`, `exit_requested()`) | VERIFIED |
+| `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
+| `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
@@ -117,13 +120,19 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current (Stage 1)
+### Current (Stage 2)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
 resumed          → create Window (once) → game.init(ctx) (once; error → exit)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
-RedrawRequested  → game.update(ctx)  (skipped once exit has begun)
+RedrawRequested  → FRAME (skipped once exit has begun):
+                     raw = now − last_frame (0 on the first frame)
+                     delta = time.begin_frame(raw, max_frame_dt)       clamp to [0, max_frame_dt]
+                     n = fixed.advance(delta)                          ≤ max_fixed_steps, backlog clamped
+                     repeat n: game.fixed_update(ctx, dt = fixed_dt)   stop early on request_exit
+                     time.set_alpha(fixed.alpha())
+                     game.update(ctx, dt = delta)                      unless exit requested
 CloseRequested / Escape (if enabled) / ctx.request_exit() → event_loop.exit()
 exiting          → drop Window
 run returns      → first stored error, else any event-loop error, else Ok(())
@@ -254,8 +263,8 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply, and
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}` | pure unit tests + doctests | ✅ 15 unit tests + 5 doctests |
-| `time`, `math`, `ecs` systems, `input` state | pure unit tests, no window/GPU | planned (Stages 2, 3, 8) |
+| `error`, `app::{config, game, pacer}`, `time` | pure unit tests + doctests | ✅ 30 unit tests + 5 doctests |
+| `math`, `ecs` systems, `input` state | pure unit tests, no window/GPU | planned (Stages 3, 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
 | `app` runner, `render` | Xvfb smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling; lavapipe from Stage 4); Windows by the owner | ✅ Stage 1 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |

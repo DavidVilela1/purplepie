@@ -3,9 +3,10 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 1 (Minimal Application) implemented.** `cargo run` opens a
-> window through PurplePie's own `Engine`/`Game` API. Close it or press Escape to exit.
-> It is verified on Linux, and Windows confirmation is pending. There is no renderer, ECS or timestep yet.
+> **Status: Stage 2 (Time & Fixed Update) complete.** `cargo run` opens a
+> window driven by PurplePie's own `Engine`/`Game` API, with a 60 Hz fixed-timestep
+> `fixed_update` and a per-frame `update`. Close it or press Escape to exit.
+> It is verified on Linux, and Windows confirmation is pending. There is no ECS or renderer yet.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -18,14 +19,21 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 `wgpu` or `winit`.
 
 ```rust
-// Works today (Stage 1).
+// Works today (Stage 2).
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct Sandbox;
 
 impl Game for Sandbox {
-    fn update(&mut self, _ctx: &mut Context<'_>) {
-        // called once per frame (~60 Hz); ctx.request_exit() to quit
+    fn fixed_update(&mut self, ctx: &mut Context<'_>) {
+        let _dt = ctx.dt(); // fixed step: 1/60 s by default. Put gameplay here.
+    }
+
+    fn update(&mut self, ctx: &mut Context<'_>) {
+        // once per frame, after the fixed steps
+        if ctx.time().elapsed() > 60.0 {
+            ctx.request_exit();
+        }
     }
 }
 

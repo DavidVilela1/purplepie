@@ -15,15 +15,26 @@ use purplepie::{Context, Engine, EngineConfig, Game};
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
 
 struct Sandbox {
-    frames: u64,
     exit_after_frames: Option<u64>,
+    /// Simulated seconds, advanced only by fixed steps.
+    simulated_seconds: f64,
 }
 
 impl Game for Sandbox {
+    fn fixed_update(&mut self, ctx: &mut Context<'_>) {
+        self.simulated_seconds += f64::from(ctx.dt());
+    }
+
     fn update(&mut self, ctx: &mut Context<'_>) {
-        self.frames += 1;
-        if Some(self.frames) == self.exit_after_frames {
-            println!("sandbox: {} frames rendered, requesting exit", self.frames);
+        let time = ctx.time();
+        if Some(time.frame()) == self.exit_after_frames {
+            println!(
+                "sandbox: {} frames, {} fixed steps, {:.3} s game time, {:.3} s simulated; requesting exit",
+                time.frame(),
+                time.fixed_steps(),
+                time.elapsed(),
+                self.simulated_seconds,
+            );
             ctx.request_exit();
         }
     }
@@ -45,8 +56,8 @@ fn main() -> ExitCode {
 
     println!("PurplePie sandbox v{}", purplepie::VERSION);
     let game = Sandbox {
-        frames: 0,
         exit_after_frames,
+        simulated_seconds: 0.0,
     };
     let result = Engine::new(EngineConfig::new("PurplePie Sandbox")).and_then(|e| e.run(game));
 

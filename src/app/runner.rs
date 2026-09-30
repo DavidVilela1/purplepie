@@ -15,6 +15,7 @@ use super::config::EngineConfig;
 use super::game::{Context, Game};
 use super::pacer::{FRAME_INTERVAL, FramePacer};
 use crate::error::{Error, Result};
+use crate::time::{FixedTimestep, Time};
 
 /// Owns the game and all engine state for the lifetime of the event loop.
 pub(crate) struct Runner<G: Game> {
@@ -25,6 +26,10 @@ pub(crate) struct Runner<G: Game> {
     initialized: bool,
     exit_requested: bool,
     pacer: FramePacer,
+    time: Time,
+    fixed: FixedTimestep,
+    /// When the previous frame started; `None` before the first frame.
+    last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
     error: Option<Error>,
 }
@@ -32,13 +37,16 @@ pub(crate) struct Runner<G: Game> {
 impl<G: Game> Runner<G> {
     pub(crate) fn new(config: EngineConfig, game: G) -> Self {
         Self {
-            config,
             game,
             window: None,
             initialized: false,
             exit_requested: false,
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
+            time: Time::new(config.fixed_dt),
+            fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
+            last_frame: None,
             error: None,
+            config,
         }
     }
 
@@ -74,10 +82,34 @@ impl<G: Game> Runner<G> {
         Ok(())
     }
 
-    /// One frame. Stage 2 adds time and fixed updates, and Stage 4 adds rendering.
+    /// One frame (ADR-010): measure time → fixed updates × n → update.
+    /// Stage 4 adds rendering after `update`.
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
-        let mut ctx = Context::new(&mut self.exit_requested);
-        self.game.update(&mut ctx);
+        let now = Instant::now();
+        // The first frame has no predecessor, so it gets a zero delta rather
+        // than the time spent creating the window and running `init`.
+        let raw_delta = self
+            .last_frame
+            .map_or(0.0, |previous| (now - previous).as_secs_f64());
+        self.last_frame = Some(now);
+        let delta = self.time.begin_frame(raw_delta, self.config.max_frame_dt);
+
+        let steps = self.fixed.advance(delta);
+        let fixed_dt = self.config.fixed_dt;
+        for _ in 0..steps {
+            self.time.record_fixed_step();
+            let mut ctx = Context::new(&mut self.exit_requested, &self.time, fixed_dt);
+            self.game.fixed_update(&mut ctx);
+            if self.exit_requested {
+                break;
+            }
+        }
+        self.time.set_alpha(self.fixed.alpha());
+
+        if !self.exit_requested {
+            let mut ctx = Context::new(&mut self.exit_requested, &self.time, delta);
+            self.game.update(&mut ctx);
+        }
         self.exit_if_requested(event_loop);
     }
 }
@@ -92,7 +124,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         }
         if !self.initialized {
             self.initialized = true;
-            let mut ctx = Context::new(&mut self.exit_requested);
+            let mut ctx = Context::new(&mut self.exit_requested, &self.time, 0.0);
             if let Err(error) = self.game.init(&mut ctx) {
                 self.fail(event_loop, error);
                 return;

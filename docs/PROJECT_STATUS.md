@@ -6,33 +6,33 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M1: Running Application: FUNCTIONAL.** Verified on Linux/Xvfb. It becomes
-VERIFIED when the owner confirms the window on Windows (PP-003 AC 10).
-M0: VERIFIED.
+**M2: Fixed Simulation: VERIFIED** (unit tests + Xvfb runs on Linux).
+**M1: Running Application: FUNCTIONAL.** Verified on Linux and awaiting the owner's
+Windows run (PP-003 AC 10). M0: VERIFIED.
 
 ## Current Stage
 
-**Stage 1: Minimal Application.** Implementation complete, awaiting the owner's Windows run.
-Next: Stage 2 (Time & Fixed Update, PP-004).
+**Stage 2: Time & Fixed Update: complete** (PP-004). Next: **Stage 3: ECS** (PP-005).
 
 ## Overall State
 
 PurplePie opens a window through its own `Engine`/`Game` API. It runs a paced
-60 Hz frame loop without busy-waiting, and shuts down cleanly on close, on
-Escape, on `Context::request_exit`, or on error. There is no timestep, ECS,
-renderer or input abstraction yet.
+60 Hz frame loop without busy-waiting, and drives the game with a fixed-timestep
+`fixed_update` (default 60 Hz, clamped and capped) followed by a per-frame
+`update`. It shuts down cleanly on close, on Escape, on `Context::request_exit`,
+or on error. There is no ECS, renderer or input abstraction yet.
 
 | Component | State | Notes |
 |---|---|---|
 | Crate layout (`purplepie` lib + `sandbox` bin) | VERIFIED | ADR-002 |
 | Lints (`unsafe_code = forbid`, `unwrap_used = warn`) | VERIFIED | No `unwrap`/`expect`/`unsafe` in `src/` |
 | `error` (`Error`, `BoxError`, `Result`) | VERIFIED | 3 unit tests + 1 doctest |
-| `app::EngineConfig` | VERIFIED | 5 unit tests + 1 doctest. Rejects 0×N sizes. |
-| `app::Game` / `Context` | VERIFIED | 2 unit tests. `init` + `update`; `request_exit` |
+| `app::EngineConfig` | VERIFIED | 7 unit tests + 1 doctest. Validates size and timestep settings. |
+| `app::Game` / `Context` | VERIFIED | 3 unit tests. `init`, `fixed_update`, `update` (all optional); `time()`, `dt()`, `request_exit()` |
 | `app` frame pacing (`FramePacer`) | VERIFIED | 5 unit tests. About 1% CPU idle under Xvfb. Temporary until Stage 4 vsync. |
-| `app::Engine` + runner (winit 0.30 lifecycle) | FUNCTIONAL | Xvfb smoke runs pass (see Validation). Windows not yet confirmed. |
-| `time` (fixed timestep) | NOT_STARTED | Stage 2, next |
-| `math`, `ecs` | NOT_STARTED | Stage 3 |
+| `app::Engine` + runner (winit 0.30 lifecycle) | FUNCTIONAL | Xvfb smoke runs pass. Windows not yet confirmed. |
+| `time` (`Time`, `FixedTimestep`) | VERIFIED | 12 unit tests. Xvfb: 59.8 Hz fixed rate. Stall clamp and cap confirmed by probe. |
+| `math`, `ecs` | NOT_STARTED | Stage 3, next (PP-005) |
 | `render` | NOT_STARTED | Stage 4 |
 | `input` | NOT_STARTED | Stage 8 (Escape-to-exit is a config flag in `app` until then) |
 | `assets` | NOT_STARTED | Stage 9 |
@@ -42,14 +42,15 @@ renderer or input abstraction yet.
 - PP-000: architecture, verified stack, compatibility spike, scaffold.
 - PP-001: engineering documentation and task-tracking system.
 - PP-002: owner's Windows toolchain builds and runs the scaffold (owner-reported).
+- PP-004: time and fixed update (Stage 2).
 
 ## In Progress
 
-- **PP-003: Stage 1 minimal application.** Implemented and verified on Linux. Waiting only for the owner to run `cargo test` and `cargo run` on Windows.
+- **PP-003: Stage 1 minimal application.** Implemented and verified on Linux. Waiting only for the owner to run `cargo test` and `cargo run` on Windows. Any current build covers it.
 
 ## Next
 
-- **PP-004: Stage 2 · Time & fixed update.** See [TASKS.md](TASKS.md#pp-004-time--fixed-update--next).
+- **PP-005: Stage 3 · ECS integration.** See [TASKS.md](TASKS.md#pp-005-ecs-integration--next).
 
 ## Blocked
 
@@ -60,11 +61,11 @@ renderer or input abstraction yet.
 - `FramePacer` + `ControlFlow::WaitUntil` is interim pacing. Stage 4 (PP-006) replaces it with vsync and removes the pacer if nothing else uses it.
 - `EngineConfig::exit_on_escape` hard-wires one key in `app`. Revisit when the input system exists (PP-010).
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
-- Resolved this session: the hard-coded `"0.0.0"` version test was removed, and the duplicated module table in `src/lib.rs` was removed (R-16).
 
 ## Known Limitations
 
-- Windows (the owner's platform) is untested for Stage 1 behavior. macOS and Wayland are also untested.
+- Windows (the owner's platform) is untested for Stage 1–2 behavior. macOS and Wayland are also untested.
+- Render interpolation is not implemented. `Time::alpha()` is exposed for it, but nothing uses it yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised (R-19). The code uses let-chains (stable since 1.88).
 - No logging yet (PD-04 deferred to PP-006). Errors are reported through `Result` and the sandbox prints the source chain.
@@ -72,6 +73,14 @@ renderer or input abstraction yet.
 
 ## Recent Changes
 
+- **2026-09-30: PP-004 Stage 2 time & fixed update.**
+  - New `src/time/` (`Time`, `FixedTimestep`), `std` only.
+  - `Game::fixed_update`. All `Game` callbacks now have defaults (`update` was required before).
+  - `Context::time()` / `Context::dt()` (`f32`, the step for the current callback).
+  - `EngineConfig::{fixed_dt, max_frame_dt, max_fixed_steps}` with validation. `EngineConfig` no longer derives `Eq`.
+  - Runner frame: tick → fixed × n → update. No callbacks after `request_exit`, including mid-way through fixed steps.
+  - Public API adds `Time`. No new dependencies.
+  - DEVELOPMENT §3/§10: deliveries go only to the chat, and nothing is saved on the owner's computer.
 - **2026-09-30: PP-003 Stage 1 implementation.**
   - Added `winit 0.30.13` and `thiserror 2.0.21` (72 unique normal dependencies on Linux).
   - New `src/error.rs` and `src/app/` (`mod`, `config`, `game`, `pacer`, `runner`).
@@ -86,31 +95,26 @@ renderer or input abstraction yet.
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0) on 2026-09-30, after the final code change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0) on 2026-09-30, after the final PP-004 code change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --check` | ✅ PASS |
 | `cargo check --all-targets` | ✅ PASS |
 | `cargo clippy --all-targets -- -D warnings` | ✅ PASS |
-| `cargo test` | ✅ PASS: 15 unit tests + 5 doctests (2 are compile-only `no_run`) |
+| `cargo test` | ✅ PASS: 30 unit tests + 5 doctests (2 are compile-only `no_run`) |
 | `cargo build` | ✅ PASS |
-| Sandbox without a display | ✅ `error: event loop error` + cause chain, exit 1 |
-| Sandbox with invalid `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` | ✅ clear message, exit 1 |
-| Xvfb: 120 frames with timed exit | ✅ exit 0 in 1.99 s (≈ 60 Hz) |
-| Xvfb: window attributes (`xwininfo`) | ✅ "PurplePie Sandbox", 1280×720 |
-| Xvfb: idle CPU over ~3 s | ✅ 0.04 s CPU (no busy loop) |
-| Xvfb: resize to 640×360 | ✅ keeps running |
-| Xvfb: Escape (XTEST) | ✅ exit 0 |
-| Xvfb: non-Escape key | ✅ keeps running |
-| Xvfb: close request (`WM_DELETE_WINDOW`) | ✅ exit 0 |
-| Throwaway game: `init` returns error | ✅ `Engine::run` → `Error::Game("level file missing")`, `update` never called |
-| Throwaway game: `request_exit` in first `update` | ✅ `update` ran exactly once, `Ok(())` |
-| Zero-width config / second `Engine::new` | ✅ `InvalidConfig` / `EventLoop("EventLoop can't be recreated")` |
+| Xvfb: sandbox, 120 frames | ✅ 117 fixed steps, 1.966 s game time, exit 0, 1.99 s wall |
+| Xvfb: sandbox, 300 frames | ✅ 297 fixed steps / 4.966 s game time (59.8 Hz); simulated time trails game time by one pending step (0.016 s) |
+| Xvfb probe: 1 s stall at frame 30 | ✅ delta clamped to 0.250 s, 5 steps (cap), no burst after |
+| Xvfb probe: `fixed_dt = 1/120`, cap 8 | ✅ ≈1.95 steps per frame, 8 after the stall |
+| Xvfb probe: `request_exit` in `fixed_update` | ✅ 0 further fixed calls, no `update` that frame, `Ok(())` |
+| Xvfb probe: `init` context | ✅ `dt = 0`, `frame = 0` |
+| Stage 1 regression (idle CPU, `xwininfo`, resize, Escape, other key, close) | ✅ unchanged: 0.04 s CPU / 3 s, 1280×720, all exits code 0 |
 
 Owner-reported on Windows x64 (not executed by Claude): Stage 0 scaffold `clippy` ✅ and `run` ✅.
-**Stage 1 on Windows has not been reported yet.**
+**Stage 1–2 on Windows has not been reported yet.**
 
 ## Last Updated
 
-2026-09-30. PP-003 implemented, awaiting Windows confirmation.
+2026-09-30. PP-004 done. PP-003 still awaits Windows confirmation.

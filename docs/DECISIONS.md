@@ -20,9 +20,9 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | No (Stage 4) |
 | ADR-006 | `hecs` as the ECS | Accepted | No (Stage 3) |
 | ADR-007 | `glam` for math | Accepted | No (Stage 3) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stage 1 subset |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–2 subset |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | No (Stage 4) |
-| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | Partially: frame hook + `WaitUntil` pacing (Stage 1); timestep in Stage 2 |
+| ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted | Yes: Stage 1 (frame hook, pacing) + Stage 2 (timestep); vsync pacing in Stage 4 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Partially: `Error` + lints (Stage 1); logging deferred |
 | ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | No (Stage 4) |
 | ADR-013 | Dependency admission: add per stage, pin, commit the lockfile | Accepted | Yes (Stage 0) |
@@ -297,6 +297,16 @@ and a required `update`. `Context` carries only the exit flag (`request_exit`,
 stages. `Engine::run` returns `Result<()>` as decided. `Error::game(e)` and
 `BoxError` were added so games can return their own errors from `init`.
 
+**Implementation note (Stage 2, PP-004):** `fixed_update` was added. All three
+callbacks now have empty defaults (`update` was required in Stage 1, and
+`fixed_update` was sketched as required above), so a game implements only what it uses.
+`Context` exposes accessor methods (`time()`, `dt()`) rather than the public
+fields sketched above, which keeps its internals free to change. `dt()` returns `f32`
+(the step for the current callback: `fixed_dt` in `fixed_update`, the clamped
+frame delta in `update`, and 0 in `init`) for direct use in glam math. Precise
+`f64` values are available from `Time`. These are API-shape refinements within
+this ADR, not new decisions.
+
 ## Context
 Game code needs mutable ECS access plus read access to time and input, and
 must not see wgpu or winit. winit 0.30 drives the application through
@@ -386,6 +396,14 @@ Accepted (2026-09-30). Partially implemented in PP-003 (Stage 1).
 Stage 1 pacing is a pure `FramePacer` (60 Hz `WaitUntil` deadlines; after a
 stall it restarts the schedule instead of bursting), measured at about 0.04 s CPU
 per 3 s idle under Xvfb. The fixed timestep itself is Stage 2 (PP-004).
+
+**Implementation note (Stage 2, PP-004):** implemented as decided, with
+`FixedTimestep` (`std` only) and `Time`. The constants are configurable through
+`EngineConfig` and validated (`fixed_dt > 0`, `max_frame_dt ≥ fixed_dt`,
+`max_fixed_steps ≥ 1`). When the cap is hit, the backlog is reduced with `%= dt`,
+which keeps the sub-step phase. The first frame uses a zero delta, and
+non-finite or negative deltas are ignored. Verified by 12 unit tests and Xvfb
+probes (59.8 Hz measured; a 1 s stall gives 5 steps).
 
 ## Context
 Gameplay must be frame-rate independent. Rendering should run at display rate.

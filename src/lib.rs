@@ -3,7 +3,9 @@
 //! A small, modular 2D game engine written in Rust.
 //!
 //! A game implements [`Game`] and hands it to an [`Engine`]. The engine owns
-//! the window and the main loop and calls the game back with a [`Context`].
+//! the window and the main loop and calls the game back with a [`Context`]:
+//! `fixed_update` at a fixed rate (default 60 Hz) for simulation, then
+//! `update` once per frame.
 //! Game code never touches `winit` (or, later, `wgpu`) types.
 //!
 //! ```no_run
@@ -12,7 +14,9 @@
 //! struct Hello;
 //!
 //! impl Game for Hello {
-//!     fn update(&mut self, _ctx: &mut Context<'_>) {}
+//!     fn fixed_update(&mut self, ctx: &mut Context<'_>) {
+//!         let _step_seconds = ctx.dt(); // 1/60 s by default
+//!     }
 //! }
 //!
 //! fn main() -> purplepie::Result<()> {
@@ -25,9 +29,11 @@
 
 mod app;
 mod error;
+mod time;
 
 pub use app::{Context, Engine, EngineConfig, Game};
 pub use error::{BoxError, Error, Result};
+pub use time::Time;
 
 /// The PurplePie crate version, taken from `Cargo.toml`.
 ///

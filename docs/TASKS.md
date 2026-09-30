@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-004: Stage 2 · Time & fixed update** · P1 · TODO ← **next task**
+- [ ] **PP-005: Stage 3 · ECS integration** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -26,10 +26,10 @@ _None._
 - [x] **PP-000: Stage 0 · Architecture, version verification, compatibility spike, scaffold** · DONE
 - [x] **PP-001: Stage 0 · Engineering documentation and task-tracking system** · DONE
 - [x] **PP-002: Stage 0 · Windows toolchain able to build and run the scaffold** · DONE
+- [x] **PP-004: Stage 2 · Time & fixed update** · DONE (2026-09-30)
 
 ## Future
 
-- [ ] **PP-005: Stage 3 · ECS integration** · P2 · TODO
 - [ ] **PP-006: Stage 4 · wgpu initialization + purple clear** · P2 · TODO
 - [ ] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · P3 · TODO
 - [ ] **PP-008: Stage 6 · Textures & sprite rendering** · P3 · TODO
@@ -76,18 +76,23 @@ _None._
 | Bug found and fixed | `event_loop.exit()` does not stop queued events, so `update` ran after a failed `init`. Game callbacks are now gated on `!event_loop.exiting()`. |
 | Acceptance criteria | 1. Window created only in `resumed`, exactly once. 2. Close button and Escape exit with code 0. 3. `Resized` handled (0×0 tolerated). 4. `about_to_wait` → `request_redraw`; `RedrawRequested` calls `game.update`. 5. `ControlFlow::WaitUntil` pacing, no busy loop. 6. An error raised in a callback is returned from `Engine::run`. 7. No `unwrap()` in engine code. 8. Unit tests for `EngineConfig`. 9. Checks in Cowork: fmt, check, clippy `-D warnings`, test, build, plus an Xvfb smoke run with automated exit. 10. Owner runs `cargo test` + `cargo run` on Windows and confirms the window. 11. Docs, PROJECT_STATUS and TASKS updated. `PurplePie-stage-1.zip` delivered. |
 
-### PP-004: Time & fixed update ← NEXT
+### PP-004: Time & fixed update
 | Field | Value |
 |---|---|
-| Stage | 2 → Milestone M2 · Priority P1 · **TODO** |
-| Dependencies | PP-003 (implemented; only the Windows run is outstanding, and it does not block this work). |
-| Scope | New `src/time/` (`Time`: frame delta, elapsed, frame count; pure `FixedTimestep` with accumulator, `MAX_FRAME_DT` clamp, `MAX_FIXED_STEPS` cap, backlog clamp, alpha). Add `Game::fixed_update`, `Context::time()`. Wire into `Runner::frame` per ADR-010. Put the constants in `EngineConfig`. Sandbox shows fixed-step vs frame counts. |
-| Acceptance criteria | 1. `time` depends only on `std`. 2. Unit tests: 0, 1 and N steps, cap reached, backlog clamp, `MAX_FRAME_DT` clamp, alpha in [0, 1). 3. Loop order: tick → fixed × n → update. 4. Xvfb smoke: about 60 fixed steps per second of real time. 5. DoD and docs updated. |
+| Stage | 2 → Milestone M2 · Priority P1 · **DONE** (2026-09-30) |
+| Dependencies | PP-003 (implemented; its Windows run is still outstanding and did not block this work) |
+| Scope | New `src/time/` (`Time`; pure `FixedTimestep` in `time/fixed.rs`). `Game::fixed_update`. `Context::time()` / `Context::dt()`. `EngineConfig::{fixed_dt, max_frame_dt, max_fixed_steps}` with validation. Runner wired per ADR-010. Sandbox reports fixed steps. |
+| Acceptance criteria | ✅ 1. `time` depends only on `std`. ✅ 2. Unit tests: 0, 1 and N steps, carry-over, cap + backlog clamp, bad deltas, 60 Hz long run, alpha in [0, 1) over 10k irregular frames, `Time` clamping/counters, config validation. ✅ 3. Loop order: tick → fixed × n → update, and no callbacks after exit is requested. ✅ 4. Xvfb: 297 fixed steps / 4.966 s game time (59.8 Hz). ✅ 5. Docs updated. |
+| Extra verification | Throwaway probe game under Xvfb: 1 s stall → delta clamped to 0.25 s → 5 steps (cap). At 120 Hz: ~1.95 steps per frame and a cap of 8 after the stall. `request_exit` inside `fixed_update` → 0 further fixed calls and no `update` that frame. `init` sees `dt = 0`, `frame = 0`. |
+| API notes | `update` became a default method (it was required in Stage 1), so all three callbacks are optional. `EngineConfig` lost `Eq` (it now has `f64` fields), keeping `PartialEq`. |
 
-### PP-005: ECS integration
-| Stage 3 → M3 · P2 · TODO | Depends on PP-004 |
+### PP-005: ECS integration ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | `hecs` + `glam` added. `Transform2D`, `Velocity`, `integrate_velocity`. `Context.world`. Tests for spawn/query/system. `ecs`/`math` free of render/app/winit imports. |
+| Stage | 3 → Milestone M3 · Priority P1 · **TODO** |
+| Dependencies | PP-004 (DONE) |
+| Scope | Add `hecs 0.11.1` + `glam 0.33` (re-verify versions first, per ADR-013). New `src/math/` (`Transform2D { position: Vec2, rotation: f32, scale: Vec2 }`, re-export `Vec2`). New `src/ecs/` (re-export `World`/`Entity`, `Velocity`, `integrate_velocity(world, dt)`). Runner owns one `World`, and `Context::world()` gives `&mut World`. Sandbox spawns an entity and moves it in `fixed_update`. |
+| Acceptance criteria | 1. Tests: spawn, attach components, query, `integrate_velocity` moves by `v·dt`, `Transform2D` defaults. 2. `ecs`/`math` have no `app`/`winit`/render imports. 3. The game calls systems explicitly (no implicit engine systems). 4. Xvfb smoke: the sandbox entity's position after N fixed steps equals `N·v·fixed_dt`. 5. DoD and docs updated. |
 
 ### PP-006: wgpu initialization + purple clear
 | Stage 4 → M4 · P2 · TODO | Depends on PP-003 (PP-004/005 expected done first) |

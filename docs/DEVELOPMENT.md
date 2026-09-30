@@ -49,6 +49,12 @@ document is corrected.
   of every task, send the complete project as a ZIP (§10) together with the exact
   PowerShell `Expand-Archive` command that updates the owner's repo in place. The
   owner extracts it and commits it themselves.
+- **Owner rule: deliver to the chat only.** Never save outputs on the owner's
+  computer unless the owner specifically asks for it. While a folder from the
+  owner's computer is connected to the session, the app copies every file sent
+  in chat into `Claude outputs/` inside that folder. So before sending a file,
+  confirm that no folder is connected. If one is, ask the owner to remove it
+  from the session first.
 - **Commit messages (owner rule):** never add AI attribution lines such as
   `Co-Authored-By: Claude …` or `Claude-Session: …`. Use conventional style
   (`feat:`, `fix:`, `docs:` …): a subject line, then a body listing what changed and why.
