@@ -20,8 +20,8 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset |
-| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) |
+| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
 | ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | Yes (Stage 4, renderer init) |
@@ -31,7 +31,8 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-016 | Diagnostics: `log` facade in the engine; games choose the logger | Accepted | Yes (Stage 4, PP-014) |
 | ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
 | ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted | Yes (Stage 5, PP-007) |
-| ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted | Yes (Stage 5, PP-007) |
+| ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted | Yes (Stage 5, PP-007); instance code shared with sprites since PP-008 |
+| ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted | Yes (Stage 6, PP-008) |
 
 ---
 
@@ -827,6 +828,7 @@ code sets the pattern Stage 6 (sprites, batching) extends. Simplicity first (ARC
   with the unit-square corners generated from `vertex_index`. There is **no vertex
   buffer and no bind group**.
 - One **per-instance buffer** of `QuadInstance { clip_from_local: mat4, color: vec4 }`
+  (renamed `Instance` in `src/render/instance.rs` by PP-008, which shares it with sprites; ADR-020)
   (80 bytes, `#[repr(C)]`, `bytemuck::Pod`). The CPU computes
   `view_projection × Transform2D::to_mat4() × scale(size)` per quad. The buffer grows
   to the next power of two when needed, and the instance `Vec` is reused every frame.
@@ -859,6 +861,72 @@ It has the fewest GPU objects that still batch. All maths is on the CPU, where i
 
 ## Revisit Conditions
 Stage 6 sprites (textures need bind groups), or a profiling result showing the per-quad CPU work matters.
+*Update 2026-10-01 (PP-008):* sprites arrived as a second pipeline (ADR-020). This ADR still holds for quads.
+
+---
+
+# ADR-020: Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only)
+
+## Status
+Accepted (2026-10-01, PP-008). Pulls the smallest piece of PD-06 (asset handles) forward. The rest of PD-06 (generic `Handle<T>`, unloading, other asset kinds) stays open for PP-011.
+
+## Context
+Sprites need textures. Game code must be able to name a texture inside a
+component without touching wgpu (ADR-009: the renderer is crate-private, and
+`Context` exposes no GPU types). The renderer can also be dropped and recreated
+(`suspended`/`resumed`), so GPU objects cannot be the source of truth.
+
+## Decision
+- **Handle:** `render::TextureId`, a `Copy` newtype over a `u32` index with a private field, so it
+  can only come from the engine. It lives in the public `Sprite { texture, size, tint }` component.
+- **Loading:** `Context::load_texture(path) -> Result<TextureId>` reads and decodes the PNG
+  **immediately**, so a missing or broken file is returned to the caller as
+  `Error::Asset { path, source }`. A path is resolved against the working directory. The same path
+  spelling returns the same id (no second read). Failed loads store nothing. `Context::texture_size(id)`
+  returns the size in texels.
+- **Store:** a crate-private `Textures` (owned by the runner, lent to `Context`) keeps every decoded
+  image as RGBA8 sRGB with straight alpha, in load order. **Nothing is ever unloaded** in this stage.
+- **Upload:** at the start of `Renderer::render`, the sprite pipeline uploads every store entry it has
+  not seen yet (`Textures::since(n)`). A recreated renderer starts at 0 and re-uploads everything,
+  which is why the CPU copies are kept. A texture larger than `max_texture_dimension_2d` becomes
+  `Error::Asset` (fatal, like other render errors) before wgpu sees it.
+- **GPU format:** `Rgba8UnormSrgb` when the surface is sRGB, `Rgba8Unorm` otherwise. This mirrors
+  ADR-015: blending happens in the same space as quad colours on either kind of target.
+- **Sampling:** one sampler, `Nearest` min/mag, `ClampToEdge`, no mipmaps. Crisp texels and exact pixel tests.
+- **Pipeline:** a second instanced pipeline (`sprite.wgsl`) with the same `Instance` layout as quads
+  (ADR-019). The instance colour is the tint, which multiplies the sample. UV `v = 0` is the top row of the image.
+  One bind group (texture + sampler) per texture. Consecutive sprites with the same texture share one
+  draw call. **Sprites are drawn after quads.** Sorting by layer and by texture is PP-015 (PD-05, PD-08).
+- **Decoder:** `image 0.25.10`, `default-features = false, features = ["png"]`. +12 crates
+  (116 → 128 unique normal dependencies), with a highest `rust-version` of 1.88.
+
+## Alternatives Considered
+- **Load requests queued and decoded by the renderer:** errors would surface a frame later, away from
+  the `?` in game code. Rejected: immediate, typed errors matter more.
+- **`Context` holds a GPU handle and uploads directly:** breaks ADR-009, and breaks on renderer recreation.
+- **Generic `Handle<T>` + `Assets` store now (full PD-06):** more design than one asset kind justifies. Revisit in PP-011.
+- **`png` crate directly:** 4 fewer crates (no `moxcms`, `pxfm`, `byteorder-lite`, `num-traits`), but we would
+  hand-write grey/RGB/16-bit → RGBA conversion, and Stage 9 would likely switch to `image` anyway.
+- **Linear filtering:** smoother when scaled, but blurs pixel art and makes pixel tests inexact. A per-texture
+  option can come later.
+
+## Rationale
+It's the smallest design that keeps wgpu out of game code, survives renderer recreation, and reports
+bad files where the game can handle them.
+
+## Consequences
+### Positive
+- Verified under Xvfb/lavapipe: a 16×16 PNG at 128×128 logical px is pixel-exact (each texel 8×8 px),
+  including transparent texels (background shows through) and a 50% alpha quadrant that blends to the
+  value computed in linear space. Missing and corrupt files exit with `Error::Asset` and a cause chain, no panic.
+### Negative
+- Every texture stays in RAM (CPU copy) and VRAM until the engine stops.
+- Relative paths depend on the working directory. (The sandbox uses `CARGO_MANIFEST_DIR`.)
+- An oversized texture is only detected at upload, so it stops the engine rather than returning from `load_texture`.
+
+## Revisit Conditions
+PP-011 (asset system), memory pressure from many or large textures, the need for texture atlases or UV
+rectangles, or a need for linear filtering.
 
 ---
 
@@ -872,8 +940,8 @@ one is resolved (and becomes an ADR) inside the task listed.
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
 | PD-02 | Camera controls (the coordinate core is decided in ADR-018) | `Camera2D { position, zoom }` over the ADR-018 default view; `screen_to_world` for cursor input | PP-009 (Stage 7) |
-| PD-08 | Draw order / layering | A `z` or layer value on drawables, sorted per frame. No depth buffer. | Stage 6 (sprites) |
+| PD-08 | Draw order / layering (today: quads, then sprites, each in query order) | A `z` or layer value on drawables, sorted per frame. No depth buffer. | PP-015 (Stage 6) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
-| PD-05 | Sprite batching strategy | Instanced quads per texture, sorted by layer | PP-008 (Stage 6) |
-| PD-06 | Asset handle design | Typed `Handle<T>` + `Assets` store, synchronous loading | PP-011 (Stage 9) |
+| PD-05 | Sprite batching strategy (today: consecutive same-texture sprites share a draw call) | Instanced quads per texture, sorted by layer | PP-015 (Stage 6) |
+| PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

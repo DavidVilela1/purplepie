@@ -34,7 +34,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | VERIFIED (Linux; purple window confirmed on Windows) |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | VERIFIED (Linux; Windows look pending) |
-| **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | NOT_STARTED |
+| **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | IN_PROGRESS (PP-008 ✅ textures + sprites; PP-015 layers + batching next) |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | NOT_STARTED |
 | **M8: Input** | Game-facing input abstraction | 8 | PP-010 | NOT_STARTED |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
@@ -142,7 +142,8 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `src/render/` (texture, sampler, sprite batcher), `Sprite` component, `Cargo.toml` (+`image` with PNG only) |
 | **Expected result** | Many sprites drawn efficiently from one or a few textures |
 | **Validation** | Tests for batching and sorting. Smoke run. Rough sprite-count timing noted. |
-| **Acceptance criteria** | PD-05 decided. sRGB texture format per ADR-015. |
+| **As built (PP-008)** | `TextureId` + `Context::load_texture` (decode on load, typed `Error::Asset`), CPU texture store uploaded by the renderer, `Sprite { texture, size, tint }`, a second instanced pipeline sharing the quad instance layout, `Nearest` sampling, texture format following the surface (ADR-020). Sprites draw after quads; consecutive same-texture sprites share a draw call. `image` 0.25.10 (PNG only). Pixel-exact under Xvfb. |
+| **Acceptance criteria** | PD-05 decided. sRGB texture format per ADR-015 (✅ ADR-020). |
 | **Risks** | Resource lifetime (R-17), per-frame allocations (R-18) |
 | **Definition of Done** | Project DoD |
 
@@ -182,9 +183,9 @@ driven by real ECS data rather than a throwaway draw call.
 | **Prerequisites** | M6 |
 | **Tasks** | PP-011 |
 | **Files** | new `src/assets/`, render integration, `assets/` folder conventions |
-| **Expected result** | Games reference textures via handles. Missing files give a clear `Error::Asset`. |
+| **Expected result** | Games reference every asset kind via handles (textures already do: ADR-020). Missing files give a clear `Error::Asset` (exists since PP-008). |
 | **Validation** | Unit tests for the handle store and error paths. Smoke run. |
-| **Acceptance criteria** | PD-06 decided and recorded as an ADR |
+| **Acceptance criteria** | PD-06 decided and recorded as an ADR (generalizing or superseding ADR-020) |
 | **Risks** | Asset lifetime and ownership (R-17) |
 | **Definition of Done** | Project DoD |
 

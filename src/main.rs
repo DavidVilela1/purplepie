@@ -14,7 +14,7 @@ use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Quad};
+use purplepie::render::{Color, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -57,16 +57,26 @@ fn init_logging() -> Result<(), String> {
 const MOVER_VELOCITY: Vec2 = Vec2::new(120.0, 0.0);
 /// The mover bounces between `-MOVER_LIMIT` and `+MOVER_LIMIT` on the X axis.
 const MOVER_LIMIT: f32 = 500.0;
+/// The sandbox's test image (16×16 texels). The path is fixed at compile time,
+/// so `cargo run` works from any directory.
+const SPRITE_TEXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/textures/sandbox_quadrants.png"
+);
+/// Turn rate of the spinning sprite, in radians per second.
+const SPIN_SPEED: f32 = 1.0;
 
 struct Sandbox {
     exit_after_frames: Option<u64>,
     /// Simulated seconds, advanced only by fixed steps.
     simulated_seconds: f64,
     mover: Option<Entity>,
+    spinner: Option<Entity>,
 }
 
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
+        let texture = ctx.load_texture(SPRITE_TEXTURE)?;
         let world = ctx.world_mut();
         // Static reference shapes; their screen positions are checked by smoke tests.
         world.spawn((
@@ -84,6 +94,17 @@ impl Game for Sandbox {
             Quad::new(Vec2::new(80.0, 80.0), Color::WHITE),
         ));
         self.mover = Some(mover);
+        // Static reference sprite: each texel covers exactly 8×8 logical pixels.
+        world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, 120.0)),
+            Sprite::new(texture, Vec2::new(128.0, 128.0)),
+        ));
+        // The same texture, tinted half-transparent cyan and spinning.
+        let spinner = world.spawn((
+            Transform2D::from_position(Vec2::new(-300.0, -20.0)),
+            Sprite::new(texture, Vec2::new(96.0, 96.0)).with_tint(Color::rgba(0.5, 1.0, 1.0, 0.6)),
+        ));
+        self.spinner = Some(spinner);
         Ok(())
     }
 
@@ -97,6 +118,12 @@ impl Game for Sandbox {
             if (x > MOVER_LIMIT && velocity.0.x > 0.0) || (x < -MOVER_LIMIT && velocity.0.x < 0.0) {
                 velocity.0.x = -velocity.0.x;
             }
+        }
+        if let Some(mut transform) = self
+            .spinner
+            .and_then(|e| ctx.world_mut().get::<&mut Transform2D>(e).ok())
+        {
+            transform.rotation += SPIN_SPEED * dt;
         }
     }
 
@@ -148,6 +175,7 @@ fn main() -> ExitCode {
         exit_after_frames,
         simulated_seconds: 0.0,
         mover: None,
+        spinner: None,
     };
     let result = Engine::new(EngineConfig::new("PurplePie Sandbox")).and_then(|e| e.run(game));
 

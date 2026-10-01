@@ -4,6 +4,7 @@
 //! plumbing: the view projection, per-instance data, and the instanced pipeline.
 
 use super::Color;
+use super::instance::{Instance, InstanceBuffer};
 use crate::ecs::World;
 use crate::math::{Mat4, Transform2D, Vec2};
 
@@ -47,45 +48,21 @@ pub(crate) fn view_projection(logical_size: Vec2) -> Mat4 {
     glam::camera::rh::proj::directx::orthographic(-half.x, half.x, -half.y, half.y, -1.0, 1.0)
 }
 
-/// Per-quad GPU data: matches `Instance` in `quad.wgsl` (5 × vec4<f32> = 80 bytes).
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct QuadInstance {
-    clip_from_local: [[f32; 4]; 4],
-    color: [f32; 4],
-}
-
-impl QuadInstance {
-    pub(crate) fn new(
-        view_projection: &Mat4,
-        transform: &Transform2D,
-        quad: &Quad,
-        target_is_srgb: bool,
-    ) -> Self {
-        let local = Mat4::from_scale(quad.size.extend(1.0));
-        let clip_from_local = *view_projection * transform.to_mat4() * local;
-        let c = quad.color.to_wgpu(target_is_srgb);
-        Self {
-            clip_from_local: clip_from_local.to_cols_array_2d(),
-            color: [c.r as f32, c.g as f32, c.b as f32, c.a as f32],
-        }
-    }
-}
-
 /// Reads `(Transform2D, Quad)` from the world into `out` (reused every frame).
 /// Read-only access to the world (ADR-009).
 pub(crate) fn collect_instances(
     world: &World,
     view_projection: &Mat4,
     target_is_srgb: bool,
-    out: &mut Vec<QuadInstance>,
+    out: &mut Vec<Instance>,
 ) {
     out.clear();
     for (transform, quad) in world.query::<(&Transform2D, &Quad)>().iter() {
-        out.push(QuadInstance::new(
+        out.push(Instance::new(
             view_projection,
             transform,
-            quad,
+            quad.size,
+            quad.color,
             target_is_srgb,
         ));
     }
@@ -94,15 +71,10 @@ pub(crate) fn collect_instances(
 /// The instanced quad pipeline plus its growable instance buffer.
 pub(crate) struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
-    instances: Option<wgpu::Buffer>,
-    capacity: usize,
+    instances: InstanceBuffer,
 }
 
 impl QuadPipeline {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-        0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4
-    ];
-
     pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("purplepie quad shader"),
@@ -113,86 +85,79 @@ impl QuadPipeline {
             bind_group_layouts: &[],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("purplepie quad pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<QuadInstance>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &Self::ATTRIBUTES,
-                })],
-            },
-            primitive: wgpu::PrimitiveState {
-                // Negative scale mirrors a quad, which flips its winding, so never cull.
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = rect_pipeline(device, "purplepie quad pipeline", &layout, &shader, format);
         Self {
             pipeline,
-            instances: None,
-            capacity: 0,
+            instances: InstanceBuffer::new("purplepie quad instances"),
         }
     }
 
-    /// Uploads `instances`, growing the GPU buffer (to the next power of two) when needed.
+    /// Uploads this frame's instances.
     pub(crate) fn upload(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        instances: &[QuadInstance],
+        instances: &[Instance],
     ) {
-        if instances.is_empty() {
-            return;
-        }
-        if instances.len() > self.capacity || self.instances.is_none() {
-            self.capacity = instances.len().next_power_of_two();
-            self.instances = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("purplepie quad instances"),
-                size: (self.capacity * std::mem::size_of::<QuadInstance>()) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
-        if let Some(buffer) = &self.instances {
-            queue.write_buffer(buffer, 0, bytemuck::cast_slice(instances));
-        }
+        self.instances.upload(device, queue, instances);
     }
 
     /// Records the draw for `count` uploaded instances.
     pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
-        let Some(buffer) = &self.instances else {
+        let Some(buffer) = self.instances.slice() else {
             return;
         };
         if count == 0 {
             return;
         }
         pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, buffer.slice(..));
+        pass.set_vertex_buffer(0, buffer);
         pass.draw(0..6, 0..count as u32);
     }
 }
 
+/// A render pipeline that draws instanced unit squares (`vs_main`/`fs_main` in
+/// `shader`) with straight-alpha blending. Shared by quads and sprites.
+pub(crate) fn rect_pipeline(
+    device: &wgpu::Device,
+    label: &str,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[Some(Instance::layout())],
+        },
+        primitive: wgpu::PrimitiveState {
+            // Negative scale mirrors a rectangle, which flips its winding, so never cull.
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use glam::Vec4;
 
@@ -201,9 +166,8 @@ mod tests {
         Vec2::new(p.x / p.w, p.y / p.w)
     }
 
-    #[test]
-    fn instance_layout_matches_the_shader() {
-        assert_eq!(std::mem::size_of::<QuadInstance>(), 80);
+    fn quad_instance(vp: &Mat4, t: &Transform2D, quad: &Quad, srgb: bool) -> Instance {
+        Instance::new(vp, t, quad.size, quad.color, srgb)
     }
 
     #[test]
@@ -230,7 +194,7 @@ mod tests {
         let vp = view_projection(Vec2::new(200.0, 100.0));
         let quad = Quad::new(Vec2::new(40.0, 20.0), Color::WHITE);
         let transform = Transform2D::from_position(Vec2::new(50.0, 0.0));
-        let inst = QuadInstance::new(&vp, &transform, &quad, false);
+        let inst = quad_instance(&vp, &transform, &quad, false);
         // Unit-square corner (0.5, 0.5) → world (70, 10) → clip (0.7, 0.2).
         assert!(
             clip(&inst.clip_from_local, Vec2::splat(0.5)).abs_diff_eq(Vec2::new(0.7, 0.2), 1e-6)
@@ -247,7 +211,7 @@ mod tests {
         let transform = Transform2D::default()
             .with_rotation(std::f32::consts::FRAC_PI_2)
             .with_scale(Vec2::splat(2.0));
-        let inst = QuadInstance::new(&vp, &transform, &quad, false);
+        let inst = quad_instance(&vp, &transform, &quad, false);
         // Corner (0.5, 0) → size (10, 0) → scale (20, 0) → +90° (0, 20) → clip (0, 0.2).
         assert!(
             clip(&inst.clip_from_local, Vec2::new(0.5, 0.0)).abs_diff_eq(Vec2::new(0.0, 0.2), 1e-6)
@@ -259,8 +223,8 @@ mod tests {
         let vp = view_projection(Vec2::new(100.0, 100.0));
         let quad = Quad::new(Vec2::ONE, Color::rgba(0.5, 0.5, 0.5, 0.5));
         let t = Transform2D::default();
-        let srgb = QuadInstance::new(&vp, &t, &quad, true);
-        let unorm = QuadInstance::new(&vp, &t, &quad, false);
+        let srgb = quad_instance(&vp, &t, &quad, true);
+        let unorm = quad_instance(&vp, &t, &quad, false);
         assert!((srgb.color[0] - 0.214_041).abs() < 1e-5);
         assert_eq!(unorm.color[0], 0.5);
         assert_eq!(srgb.color[3], 0.5); // alpha is never gamma-converted
@@ -272,25 +236,34 @@ mod tests {
         world.spawn((Transform2D::default(), Quad::new(Vec2::ONE, Color::WHITE)));
         world.spawn((Transform2D::default(),));
         world.spawn((Quad::new(Vec2::ONE, Color::WHITE),));
-        let mut out = vec![QuadInstance::zeroed(); 5];
+        let mut out = vec![Instance::zeroed(); 5];
         collect_instances(&world, &Mat4::IDENTITY, false, &mut out);
         assert_eq!(out.len(), 1);
     }
 
     use bytemuck::Zeroable;
 
-    /// Headless device with PurplePie's fault capture installed. Needs a GPU
-    /// adapter (hardware or software, e.g. Mesa lavapipe).
-    fn headless_device() -> (wgpu::Device, super::super::faults::FaultSlot) {
+    /// Headless device and queue with PurplePie's fault capture installed.
+    /// Needs a GPU adapter (hardware or software, e.g. Mesa lavapipe).
+    pub(crate) fn headless_device_and_queue()
+    -> (wgpu::Device, wgpu::Queue, super::super::faults::FaultSlot) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("a GPU adapter is required for this ignored test");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+        // The same limits the engine requests (renderer.rs).
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .expect("device");
         let faults = super::super::faults::FaultSlot::default();
         faults.install(&device);
+        (device, queue, faults)
+    }
+
+    fn headless_device() -> (wgpu::Device, super::super::faults::FaultSlot) {
+        let (device, _queue, faults) = headless_device_and_queue();
         (device, faults)
     }
 

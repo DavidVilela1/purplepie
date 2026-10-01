@@ -1,4 +1,4 @@
-//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019).
+//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019, ADR-020).
 //!
 //! The only code in the engine that touches `wgpu`. It receives the window
 //! as generic `raw-window-handle` providers, so it does not depend on `winit`.
@@ -6,8 +6,11 @@
 use std::sync::Arc;
 
 use super::Color;
+use super::Textures;
 use super::faults::{FaultSlot, GpuFault};
-use super::quad::{QuadInstance, QuadPipeline, collect_instances, view_projection};
+use super::instance::Instance;
+use super::quad::{QuadPipeline, collect_instances, view_projection};
+use super::sprite::{Batch, SpritePipeline, collect_sprites};
 use crate::ecs::World;
 use crate::error::{Error, Result};
 use crate::math::Vec2;
@@ -30,7 +33,11 @@ pub(crate) struct Renderer {
     scale_factor: f64,
     quads: QuadPipeline,
     /// Per-frame quad instances, reused to avoid reallocating every frame.
-    quad_instances: Vec<QuadInstance>,
+    quad_instances: Vec<Instance>,
+    sprites: SpritePipeline,
+    /// Per-frame sprite instances and their per-texture draw batches (reused).
+    sprite_instances: Vec<Instance>,
+    sprite_batches: Vec<Batch>,
 }
 
 impl Renderer {
@@ -86,6 +93,7 @@ impl Renderer {
         }
         // Shader or pipeline errors are reported through `faults` and caught just below.
         let quads = QuadPipeline::new(&device, config.format);
+        let sprites = SpritePipeline::new(&device, config.format);
         check(&faults)?;
 
         let info = adapter.get_info();
@@ -110,6 +118,9 @@ impl Renderer {
             scale_factor: sanitize_scale_factor(scale_factor),
             quads,
             quad_instances: Vec::new(),
+            sprites,
+            sprite_instances: Vec::new(),
+            sprite_batches: Vec::new(),
         })
     }
 
@@ -137,10 +148,20 @@ impl Renderer {
     /// skip the frame, and the next frame retries (ARCHITECTURE §7).
     ///
     /// Reads `world` (never writes it, ADR-009) and draws every entity with
-    /// `Transform2D` + `Quad`.
-    pub(crate) fn render(&mut self, world: &World, before_present: impl FnOnce()) -> Result<()> {
+    /// `Transform2D` + `Quad`, then every entity with `Transform2D` + `Sprite`.
+    /// Textures in `textures` that are not on the GPU yet are uploaded first;
+    /// one the GPU cannot hold returns `Err(Error::Asset)` (ADR-020).
+    pub(crate) fn render(
+        &mut self,
+        world: &World,
+        textures: &Textures,
+        before_present: impl FnOnce(),
+    ) -> Result<()> {
         // Faults raised since the last frame (e.g. by `resize`) are reported first.
         check(&self.faults)?;
+        // Upload new textures even while minimized, so load errors surface early.
+        self.sprites
+            .sync_textures(&self.device, &self.queue, textures)?;
         if self.minimized {
             return Ok(());
         }
@@ -180,14 +201,20 @@ impl Renderer {
 
         let logical_size = Vec2::new(self.config.width as f32, self.config.height as f32)
             / self.scale_factor as f32;
-        collect_instances(
-            world,
-            &view_projection(logical_size),
-            self.config.format.is_srgb(),
-            &mut self.quad_instances,
-        );
+        let view_projection = view_projection(logical_size);
+        let srgb = self.config.format.is_srgb();
+        collect_instances(world, &view_projection, srgb, &mut self.quad_instances);
         self.quads
             .upload(&self.device, &self.queue, &self.quad_instances);
+        collect_sprites(
+            world,
+            &view_projection,
+            srgb,
+            &mut self.sprite_instances,
+            &mut self.sprite_batches,
+        );
+        self.sprites
+            .upload(&self.device, &self.queue, &self.sprite_instances);
 
         let view = frame
             .texture
@@ -215,6 +242,7 @@ impl Renderer {
                 multiview_mask: None,
             });
             self.quads.draw(&mut pass, self.quad_instances.len());
+            self.sprites.draw(&mut pass, &self.sprite_batches);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         before_present();

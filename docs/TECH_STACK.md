@@ -14,11 +14,11 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | `pollster` | **1.0.1** ✅ added | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
 | `bytemuck` | **1.25** ✅ added (1.25.2, `derive`; already in the tree via wgpu, so no new crate) | 5 | `Pod` instance data → bytes (ADR-019) | — |
 | `log` | **0.4** ✅ added (0.4.34; already in the tree via wgpu, so no new crate) | 4 | diagnostics facade (ADR-016). Note that winit 0.30 itself logs through `tracing`. | — |
-| `image` | TBD (PNG only) | 6/9 | texture decoding | decide in Stage 6 |
+| `image` | **0.25.10** ✅ added (`default-features = false, features = ["png"]`; +12 crates: `png`, `moxcms`, `pxfm`, `flate2`, `fdeflate`, `miniz_oxide` ×2, …; 116 → 128 unique normal dependencies) | 6 | PNG decoding for textures (ADR-020) | 1.88 |
 
 **Declared `rust-version = "1.90"`.** This is the highest `rust-version` found
 in the resolved Stage 1–4 dependency graph (`ordered-float 5.5.0` via
-`wgpu-hal`). Only 1.95.0 has actually been exercised: the sandbox could not
+`wgpu-hal`). Still the highest after PP-008 (`image` declares 1.88, `moxcms`/`pxfm` 1.85). Only 1.95.0 has actually been exercised: the sandbox could not
 download other toolchains. Raise the value if a lower toolchain fails.
 
 ## Versions deliberately not chosen
@@ -87,3 +87,14 @@ Use `glam::camera::{lh,rh}::proj::{opengl,vulkan,directx}::*` instead. For WebGP
 `cargo add bytemuck@1 --features derive` failed against the newest index entry ("unrecognized feature"), so the
 dependency was written by hand as `{ version = "1.25", features = ["derive"] }`, matching the locked 1.25.2.
 
+## image 0.25 notes (PP-008)
+
+- The default features pull in every format plus `rayon`. PurplePie uses `default-features = false, features = ["png"]`.
+  Even then, `image` 0.25.10 depends on `moxcms` (colour management) and `pxfm`, which is why it costs 4 crates more than
+  the `png` crate alone (`png` 0.18.1: +8). ADR-020 records why `image` was still chosen.
+- `image::load_from_memory_with_format(bytes, ImageFormat::Png)?.into_rgba8()` handles every PNG colour type: grey,
+  palette and RGB gain an opaque alpha, 16-bit channels become 8-bit (`(v + 128) / 257`). The `png` feature includes the encoder,
+  which the unit tests use to build PNGs in memory.
+- `zlib-rs` appears in `Cargo.lock` (an optional `flate2` backend) but is not compiled: `cargo tree -i zlib-rs` prints nothing.
+- wgpu 30: `wgpu::util::DeviceExt::create_texture_with_data(queue, desc, TextureDataOrder::LayerMajor, bytes)` uploads
+  a texture in one call. `write_texture` needs no 256-byte row alignment (only buffer-to-texture copies do).

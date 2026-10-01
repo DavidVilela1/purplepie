@@ -3,11 +3,11 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 5 (first 2D primitive) complete.** `cargo run` opens a window
-> where the engine draws ECS entities as coloured quads with wgpu: three reference
-> shapes on PurplePie purple, one of them moving. Game logic runs in a 60 Hz
-> fixed-timestep `fixed_update`. GPU failures end the game with a clean error. It is verified on
-> Linux. Sprites/textures are next (Stage 6).
+> **Status: Stage 6 in progress: textures and sprites work (PP-008).** `cargo run` opens a window
+> where the engine draws ECS entities with wgpu: three coloured quads (one moving) and two
+> sprites from a PNG (one tinted and spinning) on PurplePie purple. Game logic runs in a 60 Hz
+> fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
+> Linux. Draw order/layers and batching are next (PP-015).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -20,21 +20,28 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 `wgpu` or `winit`.
 
 ```rust
-// Works today (Stage 5). Coordinates: +X right, +Y up, origin at the window
+// Works today (Stage 6). Coordinates: +X right, +Y up, origin at the window
 // centre, 1 unit = 1 logical pixel (ADR-018).
 use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Quad};
+use purplepie::render::{Color, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct Sandbox;
 
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
+        // PNG only. A missing or broken file returns Error::Asset right here.
+        // Relative paths are resolved against the working directory.
+        let player = ctx.load_texture("assets/textures/player.png")?;
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, 100.0)),
-            Quad::new(Vec2::new(64.0, 64.0), Color::WHITE),
+            Sprite::new(player, Vec2::new(64.0, 64.0)),
             Velocity(Vec2::new(50.0, 0.0)), // 50 logical px per second
+        ));
+        ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(0.0, -100.0)),
+            Quad::new(Vec2::new(200.0, 20.0), Color::WHITE), // drawn under sprites
         ));
         Ok(())
     }
@@ -73,7 +80,7 @@ PurplePie/
 ├── Cargo.toml / Cargo.lock
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
-├── assets/           textures/, fonts/, shaders/
+├── assets/           textures/ (sandbox_quadrants.png), fonts/, shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
@@ -100,6 +107,9 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | glam | 0.33 | 3 |
 | wgpu | 30.0.1 | 4 |
 | pollster | 1.0.1 | 4 |
+| bytemuck | 1.25 | 5 |
+| log | 0.4 | 4 |
+| image (PNG only) | 0.25.10 | 6 |
 
 ## License
 

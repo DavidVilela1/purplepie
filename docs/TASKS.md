@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-008: Stage 6 · Textures + `Sprite` component (minimal texture handle)** · P1 · TODO ← **next task**
+- [ ] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -31,10 +31,10 @@ _None._
 - [x] **PP-006: Stage 4 · GPU context + purple clear** · DONE (2026-09-30; Windows purple window confirmed by owner screenshot)
 - [x] **PP-014: Stage 4 · GPU error & device-loss handling + logging decision** · DONE (2026-09-30)
 - [x] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · DONE (2026-10-01; verified on Linux; owner's Windows look pending, non-blocking)
+- [x] **PP-008: Stage 6 · Textures + `Sprite` component (minimal texture handle)** · DONE (2026-10-01; verified on Linux)
 
 ## Future
 
-- [ ] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · P2 · TODO
 - [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P3 · TODO
 - [ ] **PP-010: Stage 8 · Input system** · P3 · TODO
 - [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
@@ -125,19 +125,23 @@ _None._
 | Acceptance criteria | ✅ 1. Unit tests: `to_mat4` (identity/translate/scale/CCW rotation/order), view (centre → 0, corners → ±1, +Y up, depth in [0, 1]), quad corners, scale+rotation, colour per format, instance size 80, world query filter. ✅ 2. Xvfb screenshot: amber 200×100 exactly at x 240..439 / y 110..209 (20,000 px); teal rotated 45° = 9,940 px, bbox 140×140; white 80×80 moved between frames; **0 stray pixels**. ✅ 3. The renderer takes `&World` only. Components hold no wgpu types. ✅ 4. Ignored GPU tests: the pipeline builds for 3 formats with zero errors, and broken WGSL is captured as a fault (no panic). ✅ 5. Stage 1–4 regressions unchanged (exits, timing, window-destroy → exit 1, unmap/1×1/resize, no-GPU). ✅ 6. Docs updated, and PD-02 core → ADR-018. |
 | Notes | glam 0.33 deprecated `Mat4::orthographic_rh`, so the code uses `glam::camera::rh::proj::directx::orthographic`. Draw order is ECS query order (PD-08 → PP-015). The owner may want to look at it on Windows: three shapes on purple, the white one moving. |
 
-### PP-008: Textures + `Sprite` component (minimal texture handle) ← NEXT
+### PP-008: Textures + `Sprite` component (minimal texture handle)
 | Field | Value |
 |---|---|
-| Stage | 6 → Milestone M6 · Priority P1 · **TODO**. Stage 6 was split into PP-008 + PP-015 on 2026-10-01. |
+| Stage | 6 → Milestone M6 · Priority P1 · **DONE** (2026-10-01). Stage 6 was split into PP-008 + PP-015 on 2026-10-01. |
 | Dependencies | PP-007 (DONE) |
-| Why now | It's the next vertical slice (texture → sprite → screen). It also forces the first answer to "how does game code refer to a GPU resource without touching wgpu", which every later stage builds on. |
-| Scope | Re-verify and add `image` (PNG only, minimal features; ADR-013). A **minimal texture handle**: game code asks the engine to load a PNG and gets back a plain-data handle (e.g. `TextureId`). The upload happens inside `render` (ADR-009 holds: no wgpu in `Context`). This is the smallest piece of PD-06 needed now, so record it as an ADR. Public `render::Sprite { texture, size, tint }` component. Textures upload as `Rgba8UnormSrgb` (ADR-015), with a sampler and a bind group per texture. The quad pipeline grows a textured variant, or a sprite pipeline reuses the instancing pattern (ADR-019). The sandbox shows a sprite from `assets/textures/` (a small generated PNG committed to the repo). |
-| Acceptance criteria | 1. Unit tests for handle bookkeeping, plus PNG decode → expected dimensions and pixels (a tiny test PNG). 2. Missing or invalid file → a clear typed error, not a panic. 3. Xvfb: the sprite's pixels match the PNG's colours at the expected rectangle (sRGB round-trip exact within ±2). 4. Ignored GPU test: the sprite pipeline builds with zero GPU errors. 5. Stage 1–5 regressions unchanged. 6. DoD and docs updated, and an ADR for the texture handle. |
+| Scope (as built) | `image 0.25.10` (`default-features = false`, `png`; +12 crates, 116 → 128). New `Error::Asset { path, source }`. Public `render::TextureId` (Copy, private field) and `render::Sprite { texture, size, tint }` (`new`, `with_tint`). `Context::load_texture(path)` decodes immediately (typed errors; same path → same id) and `Context::texture_size(id)`. Crate-private `render/texture.rs` (`Textures` store owned by the runner, `decode_png`), `render/instance.rs` (`Instance` + `InstanceBuffer`, shared with quads), `render/sprite.rs` + `sprite.wgsl` (second instanced pipeline, one bind group per texture, `Nearest`/`ClampToEdge` sampler, texture format follows the surface's sRGB-ness, consecutive same-texture sprites share a draw call). The renderer uploads new store entries before each frame and re-uploads all of them after recreation; oversized textures → `Error::Asset`. Sprites draw after quads. Sandbox: `assets/textures/sandbox_quadrants.png` (16×16, generated) as a static 128×128 sprite at (0, 120) and a tinted, spinning 96×96 copy at (−300, −20). ADR-020. |
+| Acceptance criteria | ✅ 1. Unit tests: handle bookkeeping (sequential ids, same path → same id, `since`, sizes), PNG decode (RGBA rows, grey/RGB gain alpha, 16-bit → 8-bit, sandbox PNG quadrants), batching of consecutive textures, sprite instance maths and tint. ✅ 2. Missing / non-PNG file → `Error::Asset` naming the path with the I/O or decode error as source; failures aren't cached. End to end: the sandbox exits 1 with the cause chain, no panic. ✅ 3. Xvfb: every sprite region is exact (maxdiff 0, tolerance ±2): transparent border = background, three opaque quadrants = PNG colours, 50% alpha quadrant = linear-space blend `#5662DB`; no bleed outside the 128×128 rectangle. ✅ 4. Ignored GPU tests: sprite pipeline builds and uploads for 3 formats with zero GPU errors; incremental sync uploads once; oversized texture → `Error::Asset` before wgpu. ✅ 5. Stage 1–5 regressions unchanged. ✅ 6. Docs updated, ADR-020. |
+| Notes | Owner check on Windows: a four-colour square above the centre and a smaller tinted copy spinning on the left. |
 
-### PP-015: Draw order/layers + sprite batching by texture
-| Stage 6 → M6 · P2 · TODO | Depends on PP-008 |
+### PP-015: Draw order/layers + sprite batching by texture ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | PD-08 decided (layer/z on drawables, sorted per frame) and PD-05 decided (batch instances per texture), each recorded as an ADR. Deterministic draw order is tested (overlap pixel check). Draw calls = number of (texture, layer) batches. |
+| Stage | 6 → Milestone M6 · Priority P1 · TODO |
+| Dependencies | PP-008 (DONE) |
+| Why now | Finishes Stage 6. Today quads always draw under sprites and the order within each kind is ECS query order, so overlapping drawables can't be controlled. |
+| Scope | Decide PD-08 (a layer/`z` value on drawables, sorted per frame; no depth buffer) and PD-05 (batch instances by texture within a layer), each as an ADR. A stable, deterministic order across quads and sprites. |
+| Acceptance criteria | 1. Deterministic draw order tested with an overlap pixel check (both quad-over-sprite and sprite-over-quad). 2. Draw calls = number of (layer, texture) runs, unit-tested. 3. Equal layers keep a documented, stable order. 4. Stage 1–6 regressions unchanged. 5. ADRs for PD-05 and PD-08, docs updated. |
 
 ### PP-009: Camera2D & coordinates
 | Stage 7 → M7 · P3 · TODO | Depends on PP-008 |
@@ -152,7 +156,7 @@ _None._
 ### PP-011: Assets & resources
 | Stage 9 → M9 · P3 · TODO | Depends on PP-008 |
 |---|---|
-| Acceptance criteria | PD-06 decided. Handle store tests. Clear `Error::Asset` on missing files. |
+| Acceptance criteria | PD-06 decided (generalizing ADR-020: other asset kinds, unloading). Handle store tests. `Error::Asset` (exists since PP-008) for every asset kind. |
 
 ### PP-012: Engine/game API refinement
 | Stage 10 → M10 · P3 · TODO | Depends on PP-010, PP-011 |

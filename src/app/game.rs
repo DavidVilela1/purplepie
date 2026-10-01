@@ -1,7 +1,11 @@
 //! The game-facing callback trait and the per-call context (ADR-008).
 
+use std::path::Path;
+
 use crate::ecs::World;
 use crate::error::Result;
+use crate::math::Vec2;
+use crate::render::{TextureId, Textures};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -40,11 +44,13 @@ pub trait Game {
 /// What game code can see and do during a callback.
 ///
 /// Built fresh for every callback from engine-owned state. It never exposes
-/// `winit` or GPU types. Input is added in Stage 8.
+/// `winit` or GPU types: textures are loaded here but uploaded by the
+/// renderer (ADR-020). Input is added in Stage 8.
 pub struct Context<'a> {
     exit_requested: &'a mut bool,
     time: &'a Time,
     world: &'a mut World,
+    textures: &'a mut Textures,
     dt: f64,
 }
 
@@ -54,6 +60,7 @@ impl std::fmt::Debug for Context<'_> {
             .field("exit_requested", &self.exit_requested)
             .field("time", &self.time)
             .field("entities", &self.world.len())
+            .field("textures", &self.textures.len())
             .field("dt", &self.dt)
             .finish()
     }
@@ -64,12 +71,14 @@ impl<'a> Context<'a> {
         exit_requested: &'a mut bool,
         time: &'a Time,
         world: &'a mut World,
+        textures: &'a mut Textures,
         dt: f64,
     ) -> Self {
         Self {
             exit_requested,
             time,
             world,
+            textures,
             dt,
         }
     }
@@ -102,6 +111,29 @@ impl<'a> Context<'a> {
         self.dt as f32
     }
 
+    /// Loads a PNG image and returns a handle for [`Sprite`](crate::render::Sprite)s.
+    ///
+    /// The file is read and decoded now, so a problem is reported here as
+    /// [`Error::Asset`](crate::Error::Asset) (missing file, not a PNG, …). The
+    /// GPU upload happens before the next frame is drawn (ADR-020). Relative
+    /// paths are resolved against the current working directory. Loading the
+    /// same path again returns the same [`TextureId`] without reading the file.
+    /// Usually called from [`Game::init`].
+    ///
+    /// A texture larger than the GPU supports (at least 2048×2048 everywhere)
+    /// is reported as `Error::Asset` when the next frame is drawn, which stops
+    /// the engine.
+    pub fn load_texture(&mut self, path: impl AsRef<Path>) -> Result<TextureId> {
+        self.textures.load(path.as_ref())
+    }
+
+    /// Width and height of a loaded texture in texels, e.g. to give a
+    /// [`Sprite`](crate::render::Sprite) its image's natural size.
+    /// `None` only for an id that came from a different engine run.
+    pub fn texture_size(&self, texture: TextureId) -> Option<Vec2> {
+        self.textures.size(texture)
+    }
+
     /// Asks the engine to shut down cleanly. No further game callbacks are made.
     pub fn request_exit(&mut self) {
         *self.exit_requested = true;
@@ -121,8 +153,9 @@ mod tests {
     fn request_exit_sets_the_engine_flag() {
         let time = Time::new(0.25);
         let mut world = World::new();
+        let mut textures = Textures::default();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
+        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
         assert!(!ctx.exit_requested());
         ctx.request_exit();
         assert!(ctx.exit_requested());
@@ -133,8 +166,9 @@ mod tests {
     fn exposes_time_and_callback_dt() {
         let time = Time::new(0.25);
         let mut world = World::new();
+        let mut textures = Textures::default();
         let mut flag = false;
-        let ctx = Context::new(&mut flag, &time, &mut world, 0.25);
+        let ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.25);
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
     }
@@ -143,13 +177,35 @@ mod tests {
     fn world_changes_made_through_the_context_persist() {
         let time = Time::new(0.25);
         let mut world = World::new();
+        let mut textures = Textures::default();
         let mut flag = false;
         {
-            let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
+            let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
             ctx.world_mut().spawn((1_u32,));
             assert_eq!(ctx.world().len(), 1);
         }
         assert_eq!(world.len(), 1);
+    }
+
+    #[test]
+    fn load_texture_errors_are_typed_and_sizes_are_reported() {
+        let time = Time::new(0.25);
+        let mut world = World::new();
+        let mut textures = Textures::default();
+        let mut flag = false;
+        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
+        let err = ctx
+            .load_texture("this/file/does/not/exist.png")
+            .expect_err("missing file");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+
+        let sandbox = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/textures/sandbox_quadrants.png"
+        );
+        let id = ctx.load_texture(sandbox).expect("sandbox texture");
+        assert_eq!(ctx.texture_size(id), Some(Vec2::new(16.0, 16.0)));
+        assert_eq!(ctx.load_texture(sandbox).expect("again"), id);
     }
 
     #[test]
@@ -158,8 +214,9 @@ mod tests {
         impl Game for Minimal {}
         let time = Time::new(0.25);
         let mut world = World::new();
+        let mut textures = Textures::default();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, &mut world, 0.0);
+        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
         let mut game = Minimal;
         assert!(game.init(&mut ctx).is_ok());
         game.fixed_update(&mut ctx);

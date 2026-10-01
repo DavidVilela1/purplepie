@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-01 (Stage 5 complete, PP-007).
+Last reviewed: 2026-10-01 (PP-008 complete, Stage 6 in progress).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -26,13 +26,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-14 | Windows build environment (MSVC linker) | MITIGATED | — | High | 0 |
 | R-15 | Project inside OneDrive | MATERIALIZED | Medium | Medium | 1+ |
 | R-16 | Documentation drift | MONITORING | Medium | Medium | all |
-| R-17 | Resource and asset lifetime management | OPEN | Medium | Medium | 6, 9 |
+| R-17 | Resource and asset lifetime management | MONITORING | Medium | Medium | 6, 9 |
 | R-18 | Performance: per-frame allocations and draw calls | MONITORING | Low | Low | 5–6 |
 | R-19 | Declared MSRV untested | OPEN | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
 | R-22 | Panics inside wgpu/wgpu-hal that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
 | R-23 | CI platform jobs never exercised yet | OPEN | Medium | Low | all |
+| R-24 | Asset paths depend on the working directory | OPEN | Medium | Low | 6, 9 |
 
 ## Details
 
@@ -75,7 +76,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-08: Color-space errors
 - **Trigger:** An sRGB surface encodes linear values, so the Stage 0 spike showed intended `#591A8C` as `#A059C4`.
-- **Mitigation (ADR-015, implemented):** public colors are sRGB and converted once, per target format. Verified pixel-exact (`#6A0DAD`, 921,600/921,600 px). Textures (Stage 6) must use `*Srgb` formats.
+- **Mitigation (ADR-015, implemented):** public colors are sRGB and converted once, per target format. Verified pixel-exact (`#6A0DAD`, 921,600/921,600 px). Textures (PP-008, ADR-020) use `Rgba8UnormSrgb` on sRGB surfaces and `Rgba8Unorm` otherwise, so they blend in the same space as quad colours; a 50% alpha texel matched the linear-space blend exactly.
 - **Fallback:** Choose a non-sRGB surface format explicitly.
 
 ### R-09: Surface/device loss and uncaptured GPU errors
@@ -122,12 +123,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-17: Resource and asset lifetime management
 - **Trigger:** Textures referenced by components outlive or predate their GPU upload.
-- **Mitigation:** Components hold handles, not GPU objects (ADR-009). The design is decided in PD-06.
-- **Fallback:** Reference counting inside the asset store only.
+- **Mitigation (PP-008, ADR-020):** components hold a plain `TextureId`, never GPU objects. The CPU store is the source of truth and outlives renderers, so a recreated renderer re-uploads everything; uploads happen before each frame, so a texture is never drawn before it exists. The rest (unloading, other asset kinds) is PD-06.
+- **Remaining:** nothing is ever unloaded, and every texture keeps a CPU copy, so memory grows with every distinct texture loaded. Fine for small games; it matters for large or streamed content.
+- **Fallback:** Reference counting inside the asset store only, or dropping CPU copies once uploaded (and reloading from disk on renderer recreation).
 
 ### R-18: Performance: per-frame allocations and draw calls
 - **Trigger:** Rebuilding vertex buffers or `Vec`s every frame, or one draw call per sprite.
 - **Mitigation (PP-007):** all quads go in one instanced draw call. The instance `Vec` is reused every frame, and the GPU buffer grows by powers of two only. The remaining per-frame cost is one matrix product per quad on the CPU (ADR-019).
+- **PP-008:** sprites reuse the same scheme (reused `Vec`s, growable buffer). Consecutive sprites with the same texture share one draw call, but sprites alternating between textures in query order get one draw call each until PP-015 sorts by texture.
 - **Fallback:** Move the model matrix to the GPU (uniform view-projection) if profiling shows the CPU cost matters. Add a sprite-count benchmark in `examples/`.
 
 ### R-19: Declared MSRV untested
@@ -136,7 +139,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Raise `rust-version` to the lowest version actually verified.
 
 ### R-20: Compile-time growth in a single crate
-- **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux. The spike took about 1m21s for a clean debug build in Cowork.
+- **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux (128 after `image` in PP-008). The spike took about 1m21s for a clean debug build in Cowork.
 - **Mitigation:** Incremental builds. Measure at Stage 10.
 - **Fallback:** Workspace split (ADR-002 revisit).
 
@@ -155,3 +158,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Mitigation:** the owner's first push runs it. Record the results in PROJECT_STATUS. The workflow passed actionlint + shellcheck, and its exact commands passed locally on Linux.
 - **Fallback:** Remove `macos-latest` from the matrix if runner minutes or macOS-specific failures become a burden.
 
+### R-24: Asset paths depend on the working directory
+- **Trigger:** `Context::load_texture("assets/...")` resolves relative paths against the process's current directory, so a game started from another folder (a shortcut, a double-click on the `.exe`, `cargo run` from a subfolder) cannot find its files.
+- **Mitigation (PP-008):** the error is a clear `Error::Asset` naming the path, never a panic. The sandbox builds an absolute path from `CARGO_MANIFEST_DIR` at compile time.
+- **Fallback:** decide an asset root in PD-06 / PP-011 (e.g. next to the executable, overridable in `EngineConfig`).

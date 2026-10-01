@@ -1,6 +1,6 @@
 //! The engine's single public error type (ADR-011).
 //!
-//! Third-party errors (winit today, wgpu later) are kept as boxed
+//! Third-party errors (winit, wgpu, image) are kept as boxed
 //! [`source`](std::error::Error::source)s, so their messages survive but their
 //! types are not part of PurplePie's public API.
 
@@ -51,6 +51,17 @@ pub enum Error {
     /// The source describes the details.
     #[error("GPU rendering failed")]
     Render(#[source] BoxError),
+
+    /// A file the game asked for could not be used: it is missing, unreadable,
+    /// not a supported format, or too large for the GPU. `source` says which.
+    #[error("failed to load asset `{}`", .path.display())]
+    Asset {
+        /// The path as the game passed it.
+        path: std::path::PathBuf,
+        /// The underlying I/O, decoding or size error.
+        #[source]
+        source: BoxError,
+    },
 
     /// An error returned by game code, e.g. from [`Game::init`](crate::Game::init).
     #[error("game error")]

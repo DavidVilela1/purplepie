@@ -160,6 +160,13 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   The sandbox's reference quads give exact expectations: amber 200×100 at world (−300, 200) → 20,000 px
   centred at (W/2−300, H/2−200). Teal 100×100 rotated 45° → about 10,000 px, bbox ≈141×141. White 80×80 moving.
   Repeat after a resize: same pixel counts, positions relative to the new centre.
+- **Sprites (Stage 6+):** the static sprite is 128×128 at world (0, 120), so its top-left is (W/2−64, H/2−184), and each
+  of the 16×16 texels covers 8×8 px. Check per region: the 8-px border is exactly the clear colour (transparent texels);
+  the inner quadrants (56×56 = 3,136 px each) are `#E63946`, `#2A9D8F`, `#F4A261`, and the 50% alpha `#3A86FF` blended
+  in linear space over the clear colour (`#5662DB` on `#6A0DAD` with an sRGB surface). Tolerance ±2; lavapipe gives 0.
+  The ring just outside the rectangle must be clear colour (no edge bleed). The tinted copy at (−300, −20) spins and is not pixel-checked.
+- **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
+  Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
 
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.

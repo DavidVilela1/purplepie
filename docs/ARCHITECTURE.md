@@ -21,14 +21,15 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 5, PP-007):** `purplepie` provides `Engine`,
-`EngineConfig`, `Game`, `Context`, `Time`, `Error`, and the public modules `ecs`
+**Current reality (Stage 6, PP-008):** `purplepie` provides `Engine`,
+`EngineConfig`, `Game`, `Context` (incl. `load_texture`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`,
-`Vec2`, `Mat4`) and `render` (`Color`, `Quad`). Every frame the engine clears the
-window and draws each entity that has `Transform2D` + `Quad` as a solid-colour
-rectangle (ADR-018 coordinates, ADR-019 pipeline). The `sandbox` game shows three
-reference quads, one of them moving in its fixed-timestep `fixed_update`. There are no
-textures/sprites or input abstraction yet.
+`Vec2`, `Mat4`) and `render` (`Color`, `Quad`, `Sprite`, `TextureId`). Every frame the engine clears the
+window, draws each entity that has `Transform2D` + `Quad` as a solid-colour
+rectangle (ADR-018 coordinates, ADR-019 pipeline), then each entity with `Transform2D` + `Sprite`
+as a textured rectangle (ADR-020). The `sandbox` game shows three
+reference quads (one moving) and two sprites from one PNG (one tinted and spinning). There is no
+draw-order control, camera or input abstraction yet.
 
 ---
 
@@ -57,24 +58,29 @@ compilability → clear architecture → maintainability → extensibility → p
 | Path | Responsibility | Status |
 |---|---|---|
 | `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
-| `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Game`), `BoxError`, `Result`. winit errors are boxed sources, not public types. | VERIFIED |
+| `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | FUNCTIONAL (Linux) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps` + builders + `validate` | VERIFIED |
-| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`time()`, `dt()`, `request_exit()`, `exit_requested()`) | VERIFIED |
+| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `request_exit()`, `exit_requested()`) | VERIFIED |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
-| `src/render/mod.rs` | `pub mod render`: public `Color`, `Quad`; crate-private `Renderer` | VERIFIED |
-| `src/render/quad.rs` | Public `Quad { size, color }` component. Crate-private `view_projection` (ADR-018), `QuadInstance` (80 B Pod), `collect_instances(&World, …)`, `QuadPipeline` (instanced, growable buffer; ADR-019) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
+| `src/render/mod.rs` | `pub mod render`: public `Color`, `Quad`, `Sprite`, `TextureId`; crate-private `Renderer`, `Textures` | VERIFIED |
+| `src/render/quad.rs` | Public `Quad { size, color }` component. Crate-private `view_projection` (ADR-018), `collect_instances(&World, …)`, `QuadPipeline`, `rect_pipeline` (pipeline builder shared with sprites; ADR-019) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
+| `src/render/instance.rs` | `Instance` (80 B Pod: clip matrix + colour/tint) and `InstanceBuffer` (growable vertex buffer), shared by quads and sprites | VERIFIED |
+| `src/render/texture.rs` | Public `TextureId`. Crate-private `Textures` store (decoded RGBA8 in load order, path → id cache; owned by the runner) and `decode_png` (ADR-020) | VERIFIED (unit tests) |
+| `src/render/sprite.rs` | Public `Sprite { texture, size, tint }`. Crate-private `collect_sprites` (+ same-texture batches), `SpritePipeline` (bind group per texture, `Nearest` sampler, `sync_textures` uploads new store entries; ADR-020) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
+| `src/render/sprite.wgsl` | Sprite shader: the quad scheme plus UVs (top row = v 0) and `textureSample × tint` | VERIFIED |
 | `src/render/quad.wgsl` | Quad shader (corners from `vertex_index`, per-instance clip matrix + colour), embedded with `include_str!` | VERIFIED |
 | `src/render/color.rs` | `Color` (sRGB, straight alpha): constructors, `PURPLEPIE` `#6A0DAD`, `to_linear`, `to_wgpu(target_is_srgb)` (ADR-015) | VERIFIED |
-| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(before_present)`; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe; purple window confirmed on Windows by the owner) |
+| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(&World, &Textures, before_present)`; texture sync; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe; purple window confirmed on Windows by the owner) |
 | `src/render/faults.rs` | `FaultSlot` (first-fault-wins `Arc<Mutex<Option<GpuFault>>>`) + `GpuFault`; installs wgpu's uncaptured-error and device-lost callbacks (ADR-017) | VERIFIED (unit tests + ignored GPU test under lavapipe) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events | FUNCTIONAL (Linux) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
-| `assets/{textures,fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
+| `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
+| `assets/{fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
 
 ### Planned (ADR-003)
 
@@ -85,7 +91,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
-| `render` | `pub(crate) Renderer`, pipelines; public data types `Color`, `Sprite`, `Camera2D` | `wgpu`, `pollster`, `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
+| `render` | `pub(crate) Renderer`, pipelines, texture store; public data types `Color`, `Quad`, `Sprite`, `TextureId`, `Camera2D` | `wgpu`, `pollster`, `image` (PNG decode), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
 | `input` | `Input` state (pressed / just_pressed / just_released), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | `Handle<T>`, `Assets` store, loaders | `render` (GPU upload), `std::fs` | `app`, `input` | hot reload, async loading | 9 |
 
@@ -132,12 +138,13 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current (Stage 5, PP-007)
+### Current (Stage 6, PP-008)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
 resumed          → create Arc<Window> (once) → Renderer::new (if none; error → exit)
-                   → game.init(ctx) (once; error → exit)
+                   → game.init(ctx) (once; error → exit). ctx.load_texture decodes now → Textures
+                     (CPU, owned by the runner; outlives renderers: a new one re-uploads all)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
 RedrawRequested  → FRAME (skipped once exit has begun):
                      raw = now − last_frame (0 on the first frame)
@@ -146,8 +153,9 @@ RedrawRequested  → FRAME (skipped once exit has begun):
                      repeat n: game.fixed_update(ctx, dt = fixed_dt)   stop early on request_exit
                      time.set_alpha(fixed.alpha())
                      game.update(ctx, dt = delta)                      unless exit requested
-                     renderer.render(&world, pre_present_notify)       unless exit requested; Err → exit
-                       (collect (Transform2D, Quad) → upload instances → clear + one instanced draw)
+                     renderer.render(&world, &textures, pre_present_notify)   unless exit requested; Err → exit
+                       (upload new textures → collect (Transform2D, Quad) and (Transform2D, Sprite)
+                        → upload instances → clear + one quad draw + one sprite draw per texture run)
 Resized / ScaleFactorChanged → renderer.resize(w, h, scale_factor)   0×0 = minimized: skip rendering
 CloseRequested / Escape (if enabled) / ctx.request_exit() → event_loop.exit()
 suspended        → drop Renderer (recreated in resumed; world and time are kept)
@@ -178,7 +186,7 @@ sequenceDiagram
         E->>E: time.tick, fixed.advance → n
         E->>G: fixed_update(ctx) × n
         E->>G: update(ctx)
-        E->>R: render(&world) → queue.present
+        E->>R: render(&world, &textures) → queue.present
         E->>E: input.end_frame
     end
     W->>E: CloseRequested → exit
@@ -198,7 +206,7 @@ All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMo
 |---|---|
 | `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
 | `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
-| `Time`, `Input`, `KeyCode`, `Color`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner` (`pub(crate)`) |
+| `Time`, `Input`, `KeyCode`, `Color`, `TextureId`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
@@ -207,15 +215,15 @@ The engine runs no gameplay systems implicitly. Order is visible in the game's `
 
 ## 7. Rendering Architecture
 
-**Current (Stages 4–5; ADR-005, ADR-009, ADR-014, ADR-015, ADR-017, ADR-018, ADR-019):** a single
+**Current (Stages 4–6; ADR-005, ADR-009, ADR-014, ADR-015, ADR-017, ADR-018, ADR-019, ADR-020):** a single
 crate-private `Renderer` that clears the window to `EngineConfig::clear_color`
 every frame, then draws all `(Transform2D, Quad)` entities in one instanced draw
-call (see "Quads and coordinates" below). It is verified pixel-exact under Xvfb + lavapipe, and the owner confirmed the
+call, then all `(Transform2D, Sprite)` entities (see "Quads and coordinates" and "Sprites and textures" below). It is verified pixel-exact under Xvfb + lavapipe, and the owner confirmed the
 same purple on Windows with a real GPU. The chain below is implemented as
 shown, with `SurfaceTarget::from_window_without_display` because the display
 handle goes through the `InstanceDescriptor`. Right after `request_device`,
 PurplePie's `FaultSlot` replaces wgpu's panicking uncaptured-error handler
-and the device-lost callback. Not yet: textures/sprites and draw order (Stage 6).
+and the device-lost callback. Not yet: draw-order control (PP-015).
 
 ```text
 Instance::new(InstanceDescriptor::new_with_display_handle(owned_display_handle))
@@ -245,11 +253,25 @@ per quad (CPU): clip_from_local = view_projection(logical) × Transform2D::to_ma
                 color = Color::to_wgpu(surface is sRGB)            (ADR-015)
 GPU: one pipeline, no vertex buffer, no bind group. draw(0..6, 0..n). Corners from vertex_index.
 ```
-Draw order is ECS query order and is not specified yet (PD-08, Stage 6). There is no MSAA,
+Draw order is ECS query order and is not specified yet (PD-08, PP-015). There is no MSAA,
 and alpha blending is straight alpha.
 
+### Sprites and textures (Stage 6, ADR-020)
+
+```text
+game:  id = ctx.load_texture(path)?        read + decode PNG now → Error::Asset on failure
+       spawn((Transform2D, Sprite::new(id, size).with_tint(c)))
+store: Textures (runner-owned, CPU): RGBA8 sRGB straight alpha, load order = TextureId, never unloaded
+frame: sprites.sync_textures(store)        upload entries ≥ uploaded count; > max_texture_dimension_2d → Error::Asset
+       texture format = Rgba8UnormSrgb if surface is sRGB else Rgba8Unorm   (same blend space as quads, ADR-015)
+       per sprite: Instance { clip_from_local, tint }  (same 80 B layout as quads)
+       consecutive sprites with the same texture → one draw(0..6, range) with that texture's bind group
+       sampler: Nearest, ClampToEdge, no mipmaps.   UV: v = 0 at the top edge (image row 0)
+order: quads first, then sprites; within each, ECS query order (PP-015 adds layers)
+```
+
 Evolution, each part added only when a stage needs it:
-`Renderer { quads (Stage 5), sprites + textures (Stage 6), camera (Stage 7), text/debug (later) }`.
+`Renderer { quads (Stage 5 ✅), sprites + textures (Stage 6 ✅ PP-008), layers + batching (PP-015), camera (Stage 7), text/debug (later) }`.
 
 ---
 
@@ -260,7 +282,7 @@ Evolution, each part added only when a stage needs it:
 - **World ownership:** exactly one `hecs::World`, owned by the runner and lent to
   the game in every callback through `ctx.world()` / `ctx.world_mut()`. Because
   `world_mut()` borrows the context exclusively, read `ctx.dt()` into a local first.
-- **Components so far:** `math::Transform2D`, `ecs::Velocity`, `render::Quad` (drawn by the renderer). `Sprite` comes in Stage 6.
+- **Components so far:** `math::Transform2D`, `ecs::Velocity`, `render::Quad` and `render::Sprite` (drawn by the renderer). `Sprite` holds a plain `TextureId`, never a GPU object.
 - **Systems so far:** `ecs::integrate_velocity(world, dt)`, called by the sandbox from `fixed_update`.
 - **Components:** plain data structs. The first set is `Transform2D`, `Velocity`, then `Sprite`.
   No wgpu handles in components.
@@ -303,13 +325,13 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, faults, quad}` | pure unit tests + doctests | ✅ 55 unit tests + 11 doctests |
-| GPU-dependent code paths (`FaultSlot`, quad pipeline, shader errors on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 3 ignored tests pass under lavapipe |
-| Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, motion, resize behaviour | ✅ Stage 5 |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, faults, quad, instance, texture, sprite}` | pure unit tests + doctests | ✅ 68 unit tests + 12 doctests |
+| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 5 ignored tests pass under lavapipe |
+| Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | configured; first run pending |
 | `input` state | pure unit tests, no window/GPU | planned (Stage 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
-| `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–4 on Linux; Windows pending |
+| `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–6 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |
 
 Tests live next to code in `#[cfg(test)] mod tests`. Integration tests go in `tests/`

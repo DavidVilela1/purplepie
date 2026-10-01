@@ -33,6 +33,7 @@ pollster = "1.0.1"   # Stage 4: block on wgpu init futures (ADR-012)
 thiserror = "2.0.21" # Stage 1: `Error` enum (ADR-011)
 wgpu = "30.0.1"      # Stage 4: GPU, used only in `render` (ADR-005)
 winit = "0.30.13"    # Stage 1: window + event loop, used only in `app` (ADR-004)
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [lints.rust]
 unsafe_code = "forbid"
