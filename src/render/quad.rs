@@ -1,12 +1,12 @@
 //! Solid-colour rectangles drawn from ECS data (ADR-018, ADR-019).
 //!
 //! `Quad` is the public component. Everything else here is crate-private GPU
-//! plumbing: the view projection and the quad pipeline. Collection, sorting and
+//! plumbing: the quad pipeline (the view projection lives in `camera.rs`). Collection, sorting and
 //! batching live in `draw.rs` (ADR-021).
 
 use super::Color;
 use super::instance::Instance;
-use crate::math::{Mat4, Vec2};
+use crate::math::Vec2;
 
 /// A solid-colour rectangle, drawn centred on the entity's [`Transform2D`](crate::math::Transform2D).
 ///
@@ -37,15 +37,6 @@ impl Quad {
     pub const fn new(size: Vec2, color: Color) -> Self {
         Self { size, color }
     }
-}
-
-/// World → clip transform for the default view (ADR-018): origin at the window
-/// centre, +X right, +Y up, one world unit per logical pixel. A larger window
-/// shows more of the world rather than scaling it.
-pub(crate) fn view_projection(logical_size: Vec2) -> Mat4 {
-    let half = logical_size * 0.5;
-    // Right-handed, Y-up view space → WebGPU NDC (Y-up, depth in [0, 1]).
-    glam::camera::rh::proj::directx::orthographic(-half.x, half.x, -half.y, half.y, -1.0, 1.0)
 }
 
 /// The solid-colour quad pipeline. It has no bind groups: everything comes
@@ -118,7 +109,7 @@ pub(crate) fn rect_pipeline(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::math::Transform2D;
+    use crate::math::{Mat4, Transform2D};
     use glam::Vec4;
 
     fn clip(m: &[[f32; 4]; 4], local: Vec2) -> Vec2 {
@@ -132,7 +123,7 @@ pub(crate) mod tests {
 
     #[test]
     fn view_maps_window_center_to_clip_origin_with_y_up() {
-        let vp = view_projection(Vec2::new(200.0, 100.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let at = |x: f32, y: f32| {
             let p = vp * Vec4::new(x, y, 0.0, 1.0);
             Vec2::new(p.x, p.y)
@@ -145,13 +136,14 @@ pub(crate) mod tests {
 
     #[test]
     fn view_depth_for_z0_is_inside_the_clip_volume() {
-        let p = view_projection(Vec2::new(200.0, 100.0)) * Vec4::new(0.0, 0.0, 0.0, 1.0);
+        let p = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0))
+            * Vec4::new(0.0, 0.0, 0.0, 1.0);
         assert!((0.0..=1.0).contains(&p.z));
     }
 
     #[test]
     fn quad_corners_land_where_expected() {
-        let vp = view_projection(Vec2::new(200.0, 100.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let quad = Quad::new(Vec2::new(40.0, 20.0), Color::WHITE);
         let transform = Transform2D::from_position(Vec2::new(50.0, 0.0));
         let inst = quad_instance(&vp, &transform, &quad, false);
@@ -166,7 +158,7 @@ pub(crate) mod tests {
 
     #[test]
     fn scale_and_rotation_apply_to_the_quad() {
-        let vp = view_projection(Vec2::new(200.0, 200.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 200.0));
         let quad = Quad::new(Vec2::new(20.0, 20.0), Color::WHITE);
         let transform = Transform2D::default()
             .with_rotation(std::f32::consts::FRAC_PI_2)
@@ -180,7 +172,7 @@ pub(crate) mod tests {
 
     #[test]
     fn color_is_converted_for_the_target_format() {
-        let vp = view_projection(Vec2::new(100.0, 100.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(100.0, 100.0));
         let quad = Quad::new(Vec2::ONE, Color::rgba(0.5, 0.5, 0.5, 0.5));
         let t = Transform2D::default();
         let srgb = quad_instance(&vp, &t, &quad, true);

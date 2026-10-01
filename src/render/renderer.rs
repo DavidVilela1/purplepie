@@ -1,17 +1,17 @@
-//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019, ADR-020, ADR-021).
+//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019, ADR-020, ADR-021, ADR-022).
 //!
 //! The only code in the engine that touches `wgpu`. It receives the window
 //! as generic `raw-window-handle` providers, so it does not depend on `winit`.
 
 use std::sync::Arc;
 
-use super::Color;
 use super::Textures;
 use super::draw::{Batch, DrawList, Material};
 use super::faults::{FaultSlot, GpuFault};
 use super::instance::InstanceBuffer;
-use super::quad::{QuadPipeline, view_projection};
+use super::quad::QuadPipeline;
 use super::sprite::SpritePipeline;
+use super::{Camera2D, Color};
 use crate::ecs::World;
 use crate::error::{Error, Result};
 use crate::math::Vec2;
@@ -147,13 +147,15 @@ impl Renderer {
     /// skip the frame, and the next frame retries (ARCHITECTURE §7).
     ///
     /// Reads `world` (never writes it, ADR-009) and draws every entity with
-    /// `Transform2D` + `Quad` or `Sprite`, ordered by `Layer` (ADR-021).
+    /// `Transform2D` + `Quad` or `Sprite`, ordered by `Layer` (ADR-021), as seen
+    /// through `camera` (ADR-022).
     /// Textures in `textures` that are not on the GPU yet are uploaded first;
     /// one the GPU cannot hold returns `Err(Error::Asset)` (ADR-020).
     pub(crate) fn render(
         &mut self,
         world: &World,
         textures: &Textures,
+        camera: &Camera2D,
         before_present: impl FnOnce(),
     ) -> Result<()> {
         // Faults raised since the last frame (e.g. by `resize`) are reported first.
@@ -202,7 +204,7 @@ impl Renderer {
             / self.scale_factor as f32;
         self.draw_list.build(
             world,
-            &view_projection(logical_size),
+            &camera.view_projection(logical_size),
             self.config.format.is_srgb(),
         );
         self.instances

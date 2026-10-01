@@ -173,8 +173,16 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   (x W/2+40..W/2+87, y H/2−80..H/2−33) must be fully visible: 2,304 px pink, covering 256 px of the blended quadrant
   (2,880 blended px remain). Build the expected image per pixel over the 200×200 area around the sprite: 0 mismatches.
   Control: put the pink quad on `Layer(-1)` temporarily; it must go under the sprite (2,048 px pink).
+- **Camera (Stage 7+, ADR-022):** run with `PURPLEPIE_SANDBOX_CAMERA=x,y,zoom` and compare the **whole frame** against
+  a per-pixel model: map each pixel centre to the world with `world = camera + ((px + 0.5) − W/2, H/2 − (py + 0.5)) / zoom`,
+  then paint the static scene in draw order (amber, yellow, sprite texels, pink). Exclude the rotating teal quad, the
+  spinner and the moving quad's band. Expect 0 mismatches for (0,0,1), (0,120,2), (200,0,0.5), and again after a resize.
+  Check sensitivity by evaluating the model one world unit off (thousands of mismatches expected).
+  The timed exit line prints the logical viewport (check it after resizing mid-run) and the camera.
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
+- **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call):**
+  PP-009 showed that a per-frame `Window::inner_size()` panics inside winit once the X11 window is gone (R-22).
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
 
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.

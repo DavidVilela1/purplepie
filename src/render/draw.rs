@@ -303,7 +303,7 @@ mod tests {
             Transform2D::from_position(Vec2::new(50.0, 0.0)),
             Quad::new(Vec2::new(40.0, 20.0), Color::rgba(0.5, 0.5, 0.5, 0.5)),
         ));
-        let vp = super::super::quad::view_projection(Vec2::new(200.0, 100.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let mut list = DrawList::default();
         list.build(&world, &vp, true);
         let instance = list.instances()[0];

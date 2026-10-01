@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P1 · TODO ← **next task**
+- [ ] **PP-010: Stage 8 · Keyboard input (`Input`, own `KeyCode`, edges under fixed steps)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -33,10 +33,11 @@ _None._
 - [x] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · DONE (2026-10-01; verified on Linux; owner's Windows look pending, non-blocking)
 - [x] **PP-008: Stage 6 · Textures + `Sprite` component (minimal texture handle)** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · DONE (2026-10-01; verified on Linux)
+- [x] **PP-009: Stage 7 · Camera2D & coordinates** · DONE (2026-10-01; verified on Linux)
 
 ## Future
 
-- [ ] **PP-010: Stage 8 · Input system** · P3 · TODO
+- [ ] **PP-016: Stage 8 · Mouse input (buttons, cursor in screen and world coordinates)** · P2 · TODO
 - [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
 - [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
 - [ ] **PP-013: Owner · Choose project license** · P3 · TODO
@@ -143,19 +144,28 @@ _None._
 | Acceptance criteria | ✅ 1. Overlap pixel check under Xvfb: quad-over-sprite (layer 1 pink covers 576 px of the sprite) and sprite-over-quad (layer 0 yellow visible only through the transparent border: 2,048 px; red covers 256 px); 0 mismatches over 40,000 px at 1280×720 and again at 1000×600. Control run (pink on layer −1) puts it under the sprite. ✅ 2. Draw calls = (layer, material) runs, unit-tested. ✅ 3. Equal layers: quads, then sprites by texture, then entity index, documented on `Layer`; a test moves an entity to another archetype and the order is unchanged (and fails without the tie-breaker). ✅ 4. Stage 1–6 regressions unchanged. ✅ 5. ADR-021, docs updated. |
 | Notes | Rough cost (release): draw-list build + sort ~0.08 ms / 1k, ~1.8 ms / 10k, ~7.9 ms / 50k drawables. Owner check on Windows: a yellow square peeking out under the top-left corner of the four-colour sprite, and a pink square on top of its bottom-right corner. |
 
-### PP-009: Camera2D & coordinates ← NEXT
+### PP-009: Camera2D & coordinates
 | Field | Value |
 |---|---|
-| Stage | 7 → Milestone M7 · Priority P1 · TODO |
+| Stage | 7 → Milestone M7 · Priority P1 · **DONE** (2026-10-01). Completes Stage 7. |
 | Dependencies | PP-015 (DONE), ADR-018 |
-| Why now | Stage 6 is complete. Every later stage (input with cursor positions, the example game) needs a movable view and a way to turn screen positions into world positions. |
-| Scope | Decide PD-02 as an ADR: a `Camera2D { position, zoom }` (proposed: one engine-owned camera reached through `Context`, defaulting to the ADR-018 view so nothing changes without it). `view_projection` takes the camera. `screen_to_world` / `world_to_screen` in logical pixels. No input yet (the sandbox moves the camera on a timer). |
-| Acceptance criteria | 1. PD-02 recorded as an ADR. 2. Unit tests: default camera = today's projection exactly; pan and zoom; `screen_to_world` ∘ `world_to_screen` round-trips, including DPI scale 1.0/1.25/2.0 and non-square windows. 3. Xvfb: a panned/zoomed frame puts the reference quad and sprite at the predicted pixels. 4. Stage 1–6 regressions unchanged. |
+| Scope (as built) | New `src/render/camera.rs`: public `Camera2D { position, zoom }` (`IDENTITY`/`Default` = ADR-018 view, `new`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection`, which replaced `quad::view_projection`). The runner owns one camera and a logical viewport; `Context::camera()`, `camera_mut()`, `viewport_size()`. `Renderer::render` takes `&Camera2D`. The viewport is updated only from window events (creation, `Resized`, `ScaleFactorChanged`). Sandbox: `PURPLEPIE_SANDBOX_CAMERA=x,y,zoom`, and the timed exit prints the viewport and camera. ADR-022 resolves PD-02. |
+| Acceptance criteria | ✅ 1. ADR-022. ✅ 2. Unit tests: default camera = ADR-018 matrix exactly; pan; zoom; invalid zoom → 1; screen axes; round trips over 3 viewports × 3 cameras × 3 points; DPI 1.0/1.25/2.0 agreement between the projection and `world_to_screen`; `Context` camera persistence + viewport. ✅ 3. Xvfb whole-frame per-pixel model, 0 mismatches for cameras (0,0)×1, (0,120)×2, (200,0)×0.5, and (0,120)×2 after resizing to 1000×600; a 1-unit model offset gives ~3,000 mismatches (sensitivity control). ✅ 4. Stage 1–6 regressions unchanged, after fixing the regression below. |
+| Notes | **Regression found and fixed during validation:** the first version read `window.inner_size()` every frame; once the X11 window was destroyed, winit 0.30.13 panicked inside `inner_size` (`GetGeometry` unwrap) instead of the clean `Error::Render` exit. The viewport is now event-driven (ADR-022, R-22). |
 
-### PP-010: Input system
-| Stage 8 → M8 · P3 · TODO | Depends on PP-004, PP-009 |
+### PP-010: Keyboard input ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | PD-03 decided. Own key types. Edge semantics tested with 0, 1 and N fixed steps. |
+| Stage | 8 → Milestone M8 · Priority P1 · TODO. Stage 8 was split into PP-010 (keyboard) + PP-016 (mouse) on 2026-10-01. |
+| Dependencies | PP-004 (fixed steps), PP-009 (DONE) |
+| Why now | Stage 7 is complete. Games can't react to the player yet, and the edge-vs-fixed-step semantics (R-05) is the riskiest remaining API decision. |
+| Scope | Decide PD-03 as an ADR. New `src/input/` with a public `Input` (pressed / just_pressed / just_released) and an engine-owned `KeyCode` enum; winit → `KeyCode` translation stays in `app/`. `Context::input()`. Edges latched so each press is seen exactly once in `fixed_update` and once in `update`, whatever the number of fixed steps. Focus loss releases held keys. Replace the hard-wired Escape check with the new state only if it stays behaviour-compatible (`exit_on_escape`). Sandbox: arrow keys pan the camera. |
+| Acceptance criteria | 1. PD-03 recorded as an ADR. 2. Unit tests of the state machine: press, hold, release, press+release in one frame, and edges with 0, 1 and N fixed steps. 3. No winit types in the public API. 4. Xvfb: XTEST arrow keys move the camera by the predicted amount (pixel check), Escape still exits. 5. Stage 1–7 regressions unchanged. |
+
+### PP-016: Mouse input
+| Stage 8 → M8 · P2 · TODO | Depends on PP-010 |
+|---|---|
+| Acceptance criteria | Mouse buttons through the same `Input` edge model. Cursor position in logical screen pixels and in world coordinates (`Camera2D::screen_to_world`), tested with DPI scales. |
 
 ### PP-011: Assets & resources
 | Stage 9 → M9 · P3 · TODO | Depends on PP-008 |

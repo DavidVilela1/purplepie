@@ -35,8 +35,8 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | VERIFIED (Linux; purple window confirmed on Windows) |
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | VERIFIED (Linux; Windows look pending) |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | VERIFIED (Linux; PP-008 + PP-015; Windows look pending) |
-| **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | NOT_STARTED |
-| **M8: Input** | Game-facing input abstraction | 8 | PP-010 | NOT_STARTED |
+| **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
+| **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | NOT_STARTED |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
 | **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012 | NOT_STARTED |
 
@@ -148,7 +148,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Resource lifetime (R-17), per-frame allocations (R-18) |
 | **Definition of Done** | Project DoD |
 
-## Stage 7: Camera & Coordinates → M7
+## Stage 7: Camera & Coordinates → M7 ✅
 
 | | |
 |---|---|
@@ -158,7 +158,8 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `src/render/camera.rs`, projection uniform, `screen_to_world` |
 | **Expected result** | Resizing changes the visible area, not sprite scale. Camera pans and zooms. |
 | **Validation** | Unit tests for projection and `screen_to_world` round-trips, including DPI scale |
-| **Acceptance criteria** | PD-02 decided and recorded as an ADR |
+| **As built** | One engine-owned `Camera2D { position, zoom }` in `Context` (ADR-022); default = ADR-018 view. `screen_to_world`/`world_to_screen` in logical pixels; the viewport is updated from window events only. No projection uniform: the camera goes into the CPU-built clip matrices (ADR-019). |
+| **Acceptance criteria** | PD-02 decided and recorded as an ADR (✅ ADR-022) |
 | **Risks** | Cross-platform DPI behavior (R-12) |
 | **Definition of Done** | Project DoD |
 
@@ -168,7 +169,7 @@ driven by real ECS data rather than a throwaway draw call.
 |---|---|
 | **Objective** | Game-facing keyboard/mouse input independent of winit |
 | **Prerequisites** | M2 (fixed steps), M7 (cursor to world) |
-| **Tasks** | PP-010 |
+| **Tasks** | PP-010 (keyboard, edge model), then PP-016 (mouse + cursor in world). Split on 2026-10-01. |
 | **Files** | new `src/input/`, winit translation in `src/app/`, `Context.input` |
 | **Expected result** | Sandbox moves an entity with the arrow keys |
 | **Validation** | State-machine unit tests: press, hold, release, edges with 0, 1 and N fixed steps |

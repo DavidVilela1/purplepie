@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::ecs::World;
 use crate::error::Result;
 use crate::math::Vec2;
-use crate::render::{TextureId, Textures};
+use crate::render::{Camera2D, TextureId, Textures};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -45,12 +45,16 @@ pub trait Game {
 ///
 /// Built fresh for every callback from engine-owned state. It never exposes
 /// `winit` or GPU types: textures are loaded here but uploaded by the
-/// renderer (ADR-020). Input is added in Stage 8.
+/// renderer (ADR-020), and the camera is plain data (ADR-022). Input is
+/// added in Stage 8.
 pub struct Context<'a> {
     exit_requested: &'a mut bool,
     time: &'a Time,
     world: &'a mut World,
     textures: &'a mut Textures,
+    camera: &'a mut Camera2D,
+    /// Window size in logical pixels (zero while there is no window or it is minimized).
+    viewport: Vec2,
     dt: f64,
 }
 
@@ -61,6 +65,8 @@ impl std::fmt::Debug for Context<'_> {
             .field("time", &self.time)
             .field("entities", &self.world.len())
             .field("textures", &self.textures.len())
+            .field("camera", &self.camera)
+            .field("viewport", &self.viewport)
             .field("dt", &self.dt)
             .finish()
     }
@@ -72,6 +78,8 @@ impl<'a> Context<'a> {
         time: &'a Time,
         world: &'a mut World,
         textures: &'a mut Textures,
+        camera: &'a mut Camera2D,
+        viewport: Vec2,
         dt: f64,
     ) -> Self {
         Self {
@@ -79,6 +87,8 @@ impl<'a> Context<'a> {
             time,
             world,
             textures,
+            camera,
+            viewport,
             dt,
         }
     }
@@ -134,6 +144,24 @@ impl<'a> Context<'a> {
         self.textures.size(texture)
     }
 
+    /// The camera the next frame is drawn with (ADR-022).
+    pub fn camera(&self) -> &Camera2D {
+        self.camera
+    }
+
+    /// The camera, to pan or zoom: `ctx.camera_mut().position.x += 10.0;`.
+    /// Changes apply to the next frame drawn and persist until changed again.
+    pub fn camera_mut(&mut self) -> &mut Camera2D {
+        self.camera
+    }
+
+    /// The window's drawing area in logical pixels (physical pixels ÷ DPI
+    /// scale), as used by [`Camera2D::screen_to_world`]. Zero while the window
+    /// is minimized.
+    pub fn viewport_size(&self) -> Vec2 {
+        self.viewport
+    }
+
     /// Asks the engine to shut down cleanly. No further game callbacks are made.
     pub fn request_exit(&mut self) {
         *self.exit_requested = true;
@@ -154,8 +182,17 @@ mod tests {
         let time = Time::new(0.25);
         let mut world = World::new();
         let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
+        let mut ctx = Context::new(
+            &mut flag,
+            &time,
+            &mut world,
+            &mut textures,
+            &mut camera,
+            Vec2::new(800.0, 600.0),
+            0.0,
+        );
         assert!(!ctx.exit_requested());
         ctx.request_exit();
         assert!(ctx.exit_requested());
@@ -167,8 +204,17 @@ mod tests {
         let time = Time::new(0.25);
         let mut world = World::new();
         let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
         let mut flag = false;
-        let ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.25);
+        let ctx = Context::new(
+            &mut flag,
+            &time,
+            &mut world,
+            &mut textures,
+            &mut camera,
+            Vec2::new(800.0, 600.0),
+            0.25,
+        );
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
     }
@@ -178,9 +224,18 @@ mod tests {
         let time = Time::new(0.25);
         let mut world = World::new();
         let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
         let mut flag = false;
         {
-            let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
+            let mut ctx = Context::new(
+                &mut flag,
+                &time,
+                &mut world,
+                &mut textures,
+                &mut camera,
+                Vec2::new(800.0, 600.0),
+                0.0,
+            );
             ctx.world_mut().spawn((1_u32,));
             assert_eq!(ctx.world().len(), 1);
         }
@@ -192,8 +247,17 @@ mod tests {
         let time = Time::new(0.25);
         let mut world = World::new();
         let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
+        let mut ctx = Context::new(
+            &mut flag,
+            &time,
+            &mut world,
+            &mut textures,
+            &mut camera,
+            Vec2::new(800.0, 600.0),
+            0.0,
+        );
         let err = ctx
             .load_texture("this/file/does/not/exist.png")
             .expect_err("missing file");
@@ -209,14 +273,48 @@ mod tests {
     }
 
     #[test]
+    fn camera_changes_persist_and_viewport_is_reported() {
+        let time = Time::new(0.25);
+        let mut world = World::new();
+        let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
+        let mut flag = false;
+        {
+            let mut ctx = Context::new(
+                &mut flag,
+                &time,
+                &mut world,
+                &mut textures,
+                &mut camera,
+                Vec2::new(800.0, 600.0),
+                0.0,
+            );
+            assert_eq!(ctx.camera(), &Camera2D::IDENTITY);
+            assert_eq!(ctx.viewport_size(), Vec2::new(800.0, 600.0));
+            ctx.camera_mut().position = Vec2::new(5.0, 6.0);
+            ctx.camera_mut().zoom = 2.0;
+        }
+        assert_eq!(camera, Camera2D::new(Vec2::new(5.0, 6.0), 2.0));
+    }
+
+    #[test]
     fn default_callbacks_do_nothing() {
         struct Minimal;
         impl Game for Minimal {}
         let time = Time::new(0.25);
         let mut world = World::new();
         let mut textures = Textures::default();
+        let mut camera = Camera2D::default();
         let mut flag = false;
-        let mut ctx = Context::new(&mut flag, &time, &mut world, &mut textures, 0.0);
+        let mut ctx = Context::new(
+            &mut flag,
+            &time,
+            &mut world,
+            &mut textures,
+            &mut camera,
+            Vec2::new(800.0, 600.0),
+            0.0,
+        );
         let mut game = Minimal;
         assert!(game.init(&mut ctx).is_ok());
         game.fixed_update(&mut ctx);

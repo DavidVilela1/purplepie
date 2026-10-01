@@ -61,6 +61,8 @@ download other toolchains. Raise the value if a lower toolchain fails.
   `WindowEvent::RedrawRequested`; call `window.pre_present_notify()` before
   presenting.
 * `ActiveEventLoop::exit()` for shutdown; `exiting` for final cleanup.
+* **X11 pitfall (PP-009):** `Window::inner_size()` makes an X server round trip and `unwrap`s the result, so it panics
+  if the window was destroyed externally. Take sizes from `WindowEvent::Resized` instead of querying every frame.
 
 ## hecs 0.11 API note
 

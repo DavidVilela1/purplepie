@@ -3,12 +3,12 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 6 (sprites) complete.** `cargo run` opens a window
+> **Status: Stage 7 (camera) complete.** `cargo run` opens a window
 > where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
-> sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`
-> and batched by texture. Game logic runs in a 60 Hz
+> sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`,
+> batched by texture, and seen through a `Camera2D` the game can pan and zoom. Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. A movable `Camera2D` is next (Stage 7, PP-009).
+> Linux. Keyboard input is next (Stage 8, PP-010).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -51,6 +51,9 @@ impl Game for Sandbox {
     fn fixed_update(&mut self, ctx: &mut Context<'_>) {
         let dt = ctx.dt(); // fixed step: 1/60 s by default
         ecs::integrate_velocity(ctx.world_mut(), dt);
+        // The camera follows at 25 units per second and shows everything 1.5× larger.
+        ctx.camera_mut().position.x += 25.0 * dt;
+        ctx.camera_mut().zoom = 1.5;
     }
 }
 
@@ -67,6 +70,7 @@ Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95).
 
 ```bash
 cargo run            # opens the sandbox window (Escape or close to quit)
+# PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test

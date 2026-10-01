@@ -242,7 +242,6 @@ impl SpritePipeline {
 mod tests {
     use super::super::draw::DrawList;
     use super::super::quad::tests::headless_device_and_queue;
-    use super::super::quad::view_projection;
     use super::super::texture::tests::encode_png;
     use super::*;
     use crate::math::Transform2D;
@@ -274,7 +273,7 @@ mod tests {
             Transform2D::from_position(Vec2::new(50.0, 0.0)),
             Sprite::new(id, Vec2::new(40.0, 20.0)).with_tint(Color::rgba(1.0, 0.5, 0.0, 0.25)),
         ));
-        let vp = view_projection(Vec2::new(200.0, 100.0));
+        let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let mut list = DrawList::default();
         list.build(&world, &vp, false);
         let instance = list.instances()[0];

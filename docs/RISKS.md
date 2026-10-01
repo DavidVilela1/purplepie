@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-01 (Stage 6 complete, PP-015).
+Last reviewed: 2026-10-01 (Stage 7 complete, PP-009).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -31,7 +31,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-19 | Declared MSRV untested | OPEN | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
-| R-22 | Panics inside wgpu/wgpu-hal that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
+| R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
 | R-23 | CI platform jobs never exercised yet | OPEN | Medium | Low | all |
 | R-24 | Asset paths depend on the working directory | OPEN | Medium | Low | 6, 9 |
 
@@ -98,6 +98,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 ### R-12: Cross-platform window behavior
 - **Trigger:** DPI scaling, Wayland vs X11, macOS main-thread rules, minimize reporting a 0×0 size.
 - **Mitigation:** No platform-specific code. Physical sizes for the surface. Never configure 0×0.
+- **PP-009:** the camera's screen ↔ world mapping is unit-tested against the renderer's projection at DPI scales 1.0, 1.25 and 2.0. Xvfb only exercises scale 1.0, so real high-DPI displays (the owner's Windows laptop) are still unverified.
 - **Fallback:** Platform-specific workarounds behind `cfg`, each documented.
 
 ### R-13: Future public API stability
@@ -149,9 +150,10 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Mitigation:** Resources live in `Context`. Events are plain `Vec`s owned by the engine or game.
 - **Fallback:** Revisit ADR-006.
 
-### R-22: Panics inside wgpu/wgpu-hal that PurplePie cannot intercept
+### R-22: Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept
 - **Trigger (occurred, PP-014):** recreating a surface for a destroyed X11 window panicked in wgpu-hal 30.0.1 (`vulkan/instance.rs:407`, an `expect`), not returning an error.
-- **Mitigation:** avoid the triggering call (`Lost` is fatal, ADR-017). Keep the end-to-end fault tests (DEVELOPMENT §8) and re-run them after every wgpu upgrade (R-01).
+- **Trigger (occurred, PP-009):** `Window::inner_size()` on a destroyed X11 window panicked in winit 0.30.13 (`platform_impl/linux/x11/window.rs:1248`, `GetGeometry` → `unwrap`). It was hit by a per-frame viewport query and caught by the window-destroy fault test before delivery.
+- **Mitigation:** avoid the triggering calls (`Lost` is fatal, ADR-017; the viewport is event-driven and the window is not queried per frame, ADR-022). Keep the end-to-end fault tests (DEVELOPMENT §8) and re-run them after every wgpu or winit upgrade (R-01, R-02), and after any change that adds a per-frame window or surface call.
 - **Fallback:** Report upstream, or pin to a wgpu version without the panic.
 
 ### R-23: CI platform jobs never exercised yet

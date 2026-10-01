@@ -17,7 +17,8 @@ use super::game::{Context, Game};
 use super::pacer::{FRAME_INTERVAL, FramePacer};
 use crate::ecs::World;
 use crate::error::{Error, Result};
-use crate::render::{Renderer, Textures};
+use crate::math::Vec2;
+use crate::render::{Camera2D, Renderer, Textures};
 use crate::time::{FixedTimestep, Time};
 
 /// Owns the game and all engine state for the lifetime of the event loop.
@@ -38,6 +39,10 @@ pub(crate) struct Runner<G: Game> {
     world: World,
     /// Every texture the game loaded (CPU copies; ADR-020). Outlives renderers.
     textures: Textures,
+    /// The single camera, lent to the game and read by the renderer (ADR-022).
+    camera: Camera2D,
+    /// Window drawing area in logical pixels, kept up to date from window events.
+    viewport: Vec2,
     /// When the previous frame started; `None` before the first frame.
     last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
@@ -57,6 +62,8 @@ impl<G: Game> Runner<G> {
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
             world: World::new(),
             textures: Textures::default(),
+            camera: Camera2D::default(),
+            viewport: Vec2::ZERO,
             last_frame: None,
             error: None,
             config,
@@ -83,6 +90,20 @@ impl<G: Game> Runner<G> {
         }
     }
 
+    /// Recomputes the logical viewport from a physical size and DPI scale.
+    ///
+    /// Called only from window events and window creation, never per frame:
+    /// querying a window that the platform has already destroyed can panic
+    /// inside winit (X11 `inner_size`), which a per-frame query hit in testing.
+    fn set_viewport(&mut self, width: u32, height: u32, scale_factor: f64) {
+        let scale = if scale_factor.is_finite() && scale_factor > 0.0 {
+            scale_factor
+        } else {
+            1.0
+        };
+        self.viewport = Vec2::new(width as f32, height as f32) / scale as f32;
+    }
+
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         let attributes = Window::default_attributes()
             .with_title(self.config.title.clone())
@@ -91,6 +112,8 @@ impl<G: Game> Runner<G> {
         let window = event_loop
             .create_window(attributes)
             .map_err(|e| Error::Window(Box::new(e)))?;
+        let size = window.inner_size();
+        self.set_viewport(size.width, size.height, window.scale_factor());
         self.window = Some(Arc::new(window));
         Ok(())
     }
@@ -118,7 +141,7 @@ impl<G: Game> Runner<G> {
         let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
             return;
         };
-        if let Err(error) = renderer.render(&self.world, &self.textures, || {
+        if let Err(error) = renderer.render(&self.world, &self.textures, &self.camera, || {
             window.pre_present_notify();
         }) {
             self.fail(event_loop, error);
@@ -136,6 +159,7 @@ impl<G: Game> Runner<G> {
         self.last_frame = Some(now);
         let delta = self.time.begin_frame(raw_delta, self.config.max_frame_dt);
 
+        let viewport = self.viewport;
         let steps = self.fixed.advance(delta);
         let fixed_dt = self.config.fixed_dt;
         for _ in 0..steps {
@@ -145,6 +169,8 @@ impl<G: Game> Runner<G> {
                 &self.time,
                 &mut self.world,
                 &mut self.textures,
+                &mut self.camera,
+                viewport,
                 fixed_dt,
             );
             self.game.fixed_update(&mut ctx);
@@ -160,6 +186,8 @@ impl<G: Game> Runner<G> {
                 &self.time,
                 &mut self.world,
                 &mut self.textures,
+                &mut self.camera,
+                viewport,
                 delta,
             );
             self.game.update(&mut ctx);
@@ -188,11 +216,14 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         }
         if !self.initialized {
             self.initialized = true;
+            let viewport = self.viewport;
             let mut ctx = Context::new(
                 &mut self.exit_requested,
                 &self.time,
                 &mut self.world,
                 &mut self.textures,
+                &mut self.camera,
+                viewport,
                 0.0,
             );
             if let Err(error) = self.game.init(&mut ctx) {
@@ -225,15 +256,22 @@ impl<G: Game> ApplicationHandler for Runner<G> {
                 ..
             } if self.config.exit_on_escape => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
-                    renderer.resize(size.width, size.height, window.scale_factor());
+                let Some(scale_factor) = self.window.as_ref().map(|w| w.scale_factor()) else {
+                    return;
+                };
+                self.set_viewport(size.width, size.height, scale_factor);
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(size.width, size.height, scale_factor);
                 }
             }
             // winit follows a DPI change with `Resized` if the physical size changes.
             // Update the scale here too, in case it doesn't.
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
-                    let size = window.inner_size();
+                let Some(size) = self.window.as_ref().map(|w| w.inner_size()) else {
+                    return;
+                };
+                self.set_viewport(size.width, size.height, scale_factor);
+                if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height, scale_factor);
                 }
             }

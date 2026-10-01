@@ -6,6 +6,8 @@
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
 //!   (used for automated smoke runs).
+//! - `PURPLEPIE_SANDBOX_CAMERA=x,y,zoom`: start with this camera instead of
+//!   the default view (used by smoke tests to check panning and zooming).
 //! - `PURPLEPIE_LOG=off|error|warn|info|debug|trace`: log level for messages
 //!   from PurplePie, wgpu and other crates using the `log` facade (default `warn`).
 
@@ -14,11 +16,12 @@ use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Layer, Quad, Sprite};
+use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
 const LOG_LEVEL_VAR: &str = "PURPLEPIE_LOG";
+const CAMERA_VAR: &str = "PURPLEPIE_SANDBOX_CAMERA";
 
 /// Minimal `log` backend that prints to stderr. The engine never installs a
 /// logger (ADR-016). Choosing one is the game's job, and this is the sandbox's choice.
@@ -53,6 +56,21 @@ fn init_logging() -> Result<(), String> {
     Ok(())
 }
 
+/// Parses `x,y,zoom` (e.g. `0,120,2`) into a camera.
+fn parse_camera(value: &str) -> Result<Camera2D, String> {
+    let parts: Vec<f32> = value
+        .split(',')
+        .map(|p| p.trim().parse::<f32>())
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("{CAMERA_VAR}: {e}"))?;
+    match parts[..] {
+        [x, y, zoom] if zoom.is_finite() && zoom > 0.0 => Ok(Camera2D::new(Vec2::new(x, y), zoom)),
+        _ => Err(format!(
+            "{CAMERA_VAR} must be x,y,zoom with zoom > 0, got {value:?}"
+        )),
+    }
+}
+
 /// The moving test entity: 120 world units (logical pixels) per second along +X.
 const MOVER_VELOCITY: Vec2 = Vec2::new(120.0, 0.0);
 /// The mover bounces between `-MOVER_LIMIT` and `+MOVER_LIMIT` on the X axis.
@@ -72,10 +90,12 @@ struct Sandbox {
     simulated_seconds: f64,
     mover: Option<Entity>,
     spinner: Option<Entity>,
+    camera: Camera2D,
 }
 
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
+        *ctx.camera_mut() = self.camera;
         let texture = ctx.load_texture(SPRITE_TEXTURE)?;
         let world = ctx.world_mut();
         // Static reference shapes; their screen positions are checked by smoke tests.
@@ -160,6 +180,12 @@ impl Game for Sandbox {
                 ),
                 None => println!("sandbox: mover missing; requesting exit"),
             }
+            let viewport = ctx.viewport_size();
+            let camera = ctx.camera();
+            println!(
+                "sandbox: viewport {}x{} logical px, camera at ({}, {}) zoom {}",
+                viewport.x, viewport.y, camera.position.x, camera.position.y, camera.zoom
+            );
             ctx.request_exit();
         }
     }
@@ -183,12 +209,24 @@ fn main() -> ExitCode {
         Err(_) => None,
     };
 
+    let camera = match std::env::var(CAMERA_VAR) {
+        Ok(value) => match parse_camera(&value) {
+            Ok(camera) => camera,
+            Err(message) => {
+                eprintln!("error: {message}");
+                return ExitCode::FAILURE;
+            }
+        },
+        Err(_) => Camera2D::default(),
+    };
+
     println!("PurplePie sandbox v{}", purplepie::VERSION);
     let game = Sandbox {
         exit_after_frames,
         simulated_seconds: 0.0,
         mover: None,
         spinner: None,
+        camera,
     };
     let result = Engine::new(EngineConfig::new("PurplePie Sandbox")).and_then(|e| e.run(game));
 

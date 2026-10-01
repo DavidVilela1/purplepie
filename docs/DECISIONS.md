@@ -20,7 +20,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) + camera/viewport (Stage 7) |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
@@ -30,10 +30,11 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-015 | Public colors are sRGB; the renderer converts per target format | Accepted | Yes (Stage 4) |
 | ADR-016 | Diagnostics: `log` facade in the engine; games choose the logger | Accepted | Yes (Stage 4, PP-014) |
 | ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
-| ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted | Yes (Stage 5, PP-007) |
+| ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted (now the default camera, ADR-022) | Yes (Stage 5, PP-007) |
 | ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted ("one draw call for all quads" is now one per layer, ADR-021) | Yes (Stage 5, PP-007); instance code shared with sprites since PP-008 |
 | ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted (the "sprites drawn after quads" clause is superseded by ADR-021) | Yes (Stage 6, PP-008) |
 | ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
+| ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
 
 ---
 
@@ -769,7 +770,7 @@ return errors instead of panicking.
 # ADR-018: World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel
 
 ## Status
-Accepted (2026-10-01, PP-007). Resolves the core of PD-02. Camera controls remain pending (Stage 7).
+Accepted (2026-10-01, PP-007). Resolves the core of PD-02. Camera controls remain pending (Stage 7). *Update 2026-10-01 (PP-009):* this view is now `Camera2D::IDENTITY`, the default camera (ADR-022); "origin at the window centre" holds for the default camera.
 
 ## Context
 The first visible primitive needs a defined mapping from `Transform2D` to the
@@ -989,16 +990,73 @@ y-sorting or sub-layer order, or more drawable kinds (text, shapes) that need th
 
 ---
 
+# ADR-022: One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels
+
+## Status
+Accepted (2026-10-01, PP-009). Resolves PD-02 (camera controls). Builds on ADR-018, which becomes the default camera.
+
+## Context
+ADR-018 fixed the view: world origin at the window centre, 1 unit = 1 logical pixel. Games need to follow a
+player, zoom, and (from Stage 8) turn cursor positions into world positions. The renderer must stay
+crate-private and read-only (ADR-009), and game code must not see wgpu or winit types.
+
+## Decision
+- **Type:** public `render::Camera2D { position: Vec2, zoom: f32 }` (plain `Copy` data). `position` is the world point at
+  the window centre; `zoom` is logical pixels per world unit. `Camera2D::IDENTITY` / `Default` = ADR-018's view, so
+  games that ignore the camera see no change. A non-finite or non-positive zoom is treated as 1 (`effective_zoom`).
+  No rotation.
+- **Ownership:** exactly **one** camera, owned by the runner, lent to the game through `Context::camera()` /
+  `camera_mut()`, and passed read-only to `Renderer::render`. Changes apply to the next frame drawn.
+- **Projection:** `Camera2D::view_projection(viewport)` (crate-private) = orthographic over the visible world rectangle
+  `position ± viewport / 2 / zoom`, same glam function as ADR-018. It replaced `quad::view_projection`.
+- **Screen space:** logical pixels, origin at the top-left of the drawing area, +Y down (OS cursor convention), pixel
+  centres at `n + 0.5`. `Camera2D::screen_to_world(screen, viewport)` and `world_to_screen` are exact inverses.
+  Physical pixels → logical: divide by the window scale factor (input in Stage 8 will do this before calling them).
+- **Viewport:** `Context::viewport_size()` = window size in logical pixels. The runner updates it **only from window
+  events** (creation, `Resized`, `ScaleFactorChanged`), never by querying the window per frame (see Consequences).
+
+## Alternatives Considered
+- **Camera as an ECS component/entity (Bevy style):** allows several cameras, but needs "which camera is active" rules
+  and a query in the renderer. One camera covers a small 2D engine; split screen is not a goal.
+- **`pixels_per_unit` separate from `zoom`:** a second scale knob with no current user. `zoom` already maps world units to pixels.
+- **Camera rotation:** no current need; it complicates `screen_to_world` and pixel-exact tests. Can be added without breaking callers.
+- **Screen coordinates with +Y up or in physical pixels:** +Y down matches what the OS reports for the cursor, and
+  logical pixels match how sizes are specified everywhere else (ADR-018).
+- **`screen_to_world` on `Context` only:** the pure methods on `Camera2D` are unit-testable without a window; a
+  `Context` convenience can be added with input (Stage 8).
+
+## Rationale
+It is the smallest change that gives panning, zooming and a tested screen ↔ world mapping, keeps ADR-018 as the
+default, and keeps the renderer read-only.
+
+## Consequences
+### Positive
+- Verified under Xvfb: whole-frame per-pixel models for cameras (0, 0)×1, (0, 120)×2 and (200, 0)×0.5, plus (0, 120)×2
+  after a resize to 1000×600, all with **0 mismatches** (moving/rotated objects excluded). A 1-unit camera offset in the
+  model produces ~3,000 mismatches, so the check is sensitive.
+- Unit tests: default camera equals the ADR-018 matrix exactly; pan; zoom; invalid zoom; round trips; DPI 1.0/1.25/2.0
+  agreement between the renderer's projection and `world_to_screen`.
+- **Found while testing:** reading the window size every frame (`Window::inner_size`) panicked inside winit 0.30.13 on
+  X11 once the window had been destroyed (`GetGeometry` → `unwrap`), turning the clean ADR-017 exit into a crash. The
+  viewport is therefore event-driven (R-22).
+### Negative
+- Non-integer zoom with `Nearest` sampling makes texels uneven in size (1 or 2 pixels at zoom 1.5).
+- One camera only; no UI/screen-space layer that ignores the camera.
+
+## Revisit Conditions
+Split screen or minimaps (several cameras), a screen-space UI layer, a need for camera rotation, or pixel-art games that need integer-zoom snapping.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021 on 2026-10-01.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021 and PD-02 (camera) by ADR-022, all on 2026-10-01.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-02 | Camera controls (the coordinate core is decided in ADR-018) | `Camera2D { position, zoom }` over the ADR-018 default view; `screen_to_world` for cursor input | PP-009 (Stage 7) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
 | PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |
