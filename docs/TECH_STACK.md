@@ -12,8 +12,8 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | `glam` | **0.33** (0.33.11) ✅ added | 3 | `Vec2`, `Mat4`, `Affine2`; `default-features = false, features = ["std"]`, which omits the f64/integer types of the default `all-types` feature | 1.68.2 |
 | `wgpu` | **30.0.1** ✅ added | 4 | GPU abstraction; default features (all native backends + `wgsl`) | 1.87 |
 | `pollster` | **1.0.1** ✅ added | 4 | block on wgpu init futures (ADR-012 in [DECISIONS.md](DECISIONS.md)) | 1.69 |
+| `bytemuck` | **1.25** ✅ added (1.25.2, `derive`; already in the tree via wgpu, so no new crate) | 5 | `Pod` instance data → bytes (ADR-019) | — |
 | `log` | **0.4** ✅ added (0.4.34; already in the tree via wgpu, so no new crate) | 4 | diagnostics facade (ADR-016). Note that winit 0.30 itself logs through `tracing`. | — |
-| `bytemuck` | TBD | 5 | vertex/uniform casting | decide in Stage 5 |
 | `image` | TBD (PNG only) | 6/9 | texture decoding | decide in Stage 6 |
 
 **Declared `rust-version = "1.90"`.** This is the highest `rust-version` found
@@ -78,4 +78,12 @@ is needed.
 - Passing the display through `InstanceDescriptor` means surfaces are created with `SurfaceTarget::from_window_without_display`.
   `wgpu::WindowHandle` is `HasWindowHandle + Send + Sync`, so `Arc<dyn wgpu::WindowHandle>` works as a winit-free window parameter.
 - With no usable backend (Vulkan ICDs and EGL vendors hidden), `create_surface` fails with "Failed to create surface for any enabled backend", which becomes `Error::Surface` and exit 1.
+
+## glam 0.33 note (PP-007)
+
+`Mat4::orthographic_rh` and the other projection constructors on `Mat4` are deprecated in glam 0.33.
+Use `glam::camera::{lh,rh}::proj::{opengl,vulkan,directx}::*` instead. For WebGPU (Y-up NDC, depth [0, 1]), use
+`glam::camera::rh::proj::directx::orthographic`. It is available with `default-features = false, features = ["std"]`.
+`cargo add bytemuck@1 --features derive` failed against the newest index entry ("unrecognized feature"), so the
+dependency was written by hand as `{ version = "1.25", features = ["derive"] }`, matching the locked 1.25.2.
 

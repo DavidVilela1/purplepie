@@ -103,6 +103,7 @@ impl<G: Game> Runner<G> {
             window.clone(),
             size.width,
             size.height,
+            window.scale_factor(),
             self.config.clear_color,
         )?;
         self.renderer = Some(renderer);
@@ -114,7 +115,7 @@ impl<G: Game> Runner<G> {
         let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
             return;
         };
-        if let Err(error) = renderer.render(|| window.pre_present_notify()) {
+        if let Err(error) = renderer.render(&self.world, || window.pre_present_notify()) {
             self.fail(event_loop, error);
         }
     }
@@ -207,8 +208,16 @@ impl<G: Game> ApplicationHandler for Runner<G> {
                 ..
             } if self.config.exit_on_escape => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.resize(size.width, size.height);
+                if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
+                    renderer.resize(size.width, size.height, window.scale_factor());
+                }
+            }
+            // winit follows a DPI change with `Resized` if the physical size changes.
+            // Update the scale here too, in case it doesn't.
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
+                    let size = window.inner_size();
+                    renderer.resize(size.width, size.height, scale_factor);
                 }
             }
             // `exit()` does not stop the loop immediately: already-queued events

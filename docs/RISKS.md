@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-09-30 (Stage 4 complete, PP-014).
+Last reviewed: 2026-10-01 (Stage 5 complete, PP-007).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -27,7 +27,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-15 | Project inside OneDrive | MATERIALIZED | Medium | Medium | 1+ |
 | R-16 | Documentation drift | MONITORING | Medium | Medium | all |
 | R-17 | Resource and asset lifetime management | OPEN | Medium | Medium | 6, 9 |
-| R-18 | Performance: per-frame allocations and draw calls | OPEN | Medium | Low | 5–6 |
+| R-18 | Performance: per-frame allocations and draw calls | MONITORING | Low | Low | 5–6 |
 | R-19 | Declared MSRV untested | OPEN | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
@@ -127,8 +127,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-18: Performance: per-frame allocations and draw calls
 - **Trigger:** Rebuilding vertex buffers or `Vec`s every frame, or one draw call per sprite.
-- **Mitigation:** Reuse buffers and instanced batching (PD-05). Measure before optimizing.
-- **Fallback:** Profile with a sprite-count benchmark in `examples/`.
+- **Mitigation (PP-007):** all quads go in one instanced draw call. The instance `Vec` is reused every frame, and the GPU buffer grows by powers of two only. The remaining per-frame cost is one matrix product per quad on the CPU (ADR-019).
+- **Fallback:** Move the model matrix to the GPU (uniform view-projection) if profiling shows the CPU cost matters. Add a sprite-count benchmark in `examples/`.
 
 ### R-19: Declared MSRV untested
 - **Trigger:** A user builds with Rust 1.90–1.94. `rust-version = "1.90"` comes from dependency metadata, and only 1.95 was run.

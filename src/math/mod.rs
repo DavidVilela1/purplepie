@@ -3,12 +3,15 @@
 //! Built on `glam` (f32 types only). Independent of windowing, ECS and GPU
 //! code. Conversion to GPU matrices happens in the renderer (Stage 4+).
 
-pub use glam::Vec2;
+pub use glam::{Mat4, Vec2};
+
+use glam::{Quat, Vec3};
 
 /// Position, rotation and scale of something in 2D world space.
 ///
-/// Rotation is in radians. Units and axis directions are defined in Stage 7
-/// (pending decision PD-02); until then, treat them as abstract world units.
+/// Coordinates follow ADR-018: +X right, +Y up, rotation in radians
+/// counter-clockwise. With the default view, one world unit is one logical
+/// pixel and the origin is the center of the window.
 ///
 /// ```
 /// use purplepie::math::{Transform2D, Vec2};
@@ -56,6 +59,24 @@ impl Transform2D {
         self.scale = scale;
         self
     }
+
+    /// The local-to-world matrix: scale first, then rotate, then translate.
+    ///
+    /// ```
+    /// use purplepie::math::{Transform2D, Vec2};
+    ///
+    /// let t = Transform2D::from_position(Vec2::new(10.0, 0.0)).with_scale(Vec2::splat(2.0));
+    /// let m = t.to_mat4();
+    /// assert_eq!(m.w_axis.x, 10.0); // translation
+    /// assert_eq!(m.x_axis.x, 2.0); // scale (no rotation)
+    /// ```
+    pub fn to_mat4(&self) -> Mat4 {
+        Mat4::from_scale_rotation_translation(
+            self.scale.extend(1.0),
+            Quat::from_rotation_z(self.rotation),
+            Vec3::new(self.position.x, self.position.y, 0.0),
+        )
+    }
 }
 
 impl Default for Transform2D {
@@ -86,5 +107,37 @@ mod tests {
         assert_eq!(t.position, Vec2::new(1.0, 2.0));
         assert_eq!(t.rotation, 1.5);
         assert_eq!(t.scale, Vec2::new(2.0, 3.0));
+    }
+
+    fn apply(t: &Transform2D, x: f32, y: f32) -> Vec2 {
+        let p = t.to_mat4().transform_point3(Vec3::new(x, y, 0.0));
+        Vec2::new(p.x, p.y)
+    }
+
+    #[test]
+    fn identity_matrix_leaves_points_unchanged() {
+        assert_eq!(Transform2D::IDENTITY.to_mat4(), Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn matrix_translates_scales_and_rotates_counter_clockwise() {
+        let t = Transform2D::from_position(Vec2::new(5.0, -3.0));
+        assert_eq!(apply(&t, 1.0, 1.0), Vec2::new(6.0, -2.0));
+
+        let t = Transform2D::default().with_scale(Vec2::new(2.0, 3.0));
+        assert_eq!(apply(&t, 1.0, 1.0), Vec2::new(2.0, 3.0));
+
+        // +90° (counter-clockwise, ADR-018): +X goes to +Y.
+        let t = Transform2D::default().with_rotation(std::f32::consts::FRAC_PI_2);
+        assert!(apply(&t, 1.0, 0.0).abs_diff_eq(Vec2::new(0.0, 1.0), 1e-6));
+    }
+
+    #[test]
+    fn scale_is_applied_before_rotation_and_translation() {
+        let t = Transform2D::from_position(Vec2::new(10.0, 0.0))
+            .with_rotation(std::f32::consts::FRAC_PI_2)
+            .with_scale(Vec2::new(2.0, 1.0));
+        // (1, 0) → scale (2, 0) → rotate (0, 2) → translate (10, 2).
+        assert!(apply(&t, 1.0, 0.0).abs_diff_eq(Vec2::new(10.0, 2.0), 1e-5));
     }
 }

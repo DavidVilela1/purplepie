@@ -14,6 +14,7 @@ use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::math::{Transform2D, Vec2};
+use purplepie::render::{Color, Quad};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -52,8 +53,10 @@ fn init_logging() -> Result<(), String> {
     Ok(())
 }
 
-/// The sandbox's moving test entity: 1 world unit per second along +X.
-const MOVER_VELOCITY: Vec2 = Vec2::new(1.0, 0.0);
+/// The moving test entity: 120 world units (logical pixels) per second along +X.
+const MOVER_VELOCITY: Vec2 = Vec2::new(120.0, 0.0);
+/// The mover bounces between `-MOVER_LIMIT` and `+MOVER_LIMIT` on the X axis.
+const MOVER_LIMIT: f32 = 500.0;
 
 struct Sandbox {
     exit_after_frames: Option<u64>,
@@ -64,9 +67,22 @@ struct Sandbox {
 
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
-        let mover = ctx
-            .world_mut()
-            .spawn((Transform2D::default(), Velocity(MOVER_VELOCITY)));
+        let world = ctx.world_mut();
+        // Static reference shapes; their screen positions are checked by smoke tests.
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-300.0, 200.0)),
+            Quad::new(Vec2::new(200.0, 100.0), Color::hex(0xFFB000)),
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(300.0, 200.0))
+                .with_rotation(std::f32::consts::FRAC_PI_4),
+            Quad::new(Vec2::new(100.0, 100.0), Color::hex(0x00C2A8)),
+        ));
+        let mover = world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, -150.0)),
+            Velocity(MOVER_VELOCITY),
+            Quad::new(Vec2::new(80.0, 80.0), Color::WHITE),
+        ));
         self.mover = Some(mover);
         Ok(())
     }
@@ -75,6 +91,13 @@ impl Game for Sandbox {
         self.simulated_seconds += f64::from(ctx.dt());
         let dt = ctx.dt();
         ecs::integrate_velocity(ctx.world_mut(), dt);
+        // Bounce the mover between the limits (game logic, not an engine feature).
+        for (transform, velocity) in ctx.world_mut().query_mut::<(&Transform2D, &mut Velocity)>() {
+            let x = transform.position.x;
+            if (x > MOVER_LIMIT && velocity.0.x > 0.0) || (x < -MOVER_LIMIT && velocity.0.x < 0.0) {
+                velocity.0.x = -velocity.0.x;
+            }
+        }
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {

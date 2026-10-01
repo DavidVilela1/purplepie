@@ -26,6 +26,7 @@ path = "src/main.rs"
 # Stage 3: 2D math (ADR-007). Only the always-built f32 types (Vec2, Affine2, Mat4);
 # the default "all-types" feature (f64/integer vectors) is not needed.
 glam = { version = "0.33", default-features = false, features = ["std"] }
+bytemuck = { version = "1.25", features = ["derive"] }  # Stage 5: instance data as bytes (ADR-019); already in the tree via wgpu
 hecs = "0.11.1"      # Stage 3: ECS (ADR-006)
 log = "0.4"          # Stage 4: diagnostics facade (ADR-016); already in the tree via wgpu
 pollster = "1.0.1"   # Stage 4: block on wgpu init futures (ADR-012)

@@ -21,7 +21,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
 | ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset |
-| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Partially: ownership, lifecycle, drop order (Stage 4); world reading starts in Stage 5 |
+| ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
 | ADR-012 | Async: `pollster::block_on`, no async runtime | Accepted | Yes (Stage 4, renderer init) |
@@ -30,6 +30,8 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-015 | Public colors are sRGB; the renderer converts per target format | Accepted | Yes (Stage 4) |
 | ADR-016 | Diagnostics: `log` facade in the engine; games choose the logger | Accepted | Yes (Stage 4, PP-014) |
 | ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
+| ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted | Yes (Stage 5, PP-007) |
+| ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted | Yes (Stage 5, PP-007) |
 
 ---
 
@@ -364,6 +366,8 @@ Stage 10 review with a real example game, or a borrow conflict that disjoint bor
 
 ## Status
 Accepted (2026-09-30). Partially implemented in PP-006 (Stage 4): `Renderer` is `pub(crate)`, owned by the runner as `Option<Renderer>`, created in `resumed`, and dropped in `suspended` and in `exiting` (before the window). Public `render::Color` is plain data. The renderer does not read the `World` yet, because Stage 4 only clears the frame. Reading the world starts with the first primitive (Stage 5).
+
+**Implementation note (Stage 5, PP-007):** `Renderer::render(&World, …)` takes the world by shared reference. It queries `(Transform2D, Quad)` and never writes. The public `render::Quad` is plain data (size + `Color`).
 
 ## Context
 The renderer holds `Surface`, `Device`, `Queue` and pipelines. Its lifetime is
@@ -760,16 +764,115 @@ return errors instead of panicking.
 
 ---
 
+# ADR-018: World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel
+
+## Status
+Accepted (2026-10-01, PP-007). Resolves the core of PD-02. Camera controls remain pending (Stage 7).
+
+## Context
+The first visible primitive needs a defined mapping from `Transform2D` to the
+screen. PD-02 proposed +Y up, a centred camera and world units, with
+`Camera2D` and `pixels_per_unit` in Stage 7. Stage 5 needs only the core.
+
+## Decision
+- **Axes:** +X right, **+Y up**. Rotation is in radians, **counter-clockwise** positive.
+- **Origin:** the centre of the window.
+- **Scale:** with the default view, **1 world unit = 1 logical pixel**. Logical
+  pixels = physical pixels / window scale factor (DPI), so sizes look the same on
+  high-DPI displays.
+- **Resize:** a larger window shows **more of the world**. It does not stretch it.
+- **Projection:** `glam::camera::rh::proj::directx::orthographic` (right-handed,
+  Y-up view → WebGPU NDC with Y up and depth in [0, 1]).
+- **Draw order:** not specified yet (ECS query order). Layering comes in Stage 6.
+
+## Alternatives Considered
+- **+Y down, top-left origin (screen/UI convention):** natural for UI, but
+  unnatural for physics and maths and inconsistent with counter-clockwise rotation.
+- **Normalized units (e.g. the window spans −1..1):** resolution-independent, but
+  sizes become awkward fractions and aspect ratio leaks into game code.
+- **Physical pixels:** objects shrink on high-DPI displays.
+- **Deciding everything (`Camera2D`, `pixels_per_unit`) now:** no user for zoom or
+  panning yet, so it waits for Stage 7.
+
+## Rationale
+It's the standard 2D game/maths convention and gives predictable sizes ("a
+64×64 quad is 64×64 logical pixels"). Stage 7 can add a camera on top without
+changing this default.
+
+## Consequences
+### Positive
+- Verified under Xvfb: a 200×100 quad at (−300, 200) occupies exactly x 240..439,
+  y 110..209 of a 1280×720 window (20,000 px). After resizing to 1000×600 it is still
+  200×100, now at x 100..299, y 50..149.
+### Negative
+- UI-style code (top-left, +Y down) must convert. Stage 7's `screen_to_world`
+  will provide that conversion for cursor input.
+
+## Revisit Conditions
+Stage 7 adds `Camera2D`. The default view must keep these semantics.
+
+---
+
+# ADR-019: Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL
+
+## Status
+Accepted (2026-10-01, PP-007).
+
+## Context
+Stage 5 draws solid-colour rectangles from ECS data. The first GPU drawing
+code sets the pattern Stage 6 (sprites, batching) extends. Simplicity first (ARCHITECTURE §2).
+
+## Decision
+- One render pipeline, one draw call for **all** quads: `draw(0..6, 0..n)`,
+  with the unit-square corners generated from `vertex_index`. There is **no vertex
+  buffer and no bind group**.
+- One **per-instance buffer** of `QuadInstance { clip_from_local: mat4, color: vec4 }`
+  (80 bytes, `#[repr(C)]`, `bytemuck::Pod`). The CPU computes
+  `view_projection × Transform2D::to_mat4() × scale(size)` per quad. The buffer grows
+  to the next power of two when needed, and the instance `Vec` is reused every frame.
+- Colours are converted per target format on the CPU (ADR-015). Blending is
+  `ALPHA_BLENDING` (straight alpha). No culling, because negative scale mirrors quads. No MSAA.
+- The WGSL source lives in `src/render/quad.wgsl` and is **embedded with
+  `include_str!`**. Engine shaders are code, not runtime assets. `assets/` stays for game data.
+- `bytemuck` (1.25, `derive`) becomes a direct dependency. It was already in
+  the tree via wgpu, so no new crate (ADR-013).
+
+## Alternatives Considered
+- **Uniform buffer + bind group for the view-projection, model matrices on the GPU:**
+  saves a CPU matrix multiply per quad, but adds a bind group layout with no current need.
+- **One draw call per quad:** simplest, but it scales poorly and has to be undone in Stage 6.
+- **Shader files loaded from `assets/` at runtime:** path and lifetime handling
+  (Stage 9 material), and a missing file would become a runtime error.
+
+## Rationale
+It has the fewest GPU objects that still batch. All maths is on the CPU, where it is unit-tested
+(corner positions, rotation, scale, colour conversion).
+
+## Consequences
+### Positive
+- Verified: the pipeline builds for 3 surface formats with zero GPU errors
+  (ignored GPU test), and a broken WGSL shader is captured as a fault, not a panic.
+- The screen output is pixel-exact (every pixel is one of the four expected colours).
+### Negative
+- CPU cost is O(n) matrix multiplies per frame. That's fine for thousands of quads, so measure before optimizing.
+- Draw order is query order (unspecified) until Stage 6 adds layers.
+
+## Revisit Conditions
+Stage 6 sprites (textures need bind groups), or a profiling result showing the per-quad CPU work matters.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-02 | World coordinate system | +X right, +Y up, world units, `Camera2D { position, zoom, pixels_per_unit }` centered, radians counter-clockwise, `z`/layer ordering without a depth buffer | Core (units, axes, origin) in PP-007 (Stage 5), because the first quad needs it. Camera controls in PP-009 (Stage 7). |
+| PD-02 | Camera controls (the coordinate core is decided in ADR-018) | `Camera2D { position, zoom }` over the ADR-018 default view; `screen_to_world` for cursor input | PP-009 (Stage 7) |
+| PD-08 | Draw order / layering | A `z` or layer value on drawables, sorted per frame. No depth buffer. | Stage 6 (sprites) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
 | PD-05 | Sprite batching strategy | Instanced quads per texture, sorted by layer | PP-008 (Stage 6) |
 | PD-06 | Asset handle design | Typed `Handle<T>` + `Assets` store, synchronous loading | PP-011 (Stage 9) |

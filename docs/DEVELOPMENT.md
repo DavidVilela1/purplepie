@@ -155,6 +155,11 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   (python-xlib `window.destroy()`) while the sandbox runs. Expect `error: GPU rendering
   failed` + cause, exit 1, and **no panic**. Re-run after every wgpu upgrade (R-22).
 - **GPU-dependent tests** are `#[ignore]` (CI has no GPU): `cargo test -- --ignored`.
+- **Drawn shapes (Stage 5+):** screenshot after ~4 s (lavapipe compiles pipelines slowly) and analyse with PIL:
+  per known colour, count pixels and take the bounding box relative to the window origin (`xwininfo`).
+  The sandbox's reference quads give exact expectations: amber 200×100 at world (−300, 200) → 20,000 px
+  centred at (W/2−300, H/2−200). Teal 100×100 rotated 45° → about 10,000 px, bbox ≈141×141. White 80×80 moving.
+  Repeat after a resize: same pixel counts, positions relative to the new centre.
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
 
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.

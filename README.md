@@ -3,11 +3,11 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 4 (GPU foundation) complete.** `cargo run` opens a window that
-> the engine clears to PurplePie purple (`#6A0DAD`) with wgpu every frame. It is verified on
-> Linux, and the owner confirmed it on Windows. Game logic runs in a 60 Hz fixed-timestep
-> `fixed_update` over an engine-owned ECS world. GPU failures end the game with a
-> clean error instead of a panic. Entities are not drawn yet (Stage 5, next).
+> **Status: Stage 5 (first 2D primitive) complete.** `cargo run` opens a window
+> where the engine draws ECS entities as coloured quads with wgpu: three reference
+> shapes on PurplePie purple, one of them moving. Game logic runs in a 60 Hz
+> fixed-timestep `fixed_update`. GPU failures end the game with a clean error. It is verified on
+> Linux. Sprites/textures are next (Stage 6).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -20,17 +20,22 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 `wgpu` or `winit`.
 
 ```rust
-// Works today (Stage 4).
+// Works today (Stage 5). Coordinates: +X right, +Y up, origin at the window
+// centre, 1 unit = 1 logical pixel (ADR-018).
 use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
+use purplepie::render::{Color, Quad};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct Sandbox;
 
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
-        ctx.world_mut()
-            .spawn((Transform2D::default(), Velocity(Vec2::new(1.0, 0.0))));
+        ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(0.0, 100.0)),
+            Quad::new(Vec2::new(64.0, 64.0), Color::WHITE),
+            Velocity(Vec2::new(50.0, 0.0)), // 50 logical px per second
+        ));
         Ok(())
     }
 
@@ -38,17 +43,11 @@ impl Game for Sandbox {
         let dt = ctx.dt(); // fixed step: 1/60 s by default
         ecs::integrate_velocity(ctx.world_mut(), dt);
     }
-
-    fn update(&mut self, ctx: &mut Context<'_>) {
-        if ctx.time().elapsed() > 60.0 {
-            ctx.request_exit();
-        }
-    }
 }
 
 fn main() -> purplepie::Result<()> {
     let config = EngineConfig::new("Sandbox").with_size(1280, 720);
-    // .with_clear_color(purplepie::render::Color::hex(0x202030)) to change the background
+    // .with_clear_color(Color::hex(0x202030)) to change the background
     Engine::new(config)?.run(Sandbox)
 }
 ```

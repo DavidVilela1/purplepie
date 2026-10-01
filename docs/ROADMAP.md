@@ -33,8 +33,8 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | VERIFIED (Linux; purple window confirmed on Windows) |
-| **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | NOT_STARTED |
-| **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008 | NOT_STARTED |
+| **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | VERIFIED (Linux; Windows look pending) |
+| **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | NOT_STARTED |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | NOT_STARTED |
 | **M8: Input** | Game-facing input abstraction | 8 | PP-010 | NOT_STARTED |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
@@ -116,7 +116,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | wgpu API churn (R-01), surface loss (R-09), color space (R-08), headless-only validation (R-11) |
 | **Definition of Done** | Project DoD + owner confirms on real hardware |
 
-## Stage 5: First 2D Primitive → M5
+## Stage 5: First 2D Primitive → M5 ✅
 
 | | |
 |---|---|
@@ -127,6 +127,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Expected result** | A moving quad on the purple background |
 | **Validation** | Transform → matrix unit tests, smoke run with pixel check |
 | **Note** | Needs a minimal world → screen mapping, so PD-02's core (units, axes, origin) is decided here. Camera controls stay in Stage 7. |
+| **As built** | `render::Quad`, instanced pipeline with CPU-built clip matrices and an embedded WGSL shader (ADR-019). Coordinates per ADR-018. Pixel-exact under Xvfb. |
 | **Acceptance criteria** | Renderer reads the world only. No wgpu types in components. Shader errors surface as `Error`. |
 | **Risks** | Premature renderer abstraction (R-10) |
 | **Definition of Done** | Project DoD |
@@ -137,7 +138,7 @@ driven by real ECS data rather than a throwaway draw call.
 |---|---|
 | **Objective** | Textured sprites with batching |
 | **Prerequisites** | M5 |
-| **Tasks** | PP-008 |
+| **Tasks** | PP-008 (textures + `Sprite` + minimal texture handle), then PP-015 (draw order PD-08 + batching PD-05). Split on 2026-10-01. |
 | **Files** | `src/render/` (texture, sampler, sprite batcher), `Sprite` component, `Cargo.toml` (+`image` with PNG only) |
 | **Expected result** | Many sprites drawn efficiently from one or a few textures |
 | **Validation** | Tests for batching and sorting. Smoke run. Rough sprite-count timing noted. |

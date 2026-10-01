@@ -1,4 +1,4 @@
-//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014).
+//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019).
 //!
 //! The only code in the engine that touches `wgpu`. It receives the window
 //! as generic `raw-window-handle` providers, so it does not depend on `winit`.
@@ -7,7 +7,10 @@ use std::sync::Arc;
 
 use super::Color;
 use super::faults::{FaultSlot, GpuFault};
+use super::quad::{QuadInstance, QuadPipeline, collect_instances, view_projection};
+use crate::ecs::World;
 use crate::error::{Error, Result};
+use crate::math::Vec2;
 
 /// Owns the GPU objects for one window. Crate-private: game code never sees it.
 pub(crate) struct Renderer {
@@ -23,18 +26,25 @@ pub(crate) struct Renderer {
     needs_reconfigure: bool,
     /// First fatal GPU fault reported by wgpu's callbacks (ADR-017).
     faults: FaultSlot,
+    /// Physical pixels per logical pixel (window DPI scale).
+    scale_factor: f64,
+    quads: QuadPipeline,
+    /// Per-frame quad instances, reused to avoid reallocating every frame.
+    quad_instances: Vec<QuadInstance>,
 }
 
 impl Renderer {
     /// Runs the wgpu initialization chain for `window`.
     ///
     /// `display` must be the display connection the window belongs to (winit's
-    /// `OwnedDisplayHandle`). `width`/`height` are the window's physical size.
+    /// `OwnedDisplayHandle`). `width`/`height` are the window's physical size,
+    /// and `scale_factor` is physical pixels per logical pixel.
     pub(crate) fn new(
         display: impl wgpu::wgt::WgpuHasDisplayHandle,
         window: Arc<dyn wgpu::WindowHandle>,
         width: u32,
         height: u32,
+        scale_factor: f64,
         clear_color: Color,
     ) -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
@@ -74,6 +84,8 @@ impl Renderer {
         if !minimized {
             surface.configure(&device, &config);
         }
+        // Shader or pipeline errors are reported through `faults` and caught just below.
+        let quads = QuadPipeline::new(&device, config.format);
         check(&faults)?;
 
         let info = adapter.get_info();
@@ -95,12 +107,16 @@ impl Renderer {
             minimized,
             needs_reconfigure: false,
             faults,
+            scale_factor: sanitize_scale_factor(scale_factor),
+            quads,
+            quad_instances: Vec::new(),
         })
     }
 
-    /// Call when the window's physical size changes. A zero width or height
-    /// (minimized window) pauses rendering until a real size arrives.
-    pub(crate) fn resize(&mut self, width: u32, height: u32) {
+    /// Call when the window's physical size or DPI scale changes. A zero width
+    /// or height (minimized window) pauses rendering until a real size arrives.
+    pub(crate) fn resize(&mut self, width: u32, height: u32, scale_factor: f64) {
+        self.scale_factor = sanitize_scale_factor(scale_factor);
         if width == 0 || height == 0 {
             self.minimized = true;
             return;
@@ -119,7 +135,10 @@ impl Renderer {
     /// uncaptured wgpu error, device loss, a lost surface, or an acquire
     /// validation failure. Minimized, occluded, timeout and outdated surfaces
     /// skip the frame, and the next frame retries (ARCHITECTURE §7).
-    pub(crate) fn render(&mut self, before_present: impl FnOnce()) -> Result<()> {
+    ///
+    /// Reads `world` (never writes it, ADR-009) and draws every entity with
+    /// `Transform2D` + `Quad`.
+    pub(crate) fn render(&mut self, world: &World, before_present: impl FnOnce()) -> Result<()> {
         // Faults raised since the last frame (e.g. by `resize`) are reported first.
         check(&self.faults)?;
         if self.minimized {
@@ -159,6 +178,17 @@ impl Renderer {
             }
         };
 
+        let logical_size = Vec2::new(self.config.width as f32, self.config.height as f32)
+            / self.scale_factor as f32;
+        collect_instances(
+            world,
+            &view_projection(logical_size),
+            self.config.format.is_srgb(),
+            &mut self.quad_instances,
+        );
+        self.quads
+            .upload(&self.device, &self.queue, &self.quad_instances);
+
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -168,8 +198,8 @@ impl Renderer {
                 label: Some("purplepie frame"),
             });
         {
-            let _clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("purplepie clear"),
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("purplepie main pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
@@ -184,11 +214,21 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            self.quads.draw(&mut pass, self.quad_instances.len());
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         before_present();
         self.queue.present(frame);
         check(&self.faults)
+    }
+}
+
+/// Guards against a zero, negative or non-finite DPI scale (would break the projection).
+fn sanitize_scale_factor(scale_factor: f64) -> f64 {
+    if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
     }
 }
 
