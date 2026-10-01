@@ -7,6 +7,7 @@ edition = "2024"
 # Only Rust 1.95.0 has actually been exercised. See docs/TECH_STACK.md.
 rust-version = "1.90"
 description = "PurplePie: a small, modular 2D game engine written in Rust."
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 publish = false
 

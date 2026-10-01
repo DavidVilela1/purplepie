@@ -35,6 +35,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted (the "sprites drawn after quads" clause is superseded by ADR-021) | Yes (Stage 6, PP-008) |
 | ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
 | ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
+| ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
 
 ---
 
@@ -1048,9 +1049,41 @@ Split screen or minimaps (several cameras), a screen-space UI layer, a need for 
 
 ---
 
+# ADR-023: License: MIT OR Apache-2.0
+
+## Status
+Accepted (2026-10-01, PP-013, owner decision). Resolves PD-07.
+
+## Context
+The repository is public on GitHub and meant as a portfolio project others can read and reuse. Without a license,
+nobody may legally reuse the code. Every dependency PurplePie uses is available under MIT and/or Apache-2.0.
+
+## Decision
+Dual license, **MIT OR Apache-2.0**, at the user's option: `license = "MIT OR Apache-2.0"` in `Cargo.toml`,
+`LICENSE-MIT` (copyright 2026 David Vilela) and `LICENSE-APACHE` (canonical Apache-2.0 text), plus the usual Rust
+"Contribution" clause in the README (contributions are dual licensed under the same terms).
+
+## Alternatives Considered
+- **MIT only:** simplest, but no explicit patent grant.
+- **Apache-2.0 only:** patent grant, but incompatible with GPLv2 projects.
+- **No license / all rights reserved:** the code would be visible but not reusable.
+
+## Rationale
+It is the Rust ecosystem convention (the compiler, wgpu, glam, hecs, winit-adjacent crates), so it adds no friction
+for anyone combining PurplePie with other crates.
+
+## Consequences
+- Anyone may use, modify and redistribute PurplePie under either license.
+- Changing the license later would need the agreement of every contributor (today: only the owner).
+
+## Revisit Conditions
+None expected.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021 and PD-02 (camera) by ADR-022, all on 2026-10-01.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
@@ -1059,4 +1092,3 @@ one is resolved (and becomes an ADR) inside the task listed.
 |---|---|---|---|
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
 | PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |
-| PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

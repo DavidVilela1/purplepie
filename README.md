@@ -77,13 +77,14 @@ cargo test
 cargo fmt --check && cargo clippy --all-targets
 ```
 
-CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) on every push.
+CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) on every push. All jobs passed on the first run (2026-10-01).
 
 ## Layout
 
 ```text
 PurplePie/
 ├── Cargo.toml / Cargo.lock
+├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── assets/           textures/ (sandbox_quadrants.png), fonts/, shaders/
@@ -119,4 +120,15 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 
 ## License
 
-Not chosen yet. The project owner should decide (MIT OR Apache-2.0 is the Rust ecosystem norm).
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.

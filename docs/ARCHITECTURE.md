@@ -58,7 +58,7 @@ compilability → clear architecture → maintainability → extensibility → p
 |---|---|---|
 | `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
-| `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | FUNCTIONAL (Linux) |
+| `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps` + builders + `validate` | VERIFIED |
 | `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `request_exit()`, `exit_requested()`) | VERIFIED |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
@@ -78,8 +78,8 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(&World, &Textures, &Camera2D, before_present)`; texture sync; one shared instance buffer; `record_batches`; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe; purple window confirmed on Windows by the owner) |
 | `src/render/faults.rs` | `FaultSlot` (first-fault-wins `Arc<Mutex<Option<GpuFault>>>`) + `GpuFault`; installs wgpu's uncaptured-error and device-lost callbacks (ADR-017) | VERIFIED (unit tests + ignored GPU test under lavapipe) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
-| `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events. Owns world, textures, camera and the event-driven logical viewport. | FUNCTIONAL (Linux) |
-| `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | FUNCTIONAL (Linux) |
+| `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events. Owns world, textures, camera and the event-driven logical viewport. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
+| `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
 | `assets/{fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
 
@@ -346,7 +346,7 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 | `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, sprite, draw}` | pure unit tests + doctests | ✅ 82 unit tests + 14 doctests |
 | GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 5 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
-| Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | configured; first run pending |
+| Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
 | `input` state | pure unit tests, no window/GPU | planned (Stage 8) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
 | `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–6 on Linux; Windows pending |

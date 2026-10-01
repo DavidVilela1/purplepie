@@ -14,8 +14,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## In Progress
 
-- [ ] **PP-003: Stage 1 · Minimal application (window + lifecycle)** · P1 · IN_PROGRESS
-  Implemented and verified on Linux/Xvfb. On Windows, `cargo run` is confirmed (owner screenshot of the running window, 2026-09-30). **Still unconfirmed on Windows: `cargo test`, and Escape/close exiting cleanly.** The CI Windows job (`cargo test`) covers the first once the workflow runs.
+_None._
 
 ## Blocked
 
@@ -26,6 +25,7 @@ _None._
 - [x] **PP-000: Stage 0 · Architecture, version verification, compatibility spike, scaffold** · DONE
 - [x] **PP-001: Stage 0 · Engineering documentation and task-tracking system** · DONE
 - [x] **PP-002: Stage 0 · Windows toolchain able to build and run the scaffold** · DONE
+- [x] **PP-003: Stage 1 · Minimal application (window + lifecycle)** · DONE (2026-10-01; Windows `cargo test` + Escape/close confirmed by the owner)
 - [x] **PP-004: Stage 2 · Time & fixed update** · DONE (2026-09-30)
 - [x] **PP-005: Stage 3 · ECS integration** · DONE (2026-09-30)
 - [x] **PP-006: Stage 4 · GPU context + purple clear** · DONE (2026-09-30; Windows purple window confirmed by owner screenshot)
@@ -34,13 +34,13 @@ _None._
 - [x] **PP-008: Stage 6 · Textures + `Sprite` component (minimal texture handle)** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-009: Stage 7 · Camera2D & coordinates** · DONE (2026-10-01; verified on Linux)
+- [x] **PP-013: Owner · Choose project license** · DONE (2026-10-01; MIT OR Apache-2.0)
 
 ## Future
 
 - [ ] **PP-016: Stage 8 · Mouse input (buttons, cursor in screen and world coordinates)** · P2 · TODO
 - [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
 - [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
-- [ ] **PP-013: Owner · Choose project license** · P3 · TODO
 
 ---
 
@@ -71,7 +71,7 @@ _None._
 ### PP-003: Minimal application (window + lifecycle)
 | Field | Value |
 |---|---|
-| Stage | 1 → Milestone M1 · Priority P1 · **IN_PROGRESS**. Implemented 2026-09-30. AC 1–9 and 11 met. AC 10 awaits the owner. |
+| Stage | 1 → Milestone M1 · Priority P1 · **DONE** (2026-10-01). Implemented 2026-09-30. AC 1–11 met; AC 10 confirmed by the owner on 2026-10-01 (Windows: `cargo test` passes, Escape and the close button exit cleanly; `cargo run` window seen 2026-09-30). |
 | Dependencies | PP-000, PP-002 (both DONE). No blockers. |
 | Scope | Add `winit 0.30.13` and `thiserror 2`. Create `src/error.rs` (`Error`, `Result`) and `src/app/` (`EngineConfig` with title/size builders; `Engine::new`/`run`; `Game` trait with `init` + `update` only; `Context` with `request_exit()`; `Runner` implementing `ApplicationHandler`). Update the sandbox to `Engine::new(..)?.run(Sandbox)`. Decide PD-04 (logger). |
 | Out of scope | Fixed timestep, ECS, GPU, input abstraction |
@@ -178,6 +178,6 @@ _None._
 | Acceptance criteria | Example game in `examples/`. ADR-008 reviewed. Workspace-split decision recorded. |
 
 ### PP-013: Choose project license
-| Owner decision · P3 · TODO | No dependencies. Does not block engineering. |
+| Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|
-| Acceptance criteria | `license` in `Cargo.toml` + `LICENSE` file(s). PD-07 closed. |
+| Acceptance criteria | ✅ `license = "MIT OR Apache-2.0"` in `Cargo.toml`. ✅ `LICENSE-MIT` (copyright holder David Vilela, 2026) + `LICENSE-APACHE` (canonical Apache-2.0 text, copied byte-for-byte from the cargo registry; MD5 `3b83ef96…`). ✅ README License + Contribution sections. ✅ PD-07 closed → ADR-023. |

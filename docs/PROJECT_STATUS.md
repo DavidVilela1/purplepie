@@ -9,7 +9,7 @@ commands, and the evidence is listed below.
 **M7: Camera: VERIFIED (Linux).** `Camera2D` pans and zooms; whole frames match a per-pixel model under Xvfb + lavapipe.
 The owner's Windows look is pending and non-blocking. Next: **M8: Input: NOT_STARTED.**
 M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
-M3, M2: VERIFIED (Linux). M1: FUNCTIONAL (Windows `cargo test` and Escape/close still unconfirmed). M0: VERIFIED.
+M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows, owner-confirmed). M0: VERIFIED.
 
 ## Current Stage
 
@@ -26,7 +26,7 @@ engine-owned `render::Camera2D` that games pan and zoom via `Context::camera_mut
 origin at the window centre, and 1 unit = 1 logical pixel (ADR-018). Game logic
 runs in a 60 Hz fixed-timestep `fixed_update` plus a per-frame `update` over one
 engine-owned `hecs::World`. GPU faults end the loop cleanly as `Error::Render`.
-The engine logs via `log`. CI is configured but has not run yet.
+The engine logs via `log`. CI passes on Linux, Windows and macOS. Licensed MIT OR Apache-2.0.
 There is no input abstraction yet.
 
 | Component | State | Notes |
@@ -37,7 +37,7 @@ There is no input abstraction yet.
 | `app::EngineConfig` | VERIFIED | 7 unit tests + 1 doctest |
 | `app::Game` / `Context` | VERIFIED | 6 unit tests. `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009). |
 | `app` frame pacing (`FramePacer`) | VERIFIED | 5 unit tests. 60 Hz redraw cap (ADR-014). |
-| `app::Engine` + runner (winit 0.30 lifecycle) | FUNCTIONAL | Xvfb runs pass. Passes the DPI scale factor to the renderer (also on `ScaleFactorChanged`). Owns the camera and an event-driven logical viewport (PP-009). Windows: window runs, Escape/close unconfirmed. |
+| `app::Engine` + runner (winit 0.30 lifecycle) | VERIFIED | Xvfb runs pass. Passes the DPI scale factor to the renderer (also on `ScaleFactorChanged`). Owns the camera and an event-driven logical viewport (PP-009). Windows: window, Escape and close confirmed by the owner. |
 | `time` (`Time`, `FixedTimestep`) | VERIFIED | 12 unit tests |
 | `math` (`Transform2D`, `Vec2`, `Mat4`) | VERIFIED | 5 unit tests + 2 doctests. `to_mat4()` added. |
 | `ecs` (`World`, `Entity`, `Velocity`, `integrate_velocity`) | VERIFIED | 4 unit tests + 2 doctests |
@@ -50,7 +50,7 @@ There is no input abstraction yet.
 | `render::Sprite` + sprite pipeline | VERIFIED (Linux) | 2 unit tests + 1 doctest (compile-only) + 2 ignored GPU tests. Xvfb pixel-exact. (The batching test moved to `draw.rs`.) |
 | `render::Renderer` (wgpu) | VERIFIED | Linux: pixel-exact quads and sprites, resize, unmap/map, fault exits, texture upload/sync. Windows: purple window confirmed (Stage 4). |
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
-| CI workflow | CONFIGURED, NOT RUN | fmt + clippy (Linux); check + test on Linux/Windows/macOS |
+| CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
 | `input` | NOT_STARTED | Stage 8 (Escape-to-exit is a config flag in `app` until then) |
 | `assets` | NOT_STARTED | Stage 9. Textures already have handles and `Error::Asset` (PP-008, ADR-020). |
 
@@ -67,10 +67,12 @@ There is no input abstraction yet.
 - PP-008: textures + `Sprite` component with a minimal texture handle (Stage 6, part 1).
 - PP-015: draw order (`Layer`) + batching by texture (Stage 6, part 2).
 - PP-009: `Camera2D` + screen ↔ world mapping (Stage 7).
+- PP-003: Stage 1 closed after the owner confirmed Windows `cargo test`, Escape and close.
+- PP-013: license chosen: MIT OR Apache-2.0.
 
 ## In Progress
 
-- **PP-003: Stage 1 minimal application.** Remaining on Windows: `cargo test`, and Escape/close exiting cleanly. The CI Windows job covers `cargo test` once it runs.
+- Nothing. (PP-003 closed on 2026-10-01.)
 
 ## Next
 
@@ -90,7 +92,7 @@ There is no input abstraction yet.
 
 ## Known Limitations
 
-- Windows: the purple window is confirmed. `cargo test`, Escape/close, vsync pacing and GPU fault paths are unverified there. macOS and Wayland are untested (CI will compile and test on macOS once it runs).
+- Windows (owner): the purple window (Stage 4), `cargo test`, Escape and the close button are confirmed. Stages 5–7 rendering, vsync pacing and GPU fault paths are unverified there. macOS compiles and passes `cargo test` in CI but its rendering has never been seen; Wayland is untested.
 - One camera only, without rotation, and no screen-space (UI) layer that ignores it. A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. One texture per sprite (no atlas/UV rectangles). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
@@ -101,10 +103,14 @@ There is no input abstraction yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised (R-19). The code uses let-chains (stable since 1.88).
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
-- The owner's copy is inside OneDrive (R-15). No license has been chosen (PP-013).
+- The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
 
+- **2026-10-01: owner confirmations recorded (no code changes).**
+  - PP-003 DONE: on Windows, `cargo test` passes and Escape / the close button exit cleanly. M1 is VERIFIED.
+  - CI: the first GitHub Actions run passed every job (fmt + clippy on Linux; check + test on Linux, Windows, macOS). R-23 closed.
+  - PP-013 DONE: MIT OR Apache-2.0 (ADR-023): `license` in `Cargo.toml`, `LICENSE-MIT`, `LICENSE-APACHE`, README License section.
 - **2026-10-01: PP-009 Stage 7 camera (Stage 7 complete).**
   - New public `render::Camera2D { position, zoom }` with `screen_to_world` / `world_to_screen` (logical pixels, top-left origin, +Y down). Default = the ADR-018 view.
   - The runner owns one camera and a logical viewport; new `Context::camera()`, `camera_mut()`, `viewport_size()`. `Renderer::render` takes `&Camera2D`; `quad::view_projection` moved to `Camera2D::view_projection`.
@@ -200,9 +206,10 @@ Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) 
 | No usable GPU backend | ✅ `error: failed to create the GPU surface`, exit 1 |
 | Idle CPU (lavapipe) | ✅ 1.25 s per 5 s; software GPU work, not a busy loop |
 
-Windows x64, owner-provided (not executed by Claude): the Stage 4 purple window was confirmed by screenshot (pixel-checked).
+Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
+Executed by Claude for this update: `cargo check --locked` (Cargo.toml changed), `cargo test --locked`, archive verification.
 Stages 5–7 on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-01. PP-009 done, Stage 7 complete. PP-010 is next.
+2026-10-01. Stage 7 complete; PP-003, CI and PP-013 confirmed by the owner. PP-010 is next.

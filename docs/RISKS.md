@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-01 (Stage 7 complete, PP-009).
+Last reviewed: 2026-10-01 (Stage 7 complete; owner confirmations for PP-003, CI and PP-013 recorded).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -32,7 +32,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
 | R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
-| R-23 | CI platform jobs never exercised yet | OPEN | Medium | Low | all |
+| R-23 | CI platform jobs never exercised yet | CLOSED | — | Low | all |
 | R-24 | Asset paths depend on the working directory | OPEN | Medium | Low | 6, 9 |
 
 ## Details
@@ -99,6 +99,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** DPI scaling, Wayland vs X11, macOS main-thread rules, minimize reporting a 0×0 size.
 - **Mitigation:** No platform-specific code. Physical sizes for the surface. Never configure 0×0.
 - **PP-009:** the camera's screen ↔ world mapping is unit-tested against the renderer's projection at DPI scales 1.0, 1.25 and 2.0. Xvfb only exercises scale 1.0, so real high-DPI displays (the owner's Windows laptop) are still unverified.
+- **2026-10-01:** on Windows the owner confirmed `cargo test`, Escape and the close button; CI compiles and tests on Windows and macOS. macOS rendering and Wayland are still unseen.
 - **Fallback:** Platform-specific workarounds behind `cfg`, each documented.
 
 ### R-13: Future public API stability
@@ -160,6 +161,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** `.github/workflows/ci.yml` was added on 2026-09-30, but no run has happened yet. The Windows and macOS jobs have never executed anywhere.
 - **Mitigation:** the owner's first push runs it. Record the results in PROJECT_STATUS. The workflow passed actionlint + shellcheck, and its exact commands passed locally on Linux.
 - **Fallback:** Remove `macos-latest` from the matrix if runner minutes or macOS-specific failures become a burden.
+- **Closed (2026-10-01):** the owner pushed and reported the first run all green: fmt + clippy on Linux, and check + test on Linux, Windows and macOS. CI still has no GPU, so the `#[ignore]` GPU tests and all rendering checks remain Cowork/Xvfb + owner-hardware only (R-11).
 
 ### R-24: Asset paths depend on the working directory
 - **Trigger:** `Context::load_texture("assets/...")` resolves relative paths against the process's current directory, so a game started from another folder (a shortcut, a double-click on the `.exe`, `cargo run` from a subfolder) cannot find its files.

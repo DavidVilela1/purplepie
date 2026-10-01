@@ -29,7 +29,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | Milestone | Working state | Stage | Task | Status |
 |---|---|---|---|---|
 | **M0: Architecture Ready** | Structure, decisions, roadmap documented; scaffold compiles | 0 | PP-000, PP-001 | VERIFIED |
-| **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | FUNCTIONAL (Linux verified; Windows pending) |
+| **M1: Running Application** | Window opens, lifecycle runs, clean shutdown | 1 | PP-003 | VERIFIED (Linux; Windows confirmed by the owner 2026-10-01) |
 | **M2: Fixed Simulation** | Fixed timestep drives `fixed_update` correctly | 2 | PP-004 | VERIFIED (Linux) |
 | **M3: ECS Integration** | World, entities, components and a system run in the loop | 3 | PP-005 | VERIFIED (Linux) |
 | **M4: GPU Foundation** | wgpu initialized, purple clear, resize/minimize safe | 4 | PP-006, PP-014 | VERIFIED (Linux; purple window confirmed on Windows) |
@@ -60,7 +60,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Plans drifting from reality (R-16) |
 | **Definition of Done** | Met on 2026-09-30 (see PROJECT_STATUS) |
 
-## Stage 1: Minimal Application → M1 (implemented; awaiting Windows confirmation)
+## Stage 1: Minimal Application → M1 ✅
 
 | | |
 |---|---|
