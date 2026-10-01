@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · P1 · TODO ← **next task**
+- [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -32,10 +32,10 @@ _None._
 - [x] **PP-014: Stage 4 · GPU error & device-loss handling + logging decision** · DONE (2026-09-30)
 - [x] **PP-007: Stage 5 · First 2D primitive (quad from ECS)** · DONE (2026-10-01; verified on Linux; owner's Windows look pending, non-blocking)
 - [x] **PP-008: Stage 6 · Textures + `Sprite` component (minimal texture handle)** · DONE (2026-10-01; verified on Linux)
+- [x] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · DONE (2026-10-01; verified on Linux)
 
 ## Future
 
-- [ ] **PP-009: Stage 7 · Camera2D & coordinates** · P3 · TODO
 - [ ] **PP-010: Stage 8 · Input system** · P3 · TODO
 - [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
 - [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
@@ -134,19 +134,23 @@ _None._
 | Acceptance criteria | ✅ 1. Unit tests: handle bookkeeping (sequential ids, same path → same id, `since`, sizes), PNG decode (RGBA rows, grey/RGB gain alpha, 16-bit → 8-bit, sandbox PNG quadrants), batching of consecutive textures, sprite instance maths and tint. ✅ 2. Missing / non-PNG file → `Error::Asset` naming the path with the I/O or decode error as source; failures aren't cached. End to end: the sandbox exits 1 with the cause chain, no panic. ✅ 3. Xvfb: every sprite region is exact (maxdiff 0, tolerance ±2): transparent border = background, three opaque quadrants = PNG colours, 50% alpha quadrant = linear-space blend `#5662DB`; no bleed outside the 128×128 rectangle. ✅ 4. Ignored GPU tests: sprite pipeline builds and uploads for 3 formats with zero GPU errors; incremental sync uploads once; oversized texture → `Error::Asset` before wgpu. ✅ 5. Stage 1–5 regressions unchanged. ✅ 6. Docs updated, ADR-020. |
 | Notes | Owner check on Windows: a four-colour square above the centre and a smaller tinted copy spinning on the left. |
 
-### PP-015: Draw order/layers + sprite batching by texture ← NEXT
+### PP-015: Draw order/layers + sprite batching by texture
 | Field | Value |
 |---|---|
-| Stage | 6 → Milestone M6 · Priority P1 · TODO |
+| Stage | 6 → Milestone M6 · Priority P1 · **DONE** (2026-10-01). Completes Stage 6. |
 | Dependencies | PP-008 (DONE) |
-| Why now | Finishes Stage 6. Today quads always draw under sprites and the order within each kind is ECS query order, so overlapping drawables can't be controlled. |
-| Scope | Decide PD-08 (a layer/`z` value on drawables, sorted per frame; no depth buffer) and PD-05 (batch instances by texture within a layer), each as an ADR. A stable, deterministic order across quads and sprites. |
-| Acceptance criteria | 1. Deterministic draw order tested with an overlap pixel check (both quad-over-sprite and sprite-over-quad). 2. Draw calls = number of (layer, texture) runs, unit-tested. 3. Equal layers keep a documented, stable order. 4. Stage 1–6 regressions unchanged. 5. ADRs for PD-05 and PD-08, docs updated. |
+| Scope (as built) | Public `render::Layer(pub i32)` component (optional, default 0, higher = on top). New crate-private `render/draw.rs`: `DrawList` collects quads and sprites, sorts by (layer, material rank, entity index), and builds `Batch { layer, material, instances }` runs. One shared `InstanceBuffer` for quads and sprites; `QuadPipeline`/`SpritePipeline` became pipeline + bind-group holders (`bind`, `bind_texture`); `renderer.rs` records one draw call per batch and switches pipelines only on material-kind changes. Removed `collect_instances`/`collect_sprites`. Sandbox: yellow quad (layer 0) under the sprite's top-left corner, pink quad (layer 1) over its bottom-right corner. ADR-021 resolves PD-05 and PD-08. |
+| Acceptance criteria | ✅ 1. Overlap pixel check under Xvfb: quad-over-sprite (layer 1 pink covers 576 px of the sprite) and sprite-over-quad (layer 0 yellow visible only through the transparent border: 2,048 px; red covers 256 px); 0 mismatches over 40,000 px at 1280×720 and again at 1000×600. Control run (pink on layer −1) puts it under the sprite. ✅ 2. Draw calls = (layer, material) runs, unit-tested. ✅ 3. Equal layers: quads, then sprites by texture, then entity index, documented on `Layer`; a test moves an entity to another archetype and the order is unchanged (and fails without the tie-breaker). ✅ 4. Stage 1–6 regressions unchanged. ✅ 5. ADR-021, docs updated. |
+| Notes | Rough cost (release): draw-list build + sort ~0.08 ms / 1k, ~1.8 ms / 10k, ~7.9 ms / 50k drawables. Owner check on Windows: a yellow square peeking out under the top-left corner of the four-colour sprite, and a pink square on top of its bottom-right corner. |
 
-### PP-009: Camera2D & coordinates
-| Stage 7 → M7 · P3 · TODO | Depends on PP-008 |
+### PP-009: Camera2D & coordinates ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | PD-02 decided as an ADR. Projection + `screen_to_world` tests, including DPI. |
+| Stage | 7 → Milestone M7 · Priority P1 · TODO |
+| Dependencies | PP-015 (DONE), ADR-018 |
+| Why now | Stage 6 is complete. Every later stage (input with cursor positions, the example game) needs a movable view and a way to turn screen positions into world positions. |
+| Scope | Decide PD-02 as an ADR: a `Camera2D { position, zoom }` (proposed: one engine-owned camera reached through `Context`, defaulting to the ADR-018 view so nothing changes without it). `view_projection` takes the camera. `screen_to_world` / `world_to_screen` in logical pixels. No input yet (the sandbox moves the camera on a timer). |
+| Acceptance criteria | 1. PD-02 recorded as an ADR. 2. Unit tests: default camera = today's projection exactly; pan and zoom; `screen_to_world` ∘ `world_to_screen` round-trips, including DPI scale 1.0/1.25/2.0 and non-square windows. 3. Xvfb: a panned/zoomed frame puts the reference quad and sprite at the predicted pixels. 4. Stage 1–6 regressions unchanged. |
 
 ### PP-010: Input system
 | Stage 8 → M8 · P3 · TODO | Depends on PP-004, PP-009 |

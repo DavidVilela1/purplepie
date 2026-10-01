@@ -1,14 +1,14 @@
 //! Solid-colour rectangles drawn from ECS data (ADR-018, ADR-019).
 //!
 //! `Quad` is the public component. Everything else here is crate-private GPU
-//! plumbing: the view projection, per-instance data, and the instanced pipeline.
+//! plumbing: the view projection and the quad pipeline. Collection, sorting and
+//! batching live in `draw.rs` (ADR-021).
 
 use super::Color;
-use super::instance::{Instance, InstanceBuffer};
-use crate::ecs::World;
-use crate::math::{Mat4, Transform2D, Vec2};
+use super::instance::Instance;
+use crate::math::{Mat4, Vec2};
 
-/// A solid-colour rectangle, drawn centred on the entity's [`Transform2D`].
+/// A solid-colour rectangle, drawn centred on the entity's [`Transform2D`](crate::math::Transform2D).
 ///
 /// `size` is in world units before the transform's scale. Rotation turns the
 /// rectangle around its centre. An entity needs both `Transform2D` and `Quad`
@@ -48,30 +48,10 @@ pub(crate) fn view_projection(logical_size: Vec2) -> Mat4 {
     glam::camera::rh::proj::directx::orthographic(-half.x, half.x, -half.y, half.y, -1.0, 1.0)
 }
 
-/// Reads `(Transform2D, Quad)` from the world into `out` (reused every frame).
-/// Read-only access to the world (ADR-009).
-pub(crate) fn collect_instances(
-    world: &World,
-    view_projection: &Mat4,
-    target_is_srgb: bool,
-    out: &mut Vec<Instance>,
-) {
-    out.clear();
-    for (transform, quad) in world.query::<(&Transform2D, &Quad)>().iter() {
-        out.push(Instance::new(
-            view_projection,
-            transform,
-            quad.size,
-            quad.color,
-            target_is_srgb,
-        ));
-    }
-}
-
-/// The instanced quad pipeline plus its growable instance buffer.
+/// The solid-colour quad pipeline. It has no bind groups: everything comes
+/// from the shared instance buffer (ADR-019, ADR-021).
 pub(crate) struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
-    instances: InstanceBuffer,
 }
 
 impl QuadPipeline {
@@ -86,33 +66,12 @@ impl QuadPipeline {
             immediate_size: 0,
         });
         let pipeline = rect_pipeline(device, "purplepie quad pipeline", &layout, &shader, format);
-        Self {
-            pipeline,
-            instances: InstanceBuffer::new("purplepie quad instances"),
-        }
+        Self { pipeline }
     }
 
-    /// Uploads this frame's instances.
-    pub(crate) fn upload(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        instances: &[Instance],
-    ) {
-        self.instances.upload(device, queue, instances);
-    }
-
-    /// Records the draw for `count` uploaded instances.
-    pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
-        let Some(buffer) = self.instances.slice() else {
-            return;
-        };
-        if count == 0 {
-            return;
-        }
+    /// Selects this pipeline for the following draws.
+    pub(crate) fn bind(&self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, buffer);
-        pass.draw(0..6, 0..count as u32);
     }
 }
 
@@ -159,6 +118,7 @@ pub(crate) fn rect_pipeline(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::math::Transform2D;
     use glam::Vec4;
 
     fn clip(m: &[[f32; 4]; 4], local: Vec2) -> Vec2 {
@@ -231,17 +191,15 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn collect_reads_only_entities_with_transform_and_quad() {
-        let mut world = World::new();
+    fn only_entities_with_transform_and_quad_are_drawn() {
+        let mut world = crate::ecs::World::new();
         world.spawn((Transform2D::default(), Quad::new(Vec2::ONE, Color::WHITE)));
         world.spawn((Transform2D::default(),));
         world.spawn((Quad::new(Vec2::ONE, Color::WHITE),));
-        let mut out = vec![Instance::zeroed(); 5];
-        collect_instances(&world, &Mat4::IDENTITY, false, &mut out);
-        assert_eq!(out.len(), 1);
+        let mut list = super::super::draw::DrawList::default();
+        list.build(&world, &Mat4::IDENTITY, false);
+        assert_eq!(list.instances().len(), 1);
     }
-
-    use bytemuck::Zeroable;
 
     /// Headless device and queue with PurplePie's fault capture installed.
     /// Needs a GPU adapter (hardware or software, e.g. Mesa lavapipe).

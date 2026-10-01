@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-01 (PP-008 complete, Stage 6 in progress).
+Last reviewed: 2026-10-01 (Stage 6 complete, PP-015).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -131,7 +131,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** Rebuilding vertex buffers or `Vec`s every frame, or one draw call per sprite.
 - **Mitigation (PP-007):** all quads go in one instanced draw call. The instance `Vec` is reused every frame, and the GPU buffer grows by powers of two only. The remaining per-frame cost is one matrix product per quad on the CPU (ADR-019).
 - **PP-008:** sprites reuse the same scheme (reused `Vec`s, growable buffer). Consecutive sprites with the same texture share one draw call, but sprites alternating between textures in query order get one draw call each until PP-015 sorts by texture.
-- **Fallback:** Move the model matrix to the GPU (uniform view-projection) if profiling shows the CPU cost matters. Add a sprite-count benchmark in `examples/`.
+- **PP-015 (ADR-021):** one draw list sorted by (layer, material, entity) → one draw call per (layer, texture) run, one shared instance buffer, all `Vec`s reused. New cost: an O(n log n) sort every frame. Measured (release, Cowork CPU): ~0.08 ms / 1k, ~1.8 ms / 10k, ~7.9 ms / 50k drawables.
+- **Fallback:** Move the model matrix to the GPU (uniform view-projection) if profiling shows the CPU cost matters; skip the sort when nothing changed. Add a sprite-count benchmark in `examples/` (PP-012).
 
 ### R-19: Declared MSRV untested
 - **Trigger:** A user builds with Rust 1.90–1.94. `rust-version = "1.90"` comes from dependency metadata, and only 1.95 was run.

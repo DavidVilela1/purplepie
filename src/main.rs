@@ -14,7 +14,7 @@ use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Quad, Sprite};
+use purplepie::render::{Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -98,6 +98,19 @@ impl Game for Sandbox {
         world.spawn((
             Transform2D::from_position(Vec2::new(0.0, 120.0)),
             Sprite::new(texture, Vec2::new(128.0, 128.0)),
+        ));
+        // Draw-order references (ADR-021), overlapping two corners of that sprite:
+        // yellow, layer 0: under the sprite (quads before sprites within a layer),
+        // so it only shows through the sprite's transparent border;
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-64.0, 184.0)),
+            Quad::new(Vec2::new(48.0, 48.0), Color::hex(0xFFE600)),
+        ));
+        // pink, layer 1: always on top of the layer-0 sprite.
+        world.spawn((
+            Transform2D::from_position(Vec2::new(64.0, 56.0)),
+            Quad::new(Vec2::new(48.0, 48.0), Color::hex(0xFF3EA5)),
+            Layer(1),
         ));
         // The same texture, tinted half-transparent cyan and spinning.
         let spinner = world.spawn((

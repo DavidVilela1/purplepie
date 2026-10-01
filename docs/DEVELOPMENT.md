@@ -164,7 +164,15 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   of the 16×16 texels covers 8×8 px. Check per region: the 8-px border is exactly the clear colour (transparent texels);
   the inner quadrants (56×56 = 3,136 px each) are `#E63946`, `#2A9D8F`, `#F4A261`, and the 50% alpha `#3A86FF` blended
   in linear space over the clear colour (`#5662DB` on `#6A0DAD` with an sRGB surface). Tolerance ±2; lavapipe gives 0.
-  The ring just outside the rectangle must be clear colour (no edge bleed). The tinted copy at (−300, −20) spins and is not pixel-checked.
+  Since PP-015 the two draw-order quads (next item) overlap two corners: the border shows yellow at the top-left and
+  pink covers the bottom-right corner, so compare against a per-pixel expected image rather than whole-region colours.
+  The tinted copy at (−300, −20) spins and is not pixel-checked.
+- **Draw order (Stage 6+, ADR-021):** the yellow 48×48 quad (layer 0) sits on the sprite's top-left corner
+  (screen x W/2−88..W/2−41, y H/2−208..H/2−161) and must be visible only through the sprite's transparent 8-px border:
+  2,048 px yellow, the red texels on top. The pink 48×48 quad (layer 1) on the bottom-right corner
+  (x W/2+40..W/2+87, y H/2−80..H/2−33) must be fully visible: 2,304 px pink, covering 256 px of the blended quadrant
+  (2,880 blended px remain). Build the expected image per pixel over the 200×200 area around the sprite: 0 mismatches.
+  Control: put the pink quad on `Layer(-1)` temporarily; it must go under the sprite (2,048 px pink).
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.

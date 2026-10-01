@@ -1,27 +1,24 @@
 //! Textured rectangles drawn from ECS data (ADR-019, ADR-020).
 //!
-//! `Sprite` is the public component. The rest is crate-private: collecting
-//! sprite instances, uploading textures, and the textured pipeline.
-
-use std::ops::Range;
+//! `Sprite` is the public component. The rest is crate-private: uploading
+//! textures and the textured pipeline. Collection, sorting and batching live
+//! in `draw.rs` (ADR-021).
 
 use wgpu::util::DeviceExt as _;
 
 use super::Color;
-use super::instance::{Instance, InstanceBuffer};
 use super::quad::rect_pipeline;
 use super::texture::{TextureData, TextureId, Textures};
-use crate::ecs::World;
 use crate::error::{Error, Result};
-use crate::math::{Mat4, Transform2D, Vec2};
+use crate::math::Vec2;
 
-/// A textured rectangle, drawn centred on the entity's [`Transform2D`].
+/// A textured rectangle, drawn centred on the entity's [`Transform2D`](crate::math::Transform2D).
 ///
 /// The whole texture is stretched over `size` world units (before the
 /// transform's scale). `tint` multiplies every texel: [`Color::WHITE`] shows
 /// the texture unchanged, and a lower alpha fades it. An entity needs both
-/// `Transform2D` and `Sprite` to be drawn. Sprites are drawn after (on top
-/// of) quads; the order among sprites is not defined yet (PP-015).
+/// `Transform2D` and `Sprite` to be drawn. Draw order comes from the entity's
+/// [`Layer`](super::Layer) (default 0); within a layer, sprites are drawn after quads.
 ///
 /// ```no_run
 /// use purplepie::math::{Transform2D, Vec2};
@@ -62,52 +59,12 @@ impl Sprite {
     }
 }
 
-/// A run of consecutive instances that share one texture: one draw call.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Batch {
-    pub(crate) texture: TextureId,
-    pub(crate) instances: Range<u32>,
-}
-
-/// Reads `(Transform2D, Sprite)` from the world into `instances`, and groups
-/// consecutive sprites with the same texture into `batches` (both reused every
-/// frame). Read-only access to the world (ADR-009). Sprites keep query order;
-/// sorting by layer and texture is PP-015.
-pub(crate) fn collect_sprites(
-    world: &World,
-    view_projection: &Mat4,
-    target_is_srgb: bool,
-    instances: &mut Vec<Instance>,
-    batches: &mut Vec<Batch>,
-) {
-    instances.clear();
-    batches.clear();
-    for (transform, sprite) in world.query::<(&Transform2D, &Sprite)>().iter() {
-        let index = u32::try_from(instances.len()).unwrap_or(u32::MAX);
-        instances.push(Instance::new(
-            view_projection,
-            transform,
-            sprite.size,
-            sprite.tint,
-            target_is_srgb,
-        ));
-        match batches.last_mut() {
-            Some(batch) if batch.texture == sprite.texture => batch.instances.end = index + 1,
-            _ => batches.push(Batch {
-                texture: sprite.texture,
-                instances: index..index + 1,
-            }),
-        }
-    }
-}
-
 /// A texture on the GPU. The bind group keeps the texture view alive.
 struct GpuTexture {
     bind_group: wgpu::BindGroup,
 }
 
 /// The textured pipeline, the GPU copies of every loaded texture, and the
-/// sprite instance buffer.
 pub(crate) struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -117,7 +74,6 @@ pub(crate) struct SpritePipeline {
     texture_format: wgpu::TextureFormat,
     /// Indexed by `TextureId`. Grows as the store does (`sync_textures`).
     textures: Vec<GpuTexture>,
-    instances: InstanceBuffer,
 }
 
 impl SpritePipeline {
@@ -180,7 +136,6 @@ impl SpritePipeline {
             sampler,
             texture_format,
             textures: Vec::new(),
-            instances: InstanceBuffer::new("purplepie sprite instances"),
         }
     }
 
@@ -256,37 +211,23 @@ impl SpritePipeline {
         Ok(GpuTexture { bind_group })
     }
 
-    /// Uploads this frame's instances.
-    pub(crate) fn upload(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        instances: &[Instance],
-    ) {
-        self.instances.upload(device, queue, instances);
+    /// Selects this pipeline for the following draws.
+    pub(crate) fn bind(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_pipeline(&self.pipeline);
     }
 
-    /// Records one draw call per batch.
-    pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, batches: &[Batch]) {
-        let Some(buffer) = self.instances.slice() else {
-            return;
-        };
-        if batches.is_empty() {
-            return;
-        }
-        pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, buffer);
-        for batch in batches {
-            // Every stored texture is synced before drawing, so this always succeeds.
-            let Some(gpu) = self.textures.get(batch.texture.index()) else {
-                log::warn!(
-                    "sprite texture {:?} is not on the GPU; skipped",
-                    batch.texture
-                );
-                continue;
-            };
-            pass.set_bind_group(0, &gpu.bind_group, &[]);
-            pass.draw(0..6, batch.instances.clone());
+    /// Binds `texture` for the following draws. Returns `false` (and logs) if it
+    /// is not on the GPU, which cannot happen after `sync_textures`.
+    pub(crate) fn bind_texture(&self, pass: &mut wgpu::RenderPass<'_>, texture: TextureId) -> bool {
+        match self.textures.get(texture.index()) {
+            Some(gpu) => {
+                pass.set_bind_group(0, &gpu.bind_group, &[]);
+                true
+            }
+            None => {
+                log::warn!("sprite texture {texture:?} is not on the GPU; skipped");
+                false
+            }
         }
     }
 
@@ -299,10 +240,12 @@ impl SpritePipeline {
 
 #[cfg(test)]
 mod tests {
+    use super::super::draw::DrawList;
     use super::super::quad::tests::headless_device_and_queue;
     use super::super::quad::view_projection;
     use super::super::texture::tests::encode_png;
     use super::*;
+    use crate::math::Transform2D;
 
     fn load(textures: &mut Textures, name: &str, w: u32, h: u32) -> TextureId {
         let path = std::env::temp_dir().join(format!("purplepie-{}-{name}", std::process::id()));
@@ -323,51 +266,19 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_sprites_with_the_same_texture_share_a_batch() {
-        let mut textures = Textures::default();
-        let a = load(&mut textures, "batch-a.png", 1, 1);
-        let b = load(&mut textures, "batch-b.png", 1, 1);
-        let mut world = World::new();
-        // Same archetype, so hecs yields them in spawn order.
-        for texture in [a, a, b, b, b, a] {
-            world.spawn((Transform2D::default(), Sprite::new(texture, Vec2::ONE)));
-        }
-        world.spawn((Transform2D::default(),)); // no sprite: ignored
-        let (mut instances, mut batches) = (Vec::new(), Vec::new());
-        collect_sprites(&world, &Mat4::IDENTITY, false, &mut instances, &mut batches);
-        assert_eq!(instances.len(), 6);
-        assert_eq!(
-            batches,
-            [
-                Batch {
-                    texture: a,
-                    instances: 0..2
-                },
-                Batch {
-                    texture: b,
-                    instances: 2..5
-                },
-                Batch {
-                    texture: a,
-                    instances: 5..6
-                },
-            ]
-        );
-    }
-
-    #[test]
     fn sprite_instance_uses_size_transform_and_tint() {
         let mut textures = Textures::default();
         let id = load(&mut textures, "inst.png", 1, 1);
-        let mut world = World::new();
+        let mut world = crate::ecs::World::new();
         world.spawn((
             Transform2D::from_position(Vec2::new(50.0, 0.0)),
             Sprite::new(id, Vec2::new(40.0, 20.0)).with_tint(Color::rgba(1.0, 0.5, 0.0, 0.25)),
         ));
         let vp = view_projection(Vec2::new(200.0, 100.0));
-        let (mut instances, mut batches) = (Vec::new(), Vec::new());
-        collect_sprites(&world, &vp, false, &mut instances, &mut batches);
-        let m = Mat4::from_cols_array_2d(&instances[0].clip_from_local);
+        let mut list = DrawList::default();
+        list.build(&world, &vp, false);
+        let instance = list.instances()[0];
+        let m = glam::Mat4::from_cols_array_2d(&instance.clip_from_local);
         // Unit-square corner (0.5, 0.5) → world (70, 10) → clip (0.7, 0.2).
         let corner = m * glam::Vec4::new(0.5, 0.5, 0.0, 1.0);
         assert!(
@@ -376,7 +287,7 @@ mod tests {
                 .truncate()
                 .abs_diff_eq(Vec2::new(0.7, 0.2), 1e-6)
         );
-        assert_eq!(instances[0].color, [1.0, 0.5, 0.0, 0.25]);
+        assert_eq!(instance.color, [1.0, 0.5, 0.0, 0.25]);
     }
 
     #[test]

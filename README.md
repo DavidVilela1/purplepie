@@ -3,11 +3,12 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 6 in progress: textures and sprites work (PP-008).** `cargo run` opens a window
-> where the engine draws ECS entities with wgpu: three coloured quads (one moving) and two
-> sprites from a PNG (one tinted and spinning) on PurplePie purple. Game logic runs in a 60 Hz
+> **Status: Stage 6 (sprites) complete.** `cargo run` opens a window
+> where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
+> sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`
+> and batched by texture. Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. Draw order/layers and batching are next (PP-015).
+> Linux. A movable `Camera2D` is next (Stage 7, PP-009).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -24,7 +25,7 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 // centre, 1 unit = 1 logical pixel (ADR-018).
 use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Quad, Sprite};
+use purplepie::render::{Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct Sandbox;
@@ -41,7 +42,8 @@ impl Game for Sandbox {
         ));
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, -100.0)),
-            Quad::new(Vec2::new(200.0, 20.0), Color::WHITE), // drawn under sprites
+            Quad::new(Vec2::new(200.0, 20.0), Color::WHITE),
+            Layer(1), // drawn over layer-0 sprites (no Layer = layer 0; quads go first within a layer)
         ));
         Ok(())
     }

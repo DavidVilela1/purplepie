@@ -31,8 +31,9 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-016 | Diagnostics: `log` facade in the engine; games choose the logger | Accepted | Yes (Stage 4, PP-014) |
 | ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
 | ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted | Yes (Stage 5, PP-007) |
-| ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted | Yes (Stage 5, PP-007); instance code shared with sprites since PP-008 |
-| ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted | Yes (Stage 6, PP-008) |
+| ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted ("one draw call for all quads" is now one per layer, ADR-021) | Yes (Stage 5, PP-007); instance code shared with sprites since PP-008 |
+| ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted (the "sprites drawn after quads" clause is superseded by ADR-021) | Yes (Stage 6, PP-008) |
+| ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
 
 ---
 
@@ -857,7 +858,7 @@ It has the fewest GPU objects that still batch. All maths is on the CPU, where i
 - The screen output is pixel-exact (every pixel is one of the four expected colours).
 ### Negative
 - CPU cost is O(n) matrix multiplies per frame. That's fine for thousands of quads, so measure before optimizing.
-- Draw order is query order (unspecified) until Stage 6 adds layers.
+- Draw order is query order (unspecified) until Stage 6 adds layers. *(Resolved by ADR-021.)*
 
 ## Revisit Conditions
 Stage 6 sprites (textures need bind groups), or a profiling result showing the per-quad CPU work matters.
@@ -897,6 +898,7 @@ component without touching wgpu (ADR-009: the renderer is crate-private, and
   (ADR-019). The instance colour is the tint, which multiplies the sample. UV `v = 0` is the top row of the image.
   One bind group (texture + sampler) per texture. Consecutive sprites with the same texture share one
   draw call. **Sprites are drawn after quads.** Sorting by layer and by texture is PP-015 (PD-05, PD-08).
+  *(Superseded on 2026-10-01 by ADR-021: order now comes from `Layer`; within a layer quads still come first.)*
 - **Decoder:** `image 0.25.10`, `default-features = false, features = ["png"]`. +12 crates
   (116 → 128 unique normal dependencies), with a highest `rust-version` of 1.88.
 
@@ -930,9 +932,66 @@ rectangles, or a need for linear filtering.
 
 ---
 
+# ADR-021: Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run
+
+## Status
+Accepted (2026-10-01, PP-015). Resolves PD-08 (draw order) and PD-05 (sprite batching). Supersedes ADR-020's "sprites after quads" clause.
+
+## Context
+After PP-008, quads always drew under sprites and the order inside each kind was hecs query order. That order
+depends on archetypes, so it changes when a component is added to or removed from an entity. Games had no way
+to put a quad (a health bar, a fade overlay) over a sprite, and sprites alternating between textures cost one draw call each.
+
+## Decision
+- **Public API:** `render::Layer(pub i32)`, an optional ECS component. No `Layer` means layer 0. Higher layers draw on top.
+  `Quad` and `Sprite` are unchanged.
+- **Order:** every frame the renderer builds one draw list (`render/draw.rs`) from all `(Transform2D, Quad)` and
+  `(Transform2D, Sprite)` entities and sorts it by the key **(layer, material rank, entity index)**:
+  - the material rank puts quads (0) before sprites, and sprites by texture (`1 + TextureId`);
+  - the entity index (`Entity::id()`) is a tie-breaker that makes the order total and independent of query order.
+    It is deterministic but **not part of the API**: overlapping drawables whose order matters should use different layers.
+- **Batching:** consecutive items with the same (layer, material) form one batch = one draw call
+  (`draw(0..6, range)`). Within a layer that's 1 call for all quads + 1 per distinct texture.
+- **One instance buffer** for quads and sprites in draw order (same `Instance` layout, ADR-019/020). The pipelines
+  only switch when the material kind changes; the bind group changes per texture batch.
+- No depth buffer: order is painter's order (alpha blending needs back-to-front anyway).
+
+## Alternatives Considered
+- **A `layer` field on `Quad` and `Sprite`:** discoverable, but changes both public structs and has to be repeated
+  for every future drawable (text, shapes). A component is optional and shared.
+- **`z: f32`:** allows in-betweens, but floats need a total order (NaN) and invite "z-fighting" style confusion. `i32` is enough for 2D.
+- **Keep spawn/query order within a layer (no texture sort):** intuitive for overlap, but alternating textures cost
+  a draw call each, and query order isn't stable anyway.
+- **Depth buffer + z test:** breaks for translucent sprites, which must be sorted anyway.
+- **Stable sort by query order instead of an entity tie-breaker:** order would change when a component is added
+  (archetype move). Verified: a test that moves an entity to a new archetype fails without the tie-breaker.
+
+## Rationale
+It's a single sort over plain keys, testable without a GPU, and it gives both requirements (control over overlap,
+few draw calls) with one optional component.
+
+## Consequences
+### Positive
+- Verified under Xvfb: a layer-1 quad covers a layer-0 sprite, and a layer-0 quad shows only through the sprite's
+  transparent texels (0 mismatches over 40,000 checked pixels, also after a resize). In a control run with the quad on
+  layer −1 it went under the sprite.
+- Draw calls = (layer, material) runs, unit-tested (5 sprites alternating between 2 textures + 2 quads → 3 calls, not 7).
+- Rough cost (release build, Cowork CPU): building and sorting the list takes ~0.08 ms for 1,000 drawables,
+  ~1.8 ms for 10,000 and ~7.9 ms for 50,000 (8 textures, 3 layers → 21 draw calls).
+### Negative
+- An O(n log n) sort every frame, even when nothing changed.
+- Same-layer overlap between sprites with different textures follows texture ids, which can surprise users. Documented on `Layer`.
+- Entity indices are reused after despawn, so a respawned entity may change its place among equals.
+
+## Revisit Conditions
+Profiling shows the per-frame sort matters (cache the sorted list or sort only on change), a need for
+y-sorting or sub-layer order, or more drawable kinds (text, shapes) that need their own material ranks.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021 on 2026-10-01.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
@@ -940,8 +999,6 @@ one is resolved (and becomes an ADR) inside the task listed.
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
 | PD-02 | Camera controls (the coordinate core is decided in ADR-018) | `Camera2D { position, zoom }` over the ADR-018 default view; `screen_to_world` for cursor input | PP-009 (Stage 7) |
-| PD-08 | Draw order / layering (today: quads, then sprites, each in query order) | A `z` or layer value on drawables, sorted per frame. No depth buffer. | PP-015 (Stage 6) |
 | PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
-| PD-05 | Sprite batching strategy (today: consecutive same-texture sprites share a draw call) | Instanced quads per texture, sorted by layer | PP-015 (Stage 6) |
 | PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |
 | PD-07 | Project license | MIT OR Apache-2.0 is the ecosystem norm | Owner decision (PP-013) |

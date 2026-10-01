@@ -6,27 +6,27 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M6: Sprite Foundation: IN_PROGRESS.** PP-008 (textures + `Sprite`) is VERIFIED on Linux:
-sprites from a PNG are pixel-exact under Xvfb + lavapipe. PP-015 (draw order + batching) completes M6.
-M5: VERIFIED (Linux; Windows look pending, non-blocking). M4: VERIFIED (Linux + Windows purple window).
+**M6: Sprite Foundation: VERIFIED (Linux).** Textured sprites (PP-008) and layer ordering + batching (PP-015) are
+pixel-exact under Xvfb + lavapipe. The owner's Windows look is pending and non-blocking. Next: **M7: Camera: NOT_STARTED.**
+M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
 M3, M2: VERIFIED (Linux). M1: FUNCTIONAL (Windows `cargo test` and Escape/close still unconfirmed). M0: VERIFIED.
 
 ## Current Stage
 
-**Stage 6: Sprite Rendering: in progress.** PP-008 done (2026-10-01). Next: **PP-015** (draw order/layers + batching), which completes Stage 6.
+**Stage 6: Sprite Rendering: complete** (PP-008, PP-015). Next: **Stage 7: Camera & Coordinates** (PP-009).
 
 ## Overall State
 
 PurplePie opens a window through its own `Engine`/`Game` API and draws game
 state. Every entity with `Transform2D` + `render::Quad` is drawn as a solid-colour
-rectangle by one instanced wgpu pipeline, then every entity with `Transform2D` + `render::Sprite`
-as a textured rectangle. Games load PNGs with `Context::load_texture`, which returns a plain
+rectangle and every entity with `Transform2D` + `render::Sprite` as a textured rectangle, from one
+draw list sorted by the optional `render::Layer` component and batched by texture (ADR-021). Games load PNGs with `Context::load_texture`, which returns a plain
 `TextureId` or a typed `Error::Asset`; the renderer uploads textures itself (ADR-020). World coordinates are +X right, +Y up,
 origin at the window centre, and 1 unit = 1 logical pixel (ADR-018). Game logic
 runs in a 60 Hz fixed-timestep `fixed_update` plus a per-frame `update` over one
 engine-owned `hecs::World`. GPU faults end the loop cleanly as `Error::Render`.
 The engine logs via `log`. CI is configured but has not run yet.
-There is no draw-order control (quads always under sprites), camera or input abstraction yet.
+There is no camera or input abstraction yet.
 
 | Component | State | Notes |
 |---|---|---|
@@ -42,9 +42,10 @@ There is no draw-order control (quads always under sprites), camera or input abs
 | `ecs` (`World`, `Entity`, `Velocity`, `integrate_velocity`) | VERIFIED | 4 unit tests + 2 doctests |
 | `render::Color` | VERIFIED | 4 unit tests + 1 doctest (ADR-015) |
 | `render::Quad` + quad pipeline | VERIFIED (Linux) | 6 unit tests + 1 doctest + 2 ignored GPU tests. Xvfb pixel-exact (ADR-018/019). |
+| `render::Layer` + draw list (`render/draw.rs`) | VERIFIED (Linux) | 7 unit tests + 1 doctest. Xvfb overlap checks, 0 mismatches (ADR-021). |
 | `render::instance` (`Instance`, `InstanceBuffer`) | VERIFIED | 1 unit test. Shared by quads and sprites (PP-008). |
 | `render::TextureId` + texture store + PNG decode | VERIFIED | 9 unit tests (ADR-020) |
-| `render::Sprite` + sprite pipeline | VERIFIED (Linux) | 3 unit tests + 1 doctest (compile-only) + 2 ignored GPU tests. Xvfb pixel-exact. |
+| `render::Sprite` + sprite pipeline | VERIFIED (Linux) | 2 unit tests + 1 doctest (compile-only) + 2 ignored GPU tests. Xvfb pixel-exact. (The batching test moved to `draw.rs`.) |
 | `render::Renderer` (wgpu) | VERIFIED | Linux: pixel-exact quads and sprites, resize, unmap/map, fault exits, texture upload/sync. Windows: purple window confirmed (Stage 4). |
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | CONFIGURED, NOT RUN | fmt + clippy (Linux); check + test on Linux/Windows/macOS |
@@ -62,6 +63,7 @@ There is no draw-order control (quads always under sprites), camera or input abs
 - PP-014: GPU fault handling + logging decision (Stage 4).
 - PP-007: first 2D primitive, quads from ECS (Stage 5).
 - PP-008: textures + `Sprite` component with a minimal texture handle (Stage 6, part 1).
+- PP-015: draw order (`Layer`) + batching by texture (Stage 6, part 2).
 
 ## In Progress
 
@@ -69,7 +71,7 @@ There is no draw-order control (quads always under sprites), camera or input abs
 
 ## Next
 
-- **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05).** See [TASKS.md](TASKS.md#pp-015-draw-orderlayers--sprite-batching-by-texture--next).
+- **PP-009: Stage 7 · Camera2D & coordinates.** See [TASKS.md](TASKS.md#pp-009-camera2d--coordinates--next).
 
 ## Blocked
 
@@ -78,7 +80,7 @@ There is no draw-order control (quads always under sprites), camera or input abs
 ## Technical Debt
 
 - Rendering is capped at 60 fps by `FramePacer`, even on high-refresh displays (ADR-014). Revisit together with render interpolation.
-- Draw order: quads always under sprites, and within each kind ECS query order (unspecified). Sprites alternating between textures cost one draw call each. Fix in PP-015 (PD-08, PD-05).
+- The draw list is rebuilt and sorted every frame (O(n log n)), even when nothing changed: ~1.8 ms per 10,000 drawables in release (R-18).
 - Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Relative asset paths depend on the working directory (R-24). Both belong to PD-06 / PP-011.
 - `EngineConfig::exit_on_escape` hard-wires one key in `app`. Revisit when the input system exists (PP-010).
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
@@ -99,6 +101,12 @@ There is no draw-order control (quads always under sprites), camera or input abs
 
 ## Recent Changes
 
+- **2026-10-01: PP-015 Stage 6 draw order + batching (Stage 6 complete).**
+  - New public `render::Layer(pub i32)` component (optional, default 0, higher = on top).
+  - New crate-private `render/draw.rs`: `DrawList` sorts quads and sprites by (layer, material, entity index) and builds one batch per (layer, material) run.
+  - One shared instance buffer for quads and sprites; the pipelines became pipeline + bind-group holders; `collect_instances` / `collect_sprites` removed.
+  - Sandbox: a yellow quad (layer 0) under the sprite's top-left corner and a pink quad (layer 1) over its bottom-right corner.
+  - ADR-021 resolves PD-05 and PD-08 and supersedes ADR-020's "sprites after quads" clause. No new dependencies.
 - **2026-10-01: PP-008 Stage 6 textures + sprites.**
   - Added `image 0.25.10` (PNG only; +12 crates, 116 → 128 unique normal dependencies; highest `rust-version` still 1.90).
   - New `Error::Asset { path, source }`. Public `render::TextureId`, `render::Sprite { texture, size, tint }`, `Context::load_texture`, `Context::texture_size`.
@@ -160,32 +168,33 @@ There is no draw-order control (quads always under sprites), camera or input abs
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-01, after the final PP-008 code change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-01, after the final PP-015 code change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` | ✅ PASS |
-| `cargo test --locked` | ✅ PASS: 68 unit tests + 12 doctests, 5 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 (fault capture; quad pipeline 3 formats; broken WGSL captured; sprite pipeline builds + uploads for 3 formats with zero GPU errors and syncs incrementally; oversized texture → `Error::Asset` before wgpu) |
-| `cargo build` | ✅ PASS |
-| Xvfb screenshot, 1280×720: sprite | ✅ 128×128 at x 576..703, y 176..303. Border 3,840 px = `#6A0DAD` (transparent texels); quadrants 3,136 px each: `#E63946`, `#2A9D8F`, `#F4A261`, and the 50% alpha quadrant = `#5662DB` (linear-space blend, computed independently). **maxdiff 0** in every region. The 1-px ring outside is all background. |
-| Xvfb screenshot: quads (Stage 5 regression) | ✅ amber 20,000 px at x 240..439, y 110..209; teal 9,940 px; white 6,400 px (identical to Stage 5) |
-| Xvfb: resize to 640×360 | ✅ sprite quadrants still exact (3,136 px each) relative to the new centre; parts outside the smaller window are clipped as expected |
-| Xvfb: unmap/map, 1×1, then 800×600 | ✅ keeps running; sprite and quads exact afterwards; Escape → exit 0 |
-| Xvfb: 120 frames timed | ✅ 2.12 s, 119 fixed steps, mover at x = 238.0 (= 119 × 2) |
-| Texture file missing (moved away) | ✅ `error: failed to load asset `…/sandbox_quadrants.png`` / `caused by: No such file or directory (os error 2)`, exit 1, no panic |
-| Texture file not a PNG | ✅ `error: failed to load asset …` / `caused by: Format error decoding Png: Invalid PNG signature.`, exit 1, no panic |
-| Xvfb: close button (`WM_DELETE_WINDOW`) | ✅ exit 0 |
+| `cargo test --locked` | ✅ PASS: 74 unit tests + 13 doctests, 5 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
+| `cargo doc --no-deps` | ✅ no warnings |
+| `cargo build --locked` | ✅ PASS |
+| Mutation check | ✅ removing the entity tie-breaker from the sort key makes `order_within_a_group_follows_entity_index_not_query_order` fail |
+| Xvfb, 1280×720: draw order | ✅ per-pixel expected image over the 200×200 area around the sprite: **0 mismatches / 40,000**. Yellow (layer 0, under the sprite) 2,048 px, visible only through the transparent border; pink (layer 1, over the sprite) 2,304 px, fully visible; red 3,136; blended quadrant 2,880 (256 px under pink) |
+| Xvfb: control run (pink on `Layer(-1)`, reverted) | ✅ pink went under the sprite: 2,048 px visible, and the 50% quadrant blends over pink (`(191,106,216)`) |
+| Xvfb: resize to 1000×600 | ✅ 0 mismatches / 40,000 relative to the new centre |
+| Xvfb: Stage 5 quads | ✅ amber 20,000 px, teal 9,940 px, white 6,400 px (unchanged) |
+| Xvfb: 120 frames timed | ✅ exit 0; 118 fixed steps, mover at x = 236.0 (= 118 × 2) |
+| Xvfb: unmap/map, 1×1 → 1000×600, close button | ✅ keeps running; `WM_DELETE_WINDOW` → exit 0 |
 | Xvfb: window destroyed mid-run | ✅ `error: GPU rendering failed` / `caused by: the window's GPU surface was lost`, exit 1 |
+| Texture file missing | ✅ `error: failed to load asset …` / `caused by: No such file or directory`, exit 1, no panic |
 | No usable GPU backend | ✅ `error: failed to create the GPU surface`, exit 1 |
-| Idle CPU (lavapipe) | ✅ 1.40 s per 5 s (Stage 5: ~0.75 s per 3 s); software GPU work, not a busy loop |
-| Import check | ✅ `wgpu` only in `render/`, `winit` only in `app/`, `image` only in `render/texture.rs` |
+| Idle CPU (lavapipe) | ✅ 1.47 s per 5 s (PP-008: 1.40 s); software GPU work, not a busy loop |
+| Draw-list timing (release, temporary test in a scratch copy, not committed) | ~0.08 ms / 1,000, ~1.8 ms / 10,000, ~7.9 ms / 50,000 drawables (8 textures, 3 layers → 21 batches) |
 
 Windows x64, owner-provided (not executed by Claude): the Stage 4 purple window was confirmed by screenshot (pixel-checked).
-Stage 5 quads and Stage 6 sprites on Windows have not been seen yet.
+Stage 5 quads and Stage 6 sprites/layers on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-01. PP-008 done (Stage 6, part 1). PP-015 is next.
+2026-10-01. PP-015 done, Stage 6 complete. PP-009 is next.

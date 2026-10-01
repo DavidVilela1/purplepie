@@ -137,6 +137,11 @@ pub(crate) mod tests {
         out.into_inner()
     }
 
+    /// `N` distinct texture ids for tests that never touch pixels or the GPU.
+    pub(crate) fn texture_ids<const N: usize>() -> [TextureId; N] {
+        std::array::from_fn(|i| TextureId(u32::try_from(i).expect("small test index")))
+    }
+
     /// A unique scratch file path for one test.
     fn temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("purplepie-{}-{name}", std::process::id()))

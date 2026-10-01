@@ -1,4 +1,4 @@
-//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019, ADR-020).
+//! GPU context and frame presentation (ADR-005, ADR-009, ADR-014, ADR-019, ADR-020, ADR-021).
 //!
 //! The only code in the engine that touches `wgpu`. It receives the window
 //! as generic `raw-window-handle` providers, so it does not depend on `winit`.
@@ -7,10 +7,11 @@ use std::sync::Arc;
 
 use super::Color;
 use super::Textures;
+use super::draw::{Batch, DrawList, Material};
 use super::faults::{FaultSlot, GpuFault};
-use super::instance::Instance;
-use super::quad::{QuadPipeline, collect_instances, view_projection};
-use super::sprite::{Batch, SpritePipeline, collect_sprites};
+use super::instance::InstanceBuffer;
+use super::quad::{QuadPipeline, view_projection};
+use super::sprite::SpritePipeline;
 use crate::ecs::World;
 use crate::error::{Error, Result};
 use crate::math::Vec2;
@@ -32,12 +33,11 @@ pub(crate) struct Renderer {
     /// Physical pixels per logical pixel (window DPI scale).
     scale_factor: f64,
     quads: QuadPipeline,
-    /// Per-frame quad instances, reused to avoid reallocating every frame.
-    quad_instances: Vec<Instance>,
     sprites: SpritePipeline,
-    /// Per-frame sprite instances and their per-texture draw batches (reused).
-    sprite_instances: Vec<Instance>,
-    sprite_batches: Vec<Batch>,
+    /// This frame's sorted instances and batches, reused every frame (ADR-021).
+    draw_list: DrawList,
+    /// One GPU instance buffer shared by quads and sprites, in draw order.
+    instances: InstanceBuffer,
 }
 
 impl Renderer {
@@ -117,10 +117,9 @@ impl Renderer {
             faults,
             scale_factor: sanitize_scale_factor(scale_factor),
             quads,
-            quad_instances: Vec::new(),
             sprites,
-            sprite_instances: Vec::new(),
-            sprite_batches: Vec::new(),
+            draw_list: DrawList::default(),
+            instances: InstanceBuffer::new("purplepie instances"),
         })
     }
 
@@ -148,7 +147,7 @@ impl Renderer {
     /// skip the frame, and the next frame retries (ARCHITECTURE §7).
     ///
     /// Reads `world` (never writes it, ADR-009) and draws every entity with
-    /// `Transform2D` + `Quad`, then every entity with `Transform2D` + `Sprite`.
+    /// `Transform2D` + `Quad` or `Sprite`, ordered by `Layer` (ADR-021).
     /// Textures in `textures` that are not on the GPU yet are uploaded first;
     /// one the GPU cannot hold returns `Err(Error::Asset)` (ADR-020).
     pub(crate) fn render(
@@ -201,20 +200,13 @@ impl Renderer {
 
         let logical_size = Vec2::new(self.config.width as f32, self.config.height as f32)
             / self.scale_factor as f32;
-        let view_projection = view_projection(logical_size);
-        let srgb = self.config.format.is_srgb();
-        collect_instances(world, &view_projection, srgb, &mut self.quad_instances);
-        self.quads
-            .upload(&self.device, &self.queue, &self.quad_instances);
-        collect_sprites(
+        self.draw_list.build(
             world,
-            &view_projection,
-            srgb,
-            &mut self.sprite_instances,
-            &mut self.sprite_batches,
+            &view_projection(logical_size),
+            self.config.format.is_srgb(),
         );
-        self.sprites
-            .upload(&self.device, &self.queue, &self.sprite_instances);
+        self.instances
+            .upload(&self.device, &self.queue, self.draw_list.instances());
 
         let view = frame
             .texture
@@ -241,13 +233,57 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.quads.draw(&mut pass, self.quad_instances.len());
-            self.sprites.draw(&mut pass, &self.sprite_batches);
+            if let Some(instances) = self.instances.slice() {
+                pass.set_vertex_buffer(0, instances);
+                record_batches(
+                    &mut pass,
+                    self.draw_list.batches(),
+                    &self.quads,
+                    &self.sprites,
+                );
+            }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         before_present();
         self.queue.present(frame);
         check(&self.faults)
+    }
+}
+
+/// Records one draw call per batch, switching pipelines only when the material
+/// kind changes. The shared instance buffer must already be bound.
+fn record_batches(
+    pass: &mut wgpu::RenderPass<'_>,
+    batches: &[Batch],
+    quads: &QuadPipeline,
+    sprites: &SpritePipeline,
+) {
+    #[derive(PartialEq)]
+    enum Bound {
+        Nothing,
+        Quads,
+        Sprites,
+    }
+    let mut bound = Bound::Nothing;
+    for batch in batches {
+        match batch.material {
+            Material::Color => {
+                if bound != Bound::Quads {
+                    quads.bind(pass);
+                    bound = Bound::Quads;
+                }
+            }
+            Material::Texture(texture) => {
+                if bound != Bound::Sprites {
+                    sprites.bind(pass);
+                    bound = Bound::Sprites;
+                }
+                if !sprites.bind_texture(pass, texture) {
+                    continue;
+                }
+            }
+        }
+        pass.draw(0..6, batch.instances.clone());
     }
 }
 
