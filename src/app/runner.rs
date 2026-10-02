@@ -14,12 +14,13 @@ use winit::window::{Window, WindowId};
 
 use super::config::EngineConfig;
 use super::game::{Context, Game};
+use super::keymap;
 use super::pacer::{FRAME_INTERVAL, FramePacer};
-use crate::ecs::World;
+use super::state::EngineState;
 use crate::error::{Error, Result};
 use crate::math::Vec2;
-use crate::render::{Camera2D, Renderer, Textures};
-use crate::time::{FixedTimestep, Time};
+use crate::render::Renderer;
+use crate::time::FixedTimestep;
 
 /// Owns the game and all engine state for the lifetime of the event loop.
 pub(crate) struct Runner<G: Game> {
@@ -31,18 +32,11 @@ pub(crate) struct Runner<G: Game> {
     /// `None` until `resumed`, and dropped again on `suspended` and `exiting`.
     renderer: Option<Renderer>,
     initialized: bool,
-    exit_requested: bool,
     pacer: FramePacer,
-    time: Time,
     fixed: FixedTimestep,
-    /// The single game world, lent to the game in every callback (ADR-008).
-    world: World,
-    /// Every texture the game loaded (CPU copies; ADR-020). Outlives renderers.
-    textures: Textures,
-    /// The single camera, lent to the game and read by the renderer (ADR-022).
-    camera: Camera2D,
-    /// Window drawing area in logical pixels, kept up to date from window events.
-    viewport: Vec2,
+    /// World, time, textures, camera, input and viewport: lent to the game
+    /// through `Context`, read by the renderer.
+    state: EngineState,
     /// When the previous frame started; `None` before the first frame.
     last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
@@ -56,14 +50,9 @@ impl<G: Game> Runner<G> {
             window: None,
             renderer: None,
             initialized: false,
-            exit_requested: false,
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
-            time: Time::new(config.fixed_dt),
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
-            world: World::new(),
-            textures: Textures::default(),
-            camera: Camera2D::default(),
-            viewport: Vec2::ZERO,
+            state: EngineState::new(config.fixed_dt),
             last_frame: None,
             error: None,
             config,
@@ -85,7 +74,7 @@ impl<G: Game> Runner<G> {
     }
 
     fn exit_if_requested(&self, event_loop: &ActiveEventLoop) {
-        if self.exit_requested {
+        if self.state.exit_requested {
             event_loop.exit();
         }
     }
@@ -101,7 +90,38 @@ impl<G: Game> Runner<G> {
         } else {
             1.0
         };
-        self.viewport = Vec2::new(width as f32, height as f32) / scale as f32;
+        self.state.viewport = Vec2::new(width as f32, height as f32) / scale as f32;
+    }
+
+    /// Feeds a key event to `Input`, after the optional Escape-to-exit shortcut.
+    fn keyboard(&mut self, event_loop: &ActiveEventLoop, event: &KeyEvent, is_synthetic: bool) {
+        let pressed = event.state == ElementState::Pressed;
+        if self.config.exit_on_escape
+            && pressed
+            && !event.repeat
+            && event.logical_key == Key::Named(NamedKey::Escape)
+        {
+            event_loop.exit();
+            return;
+        }
+        let Some(key) = keymap::translate(event.physical_key) else {
+            return;
+        };
+        log::debug!(
+            "key {key:?} {} (repeat: {}, synthetic: {is_synthetic})",
+            if pressed { "down" } else { "up" },
+            event.repeat
+        );
+        if pressed {
+            // Synthetic presses (X11 reports keys already held when the window
+            // gains focus) are not real presses: ignore them, so they never
+            // become `just_pressed` edges.
+            if !is_synthetic {
+                self.state.input.key_down(key);
+            }
+        } else {
+            self.state.input.key_up(key);
+        }
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
@@ -141,7 +161,8 @@ impl<G: Game> Runner<G> {
         let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
             return;
         };
-        if let Err(error) = renderer.render(&self.world, &self.textures, &self.camera, || {
+        let state = &self.state;
+        if let Err(error) = renderer.render(&state.world, &state.textures, &state.camera, || {
             window.pre_present_notify();
         }) {
             self.fail(event_loop, error);
@@ -157,42 +178,32 @@ impl<G: Game> Runner<G> {
             .last_frame
             .map_or(0.0, |previous| (now - previous).as_secs_f64());
         self.last_frame = Some(now);
-        let delta = self.time.begin_frame(raw_delta, self.config.max_frame_dt);
+        let delta = self
+            .state
+            .time
+            .begin_frame(raw_delta, self.config.max_frame_dt);
 
-        let viewport = self.viewport;
         let steps = self.fixed.advance(delta);
         let fixed_dt = self.config.fixed_dt;
         for _ in 0..steps {
-            self.time.record_fixed_step();
-            let mut ctx = Context::new(
-                &mut self.exit_requested,
-                &self.time,
-                &mut self.world,
-                &mut self.textures,
-                &mut self.camera,
-                viewport,
-                fixed_dt,
-            );
-            self.game.fixed_update(&mut ctx);
-            if self.exit_requested {
+            self.state.time.record_fixed_step();
+            // Key edges are visible to the first fixed step after they happened
+            // only (ADR-024).
+            self.state.input.begin_fixed_step();
+            self.game
+                .fixed_update(&mut Context::new(&mut self.state, fixed_dt));
+            self.state.input.end_fixed_step();
+            if self.state.exit_requested {
                 break;
             }
         }
-        self.time.set_alpha(self.fixed.alpha());
+        self.state.time.set_alpha(self.fixed.alpha());
 
-        if !self.exit_requested {
-            let mut ctx = Context::new(
-                &mut self.exit_requested,
-                &self.time,
-                &mut self.world,
-                &mut self.textures,
-                &mut self.camera,
-                viewport,
-                delta,
-            );
-            self.game.update(&mut ctx);
+        if !self.state.exit_requested {
+            self.game.update(&mut Context::new(&mut self.state, delta));
         }
-        if self.exit_requested {
+        self.state.input.end_frame();
+        if self.state.exit_requested {
             event_loop.exit();
         } else {
             self.render(event_loop);
@@ -216,17 +227,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         }
         if !self.initialized {
             self.initialized = true;
-            let viewport = self.viewport;
-            let mut ctx = Context::new(
-                &mut self.exit_requested,
-                &self.time,
-                &mut self.world,
-                &mut self.textures,
-                &mut self.camera,
-                viewport,
-                0.0,
-            );
-            if let Err(error) = self.game.init(&mut ctx) {
+            if let Err(error) = self.game.init(&mut Context::new(&mut self.state, 0.0)) {
                 self.fail(event_loop, error);
                 return;
             }
@@ -246,15 +247,16 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        logical_key: Key::Named(NamedKey::Escape),
-                        state: ElementState::Pressed,
-                        repeat: false,
-                        ..
-                    },
+                event,
+                is_synthetic,
                 ..
-            } if self.config.exit_on_escape => event_loop.exit(),
+            } => self.keyboard(event_loop, &event, is_synthetic),
+            // Releases that happen while another window has focus never arrive,
+            // so treat every held key as released (ADR-024).
+            WindowEvent::Focused(false) => {
+                log::debug!("focus lost: releasing all keys");
+                self.state.input.release_all();
+            }
             WindowEvent::Resized(size) => {
                 let Some(scale_factor) = self.window.as_ref().map(|w| w.scale_factor()) else {
                     return;

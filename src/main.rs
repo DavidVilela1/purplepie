@@ -3,6 +3,8 @@
 //! This binary plays the role of a *game*: it may only use the public
 //! `purplepie` API, exactly like an external game crate would.
 //!
+//! Controls: arrow keys pan the camera, `=` / `-` zoom in / out, Escape quits.
+//!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
 //!   (used for automated smoke runs).
@@ -15,6 +17,7 @@ use std::error::Error as _;
 use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
+use purplepie::input::KeyCode;
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
@@ -81,6 +84,11 @@ const SPRITE_TEXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/textures/sandbox_quadrants.png"
 );
+/// Camera pan speed with the arrow keys, in logical pixels per second (so it
+/// feels the same at any zoom).
+const PAN_SPEED: f32 = 300.0;
+/// Zoom limits for the `=` / `-` keys (each press doubles or halves the zoom).
+const ZOOM_RANGE: (f32, f32) = (0.125, 8.0);
 /// Turn rate of the spinning sprite, in radians per second.
 const SPIN_SPEED: f32 = 1.0;
 
@@ -91,6 +99,8 @@ struct Sandbox {
     mover: Option<Entity>,
     spinner: Option<Entity>,
     camera: Camera2D,
+    /// `=` presses seen by `fixed_update` and by `update` (each press must count once in each).
+    zoom_in_presses: (u32, u32),
 }
 
 impl Game for Sandbox {
@@ -158,9 +168,28 @@ impl Game for Sandbox {
         {
             transform.rotation += SPIN_SPEED * dt;
         }
+
+        // Controls: arrow keys pan (while held), `=` / `-` zoom (once per press).
+        let input = ctx.input();
+        let pan = Vec2::new(
+            input.axis(KeyCode::ArrowLeft, KeyCode::ArrowRight),
+            input.axis(KeyCode::ArrowDown, KeyCode::ArrowUp),
+        );
+        let zoom_in = input.just_pressed(KeyCode::Equal);
+        let zoom_out = input.just_pressed(KeyCode::Minus);
+        self.zoom_in_presses.0 += u32::from(zoom_in);
+        let camera = ctx.camera_mut();
+        camera.position += pan * PAN_SPEED * dt / camera.effective_zoom();
+        if zoom_in {
+            camera.zoom = (camera.effective_zoom() * 2.0).min(ZOOM_RANGE.1);
+        }
+        if zoom_out {
+            camera.zoom = (camera.effective_zoom() / 2.0).max(ZOOM_RANGE.0);
+        }
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {
+        self.zoom_in_presses.1 += u32::from(ctx.input().just_pressed(KeyCode::Equal));
         let time = ctx.time();
         if Some(time.frame()) == self.exit_after_frames {
             println!(
@@ -185,6 +214,10 @@ impl Game for Sandbox {
             println!(
                 "sandbox: viewport {}x{} logical px, camera at ({}, {}) zoom {}",
                 viewport.x, viewport.y, camera.position.x, camera.position.y, camera.zoom
+            );
+            println!(
+                "sandbox: '=' presses seen: {} in fixed_update, {} in update",
+                self.zoom_in_presses.0, self.zoom_in_presses.1
             );
             ctx.request_exit();
         }
@@ -227,6 +260,7 @@ fn main() -> ExitCode {
         mover: None,
         spinner: None,
         camera,
+        zoom_in_presses: (0, 0),
     };
     let result = Engine::new(EngineConfig::new("PurplePie Sandbox")).and_then(|e| e.run(game));
 

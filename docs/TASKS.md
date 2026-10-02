@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-010: Stage 8 · Keyboard input (`Input`, own `KeyCode`, edges under fixed steps)** · P1 · TODO ← **next task**
+- [ ] **PP-016: Stage 8 · Mouse input (buttons, cursor in screen and world coordinates)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -35,10 +35,10 @@ _None._
 - [x] **PP-015: Stage 6 · Draw order/layers (PD-08) + sprite batching by texture (PD-05)** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-009: Stage 7 · Camera2D & coordinates** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-013: Owner · Choose project license** · DONE (2026-10-01; MIT OR Apache-2.0)
+- [x] **PP-010: Stage 8 · Keyboard input** · DONE (2026-10-02; verified on Linux)
 
 ## Future
 
-- [ ] **PP-016: Stage 8 · Mouse input (buttons, cursor in screen and world coordinates)** · P2 · TODO
 - [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
 - [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
 
@@ -153,19 +153,23 @@ _None._
 | Acceptance criteria | ✅ 1. ADR-022. ✅ 2. Unit tests: default camera = ADR-018 matrix exactly; pan; zoom; invalid zoom → 1; screen axes; round trips over 3 viewports × 3 cameras × 3 points; DPI 1.0/1.25/2.0 agreement between the projection and `world_to_screen`; `Context` camera persistence + viewport. ✅ 3. Xvfb whole-frame per-pixel model, 0 mismatches for cameras (0,0)×1, (0,120)×2, (200,0)×0.5, and (0,120)×2 after resizing to 1000×600; a 1-unit model offset gives ~3,000 mismatches (sensitivity control). ✅ 4. Stage 1–6 regressions unchanged, after fixing the regression below. |
 | Notes | **Regression found and fixed during validation:** the first version read `window.inner_size()` every frame; once the X11 window was destroyed, winit 0.30.13 panicked inside `inner_size` (`GetGeometry` unwrap) instead of the clean `Error::Render` exit. The viewport is now event-driven (ADR-022, R-22). |
 
-### PP-010: Keyboard input ← NEXT
+### PP-010: Keyboard input
 | Field | Value |
 |---|---|
-| Stage | 8 → Milestone M8 · Priority P1 · TODO. Stage 8 was split into PP-010 (keyboard) + PP-016 (mouse) on 2026-10-01. |
-| Dependencies | PP-004 (fixed steps), PP-009 (DONE) |
-| Why now | Stage 7 is complete. Games can't react to the player yet, and the edge-vs-fixed-step semantics (R-05) is the riskiest remaining API decision. |
-| Scope | Decide PD-03 as an ADR. New `src/input/` with a public `Input` (pressed / just_pressed / just_released) and an engine-owned `KeyCode` enum; winit → `KeyCode` translation stays in `app/`. `Context::input()`. Edges latched so each press is seen exactly once in `fixed_update` and once in `update`, whatever the number of fixed steps. Focus loss releases held keys. Replace the hard-wired Escape check with the new state only if it stays behaviour-compatible (`exit_on_escape`). Sandbox: arrow keys pan the camera. |
-| Acceptance criteria | 1. PD-03 recorded as an ADR. 2. Unit tests of the state machine: press, hold, release, press+release in one frame, and edges with 0, 1 and N fixed steps. 3. No winit types in the public API. 4. Xvfb: XTEST arrow keys move the camera by the predicted amount (pixel check), Escape still exits. 5. Stage 1–7 regressions unchanged. |
+| Stage | 8 → Milestone M8 · Priority P1 · **DONE** (2026-10-02). Stage 8 was split into PP-010 (keyboard) + PP-016 (mouse) on 2026-10-01. |
+| Dependencies | PP-004, PP-009 (DONE) |
+| Scope (as built) | New public module `input`: `KeyCode` (99 physical keys, US-layout names, `#[non_exhaustive]`) and `Input` (`pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`) with separate frame / fixed-step edge sets (128-bit masks). New `app/keymap.rs` (winit → `KeyCode`) and `app/state.rs` (`EngineState`: `Context` now borrows one struct instead of six arguments). The runner feeds key events (repeats and X11 synthetic presses ignored), releases all keys on focus loss, and brackets every fixed step / frame for the edge sets; key and focus events are logged at `debug`. `Context::input()`. `exit_on_escape` kept as before. Sandbox: arrows pan the camera (300 px/s), `=` / `-` zoom ×2 / ÷2; the timed exit prints how many `=` presses each callback saw. ADR-024 resolves PD-03. No new dependencies. |
+| Acceptance criteria | ✅ 1. ADR-024. ✅ 2. Unit tests: press/hold/release, OS repeat, tap within a frame, 0 / 1 / N fixed steps, focus release, release-without-press, axis, key bits; keymap bijection. A mutation to per-frame edge clearing fails 3 tests. ✅ 3. No winit types in the public API (`input` has no dependencies). ✅ 4. Xvfb XTEST: 3 `=` taps → seen 3× in `fixed_update` and 3× in `update`, zoom 4 after one `-`; held arrows panned (155, 95); that frame matched the per-pixel model with 0 mismatches (3 runs, identical results); focus removed while → was held stopped the pan at the focus loss; Escape exits, other keys don't. ✅ 5. Stage 1–7 regressions unchanged. |
+| Notes | One early run (before debug logging) lost the → press; it never reproduced in 14 later runs. Probably a focus race in WM-less Xvfb, unconfirmed (R-11). Owner check on Windows: arrows pan, `=` / `-` zoom, Escape quits. |
 
-### PP-016: Mouse input
-| Stage 8 → M8 · P2 · TODO | Depends on PP-010 |
+### PP-016: Mouse input ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | Mouse buttons through the same `Input` edge model. Cursor position in logical screen pixels and in world coordinates (`Camera2D::screen_to_world`), tested with DPI scales. |
+| Stage | 8 → Milestone M8 · Priority P1 · TODO |
+| Dependencies | PP-010 (DONE), PP-009 (DONE) |
+| Why now | Completes Stage 8. Cursor-to-world is what the camera's `screen_to_world` was built for, and most games need clicking. |
+| Scope | `MouseButton` (Left, Right, Middle, Back, Forward) through the same edge model as keys (ADR-024). Cursor position in logical screen pixels (physical ÷ scale factor, from `CursorMoved`) and `Context::cursor_world()` via the camera; `None` when the cursor is outside the window. Wheel delta per frame. Focus loss releases buttons. Sandbox: a marker quad follows the cursor in world space. |
+| Acceptance criteria | 1. Button edges unit-tested with 0/1/N steps (shared with keys). 2. Cursor physical → logical → world tested at DPI 1.0/1.25/2.0. 3. Xvfb: `xdotool mousemove` + click puts the marker at the predicted pixels under a panned/zoomed camera. 4. No winit types in the public API. 5. Stage 1–8 regressions unchanged. ADR only if the model deviates from ADR-024. |
 
 ### PP-011: Assets & resources
 | Stage 9 → M9 · P3 · TODO | Depends on PP-008 |

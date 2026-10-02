@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-01 (Stage 7 complete; owner confirmations for PP-003, CI and PP-013 recorded).
+Last reviewed: 2026-10-02 (PP-010 keyboard input).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -14,7 +14,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-02 | winit lifecycle changes | MONITORING | Medium | Medium | 1+ |
 | R-03 | GPU API compatibility and outdated examples | OPEN | High | Medium | 1–7 |
 | R-04 | Rust ownership/borrowing constraints in `Context` | OPEN | Medium | Medium | 1, 3, 10 |
-| R-05 | Input edges under fixed timestep | OPEN | High | Medium | 8 |
+| R-05 | Input edges under fixed timestep | MITIGATED | — | Medium | 8 |
 | R-06 | Frame pacing / busy loop | MITIGATED | — | Low | all |
 | R-07 | Spiral of death | MITIGATED | — | Medium | 2 |
 | R-08 | Color-space errors | MITIGATED | — | Low | 4–6 |
@@ -60,7 +60,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-05: Input edges under fixed timestep
 - **Trigger:** A frame with 0 fixed steps misses `just_pressed`, or a frame with 2+ steps sees it twice.
-- **Mitigation:** PD-03: latch edges until the first fixed step consumes them. `update()` always sees the frame's edges.
+- **Mitigation (implemented, ADR-024):** separate edge sets: `fixed_update` edges are latched until the first fixed step consumes them; `update()` sees the frame's edges. Unit-tested with 0, 1 and N steps; a mutation to per-frame clearing fails 3 tests; end to end, 3 key taps counted 3× in each callback.
 - **Fallback:** Document that edge checks belong in `update()` only.
 
 ### R-06: Frame pacing / busy loop
@@ -94,6 +94,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** Now. Cowork runs Linux without a GPU or display. Xvfb + Mesa lavapipe + xdotool is available, which is proven to work. On Windows with a real GPU, the owner confirmed the purple window by screenshot (pixel-checked). Vsync pacing and the GPU error paths are unverified on real hardware.
 - **Mitigation:** Smoke runs under Xvfb with pixel checks. The owner runs every windowed stage on Windows with a real GPU and reports the result.
 - **Fallback:** Mark platform behavior as unverified in PROJECT_STATUS until the owner confirms it.
+- **PP-010 note:** in the first keyboard run (no debug logging), a held → Right was not applied and ↑ moved less than expected. The next 14 runs with the same and similar scripts were all correct, and it never reproduced. The likely cause is a focus race in WM-less Xvfb (focus events around `xdotool windowfocus`), but it is **unconfirmed**. Keyboard procedure since then: wait 0.5 s after `windowfocus`; run with `PURPLEPIE_LOG=debug` to see key and focus events. The owner should confirm arrows/zoom on Windows.
 
 ### R-12: Cross-platform window behavior
 - **Trigger:** DPI scaling, Wayland vs X11, macOS main-thread rules, minimize reporting a 0×0 size.

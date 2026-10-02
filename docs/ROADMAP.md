@@ -36,7 +36,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | VERIFIED (Linux; Windows look pending) |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | VERIFIED (Linux; PP-008 + PP-015; Windows look pending) |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
-| **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | NOT_STARTED |
+| **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | IN_PROGRESS (PP-010 keyboard ✅; PP-016 mouse next) |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
 | **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012 | NOT_STARTED |
 
@@ -173,7 +173,8 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | new `src/input/`, winit translation in `src/app/`, `Context.input` |
 | **Expected result** | Sandbox moves an entity with the arrow keys |
 | **Validation** | State-machine unit tests: press, hold, release, edges with 0, 1 and N fixed steps |
-| **Acceptance criteria** | PD-03 decided. No winit types in the public input API. |
+| **As built (PP-010)** | Public `input::{Input, KeyCode}` (99 physical keys), `Context::input()`; edges latched per callback so each press reaches `fixed_update` and `update` exactly once (ADR-024). winit translation in `app/keymap.rs`. Sandbox: arrows pan, `=`/`-` zoom. |
+| **Acceptance criteria** | PD-03 decided (✅ ADR-024). No winit types in the public input API (✅). |
 | **Risks** | Edge semantics with fixed steps (R-05) |
 | **Definition of Done** | Project DoD |
 

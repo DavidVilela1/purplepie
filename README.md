@@ -3,12 +3,12 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 7 (camera) complete.** `cargo run` opens a window
+> **Status: Stage 8 (input) in progress: the keyboard works.** `cargo run` opens a window
 > where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
 > sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`,
-> batched by texture, and seen through a `Camera2D` the game can pan and zoom. Game logic runs in a 60 Hz
+> batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` zoom, Escape quits.** Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. Keyboard input is next (Stage 8, PP-010).
+> Linux. Mouse input is next (PP-016).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -24,6 +24,7 @@ renders entities that carry `Transform2D` + `Sprite`. Game code never touches
 // Works today (Stage 6). Coordinates: +X right, +Y up, origin at the window
 // centre, 1 unit = 1 logical pixel (ADR-018).
 use purplepie::ecs::{self, Velocity};
+use purplepie::input::KeyCode;
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
@@ -51,9 +52,14 @@ impl Game for Sandbox {
     fn fixed_update(&mut self, ctx: &mut Context<'_>) {
         let dt = ctx.dt(); // fixed step: 1/60 s by default
         ecs::integrate_velocity(ctx.world_mut(), dt);
-        // The camera follows at 25 units per second and shows everything 1.5× larger.
-        ctx.camera_mut().position.x += 25.0 * dt;
-        ctx.camera_mut().zoom = 1.5;
+        // Arrow keys pan the camera; each press of Space zooms in once,
+        // however many fixed steps this frame runs (ADR-024).
+        let pan = ctx.input().axis(KeyCode::ArrowLeft, KeyCode::ArrowRight);
+        let zoom_in = ctx.input().just_pressed(KeyCode::Space);
+        ctx.camera_mut().position.x += pan * 200.0 * dt;
+        if zoom_in {
+            ctx.camera_mut().zoom *= 1.5;
+        }
     }
 }
 

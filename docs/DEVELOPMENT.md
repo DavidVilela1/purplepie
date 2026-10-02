@@ -179,6 +179,12 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   spinner and the moving quad's band. Expect 0 mismatches for (0,0,1), (0,120,2), (200,0,0.5), and again after a resize.
   Check sensitivity by evaluating the model one world unit off (thousands of mismatches expected).
   The timed exit line prints the logical viewport (check it after resizing mid-run) and the camera.
+- **Keyboard (Stage 8+, ADR-024):** `xdotool windowfocus --sync <id>; sleep 0.5`, then XTEST keys
+  (`xdotool keydown Right; sleep 0.5; xdotool keyup Right`, `xdotool key equal`). Run with `PURPLEPIE_LOG=debug` to see every
+  key and focus event. The sandbox's timed exit prints the camera and how many `=` presses `fixed_update` and `update`
+  saw (must be equal to the taps sent). Check the final frame against the per-pixel camera model at the printed camera.
+  Focus loss: remove focus with python-xlib (`set_input_focus(X.NONE, …)`) while a key is held; the pan must stop then.
+  The 0.5 s settle avoids a suspected focus race in WM-less Xvfb (R-11).
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
 - **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call):**

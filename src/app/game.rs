@@ -2,10 +2,12 @@
 
 use std::path::Path;
 
+use super::state::EngineState;
 use crate::ecs::World;
 use crate::error::Result;
+use crate::input::Input;
 use crate::math::Vec2;
-use crate::render::{Camera2D, TextureId, Textures};
+use crate::render::{Camera2D, TextureId};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -45,57 +47,36 @@ pub trait Game {
 ///
 /// Built fresh for every callback from engine-owned state. It never exposes
 /// `winit` or GPU types: textures are loaded here but uploaded by the
-/// renderer (ADR-020), and the camera is plain data (ADR-022). Input is
-/// added in Stage 8.
+/// renderer (ADR-020), the camera is plain data (ADR-022), and keys are
+/// PurplePie's own [`KeyCode`](crate::input::KeyCode)s (ADR-024).
 pub struct Context<'a> {
-    exit_requested: &'a mut bool,
-    time: &'a Time,
-    world: &'a mut World,
-    textures: &'a mut Textures,
-    camera: &'a mut Camera2D,
-    /// Window size in logical pixels (zero while there is no window or it is minimized).
-    viewport: Vec2,
+    state: &'a mut EngineState,
     dt: f64,
 }
 
 impl std::fmt::Debug for Context<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context")
-            .field("exit_requested", &self.exit_requested)
-            .field("time", &self.time)
-            .field("entities", &self.world.len())
-            .field("textures", &self.textures.len())
-            .field("camera", &self.camera)
-            .field("viewport", &self.viewport)
+            .field("exit_requested", &self.state.exit_requested)
+            .field("time", &self.state.time)
+            .field("entities", &self.state.world.len())
+            .field("textures", &self.state.textures.len())
+            .field("camera", &self.state.camera)
+            .field("input", &self.state.input)
+            .field("viewport", &self.state.viewport)
             .field("dt", &self.dt)
             .finish()
     }
 }
 
 impl<'a> Context<'a> {
-    pub(crate) fn new(
-        exit_requested: &'a mut bool,
-        time: &'a Time,
-        world: &'a mut World,
-        textures: &'a mut Textures,
-        camera: &'a mut Camera2D,
-        viewport: Vec2,
-        dt: f64,
-    ) -> Self {
-        Self {
-            exit_requested,
-            time,
-            world,
-            textures,
-            camera,
-            viewport,
-            dt,
-        }
+    pub(crate) fn new(state: &'a mut EngineState, dt: f64) -> Self {
+        Self { state, dt }
     }
 
     /// The game world (read-only).
     pub fn world(&self) -> &World {
-        self.world
+        &self.state.world
     }
 
     /// The game world: spawn entities, attach components, run queries and systems.
@@ -104,12 +85,12 @@ impl<'a> Context<'a> {
     /// because the world borrow is exclusive:
     /// `let dt = ctx.dt(); ecs::integrate_velocity(ctx.world_mut(), dt);`
     pub fn world_mut(&mut self) -> &mut World {
-        self.world
+        &mut self.state.world
     }
 
     /// Timing information for the current frame.
     pub fn time(&self) -> &Time {
-        self.time
+        &self.state.time
     }
 
     /// Seconds to advance by in *this* callback: the fixed step inside
@@ -134,42 +115,49 @@ impl<'a> Context<'a> {
     /// is reported as `Error::Asset` when the next frame is drawn, which stops
     /// the engine.
     pub fn load_texture(&mut self, path: impl AsRef<Path>) -> Result<TextureId> {
-        self.textures.load(path.as_ref())
+        self.state.textures.load(path.as_ref())
     }
 
     /// Width and height of a loaded texture in texels, e.g. to give a
     /// [`Sprite`](crate::render::Sprite) its image's natural size.
     /// `None` only for an id that came from a different engine run.
     pub fn texture_size(&self, texture: TextureId) -> Option<Vec2> {
-        self.textures.size(texture)
+        self.state.textures.size(texture)
     }
 
     /// The camera the next frame is drawn with (ADR-022).
     pub fn camera(&self) -> &Camera2D {
-        self.camera
+        &self.state.camera
     }
 
     /// The camera, to pan or zoom: `ctx.camera_mut().position.x += 10.0;`.
     /// Changes apply to the next frame drawn and persist until changed again.
     pub fn camera_mut(&mut self) -> &mut Camera2D {
-        self.camera
+        &mut self.state.camera
     }
 
     /// The window's drawing area in logical pixels (physical pixels ÷ DPI
     /// scale), as used by [`Camera2D::screen_to_world`]. Zero while the window
     /// is minimized.
     pub fn viewport_size(&self) -> Vec2 {
-        self.viewport
+        self.state.viewport
+    }
+
+    /// The keyboard (ADR-024). `just_pressed` / `just_released` report each
+    /// key edge exactly once in `fixed_update` and once in `update`, however
+    /// many fixed steps a frame runs; see [`input`](crate::input).
+    pub fn input(&self) -> &Input {
+        &self.state.input
     }
 
     /// Asks the engine to shut down cleanly. No further game callbacks are made.
     pub fn request_exit(&mut self) {
-        *self.exit_requested = true;
+        self.state.exit_requested = true;
     }
 
     /// Whether [`request_exit`](Self::request_exit) has been called.
     pub fn exit_requested(&self) -> bool {
-        *self.exit_requested
+        self.state.exit_requested
     }
 }
 
@@ -179,85 +167,37 @@ mod tests {
 
     #[test]
     fn request_exit_sets_the_engine_flag() {
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
-        let mut ctx = Context::new(
-            &mut flag,
-            &time,
-            &mut world,
-            &mut textures,
-            &mut camera,
-            Vec2::new(800.0, 600.0),
-            0.0,
-        );
+        let mut state = EngineState::new(0.25);
+        let mut ctx = Context::new(&mut state, 0.0);
         assert!(!ctx.exit_requested());
         ctx.request_exit();
         assert!(ctx.exit_requested());
-        assert!(flag);
+        assert!(state.exit_requested);
     }
 
     #[test]
     fn exposes_time_and_callback_dt() {
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
-        let ctx = Context::new(
-            &mut flag,
-            &time,
-            &mut world,
-            &mut textures,
-            &mut camera,
-            Vec2::new(800.0, 600.0),
-            0.25,
-        );
+        let mut state = EngineState::new(0.25);
+        let ctx = Context::new(&mut state, 0.25);
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
     }
 
     #[test]
     fn world_changes_made_through_the_context_persist() {
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
+        let mut state = EngineState::new(0.25);
         {
-            let mut ctx = Context::new(
-                &mut flag,
-                &time,
-                &mut world,
-                &mut textures,
-                &mut camera,
-                Vec2::new(800.0, 600.0),
-                0.0,
-            );
+            let mut ctx = Context::new(&mut state, 0.0);
             ctx.world_mut().spawn((1_u32,));
             assert_eq!(ctx.world().len(), 1);
         }
-        assert_eq!(world.len(), 1);
+        assert_eq!(state.world.len(), 1);
     }
 
     #[test]
     fn load_texture_errors_are_typed_and_sizes_are_reported() {
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
-        let mut ctx = Context::new(
-            &mut flag,
-            &time,
-            &mut world,
-            &mut textures,
-            &mut camera,
-            Vec2::new(800.0, 600.0),
-            0.0,
-        );
+        let mut state = EngineState::new(0.25);
+        let mut ctx = Context::new(&mut state, 0.0);
         let err = ctx
             .load_texture("this/file/does/not/exist.png")
             .expect_err("missing file");
@@ -274,51 +214,37 @@ mod tests {
 
     #[test]
     fn camera_changes_persist_and_viewport_is_reported() {
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
+        let mut state = EngineState::new(0.25);
+        state.viewport = Vec2::new(800.0, 600.0);
         {
-            let mut ctx = Context::new(
-                &mut flag,
-                &time,
-                &mut world,
-                &mut textures,
-                &mut camera,
-                Vec2::new(800.0, 600.0),
-                0.0,
-            );
+            let mut ctx = Context::new(&mut state, 0.0);
             assert_eq!(ctx.camera(), &Camera2D::IDENTITY);
             assert_eq!(ctx.viewport_size(), Vec2::new(800.0, 600.0));
             ctx.camera_mut().position = Vec2::new(5.0, 6.0);
             ctx.camera_mut().zoom = 2.0;
         }
-        assert_eq!(camera, Camera2D::new(Vec2::new(5.0, 6.0), 2.0));
+        assert_eq!(state.camera, Camera2D::new(Vec2::new(5.0, 6.0), 2.0));
+    }
+
+    #[test]
+    fn input_is_visible_through_the_context() {
+        let mut state = EngineState::new(0.25);
+        state.input.key_down(crate::input::KeyCode::Space);
+        let ctx = Context::new(&mut state, 0.0);
+        assert!(ctx.input().pressed(crate::input::KeyCode::Space));
+        assert!(ctx.input().just_pressed(crate::input::KeyCode::Space));
     }
 
     #[test]
     fn default_callbacks_do_nothing() {
         struct Minimal;
         impl Game for Minimal {}
-        let time = Time::new(0.25);
-        let mut world = World::new();
-        let mut textures = Textures::default();
-        let mut camera = Camera2D::default();
-        let mut flag = false;
-        let mut ctx = Context::new(
-            &mut flag,
-            &time,
-            &mut world,
-            &mut textures,
-            &mut camera,
-            Vec2::new(800.0, 600.0),
-            0.0,
-        );
+        let mut state = EngineState::new(0.25);
+        let mut ctx = Context::new(&mut state, 0.0);
         let mut game = Minimal;
         assert!(game.init(&mut ctx).is_ok());
         game.fixed_update(&mut ctx);
         game.update(&mut ctx);
-        assert!(!flag);
+        assert!(!state.exit_requested);
     }
 }

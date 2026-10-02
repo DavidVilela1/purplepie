@@ -15,12 +15,12 @@ directory on 2026-09-30, with no decision content changed.
 |---|---|---|---|
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
 | ADR-002 | Single package: engine library + `sandbox` binary | Accepted | Yes (Stage 0) |
-| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`; `input`/`assets` in later stages |
+| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9 |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) + camera/viewport (Stage 7) |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) + camera/viewport (Stage 7) + `input` (Stage 8). `Context` now borrows one engine-owned `EngineState` |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
@@ -36,6 +36,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
 | ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
 | ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
+| ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted | Yes (Stage 8, PP-010) |
 
 ---
 
@@ -1081,14 +1082,70 @@ None expected.
 
 ---
 
+# ADR-024: Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps
+
+## Status
+Accepted (2026-10-02, PP-010). Resolves PD-03 for the keyboard. Mouse buttons follow the same model in PP-016.
+
+## Context
+Games need held-key state and press/release edges. The engine runs 0..N `fixed_update`s and one `update` per
+frame (ADR-010), and window events arrive between frames. A naive "edges are cleared each frame" design loses a
+press when a frame has no fixed step and reports it N times when it has several (R-05). winit types must not leak
+into the public API (ADR-003).
+
+## Decision
+- **Public module `input`:** `KeyCode` (99 physical keys named by US-layout position: letters, digits, F1–F12, arrows,
+  editing keys, modifiers, punctuation, numpad; `#[non_exhaustive]`, `#[repr(u8)]`) and `Input` with `pressed`,
+  `just_pressed`, `just_released`, `axis(negative, positive)` and `pressed_keys`. Keys are stored in 128-bit masks.
+- **Physical, not logical, keys:** `KeyCode::W` is the key above `S` on every layout (it's `Z` on AZERTY), which is
+  what movement controls need. Text input (logical characters) is out of scope.
+- **Two edge sets:** `update` sees every edge since the previous frame (cleared after `update`). `fixed_update` sees
+  edges latched until the **first fixed step that runs** after the event (cleared after that step). Result: every
+  edge reaches each callback exactly once, whatever the step count. `pressed` is the same everywhere.
+- **Rules:** OS auto-repeat is ignored (a held key can't be pressed again). A release without a press is ignored.
+  A press and release in one frame is `just_pressed` + `just_released` but never `pressed`. Losing focus releases
+  every held key (with release edges). X11's synthetic presses on focus gain are ignored.
+- **Translation in `app/keymap.rs`** (the only file that sees both key types; a test checks it is a bijection onto
+  `KeyCode::ALL`). Unknown keys are dropped. Key events are logged at `debug` level.
+- **`Context::input()`**, read-only. `Context` now borrows one `EngineState` (world, time, textures, camera, input,
+  viewport) instead of a growing argument list.
+- `EngineConfig::exit_on_escape` stays: Escape (logical) exits before reaching `Input`, as before.
+
+## Alternatives Considered
+- **Edges only in `update`:** simple, but gameplay in `fixed_update` (where it belongs) couldn't react to presses
+  reliably. This was R-05's fallback.
+- **Clear all edges at frame end:** loses presses on 0-step frames and doubles them on N-step frames (a mutation of
+  the implementation into this design fails 3 unit tests).
+- **Event queue instead of state:** more flexible, but every game must fold events into state itself.
+- **Logical keys / re-exporting winit's `KeyCode`:** layout-dependent controls, and winit in the public API.
+
+## Rationale
+Gameplay code gets the obvious API (`just_pressed` works anywhere), and the subtle fixed-step behaviour is in one
+small, unit-tested, platform-free module.
+
+## Consequences
+### Positive
+- Verified: 10 unit tests (0/1/N steps, repeat, tap, focus release, axis), 3 keymap tests, and Xvfb runs with XTEST
+  keys: 3 `=` taps counted exactly 3 times in `fixed_update` and 3 in `update` (zoom 1 → 8 → ÷2 = 4), held arrows
+  panned the camera and the resulting frame matched the per-pixel model (0 mismatches). Holding → Right and removing
+  focus stopped the pan at the focus loss (camera 170 ≈ 0.576 s × 300 px/s), not at the later key release.
+### Negative
+- An edge reaches `fixed_update` one frame late when the frame that saw it had no fixed step (inherent to fixed steps).
+- Only 99 keys; anything else is ignored until added.
+- `exit_on_escape` remains a hard-wired shortcut in `app` (now redundant with `Input`, kept for compatibility).
+
+## Revisit Conditions
+Text input, gamepads, key rebinding / action maps, or more than 128 keys.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-03 | Input model | Own `KeyCode`/`MouseButton` enums mapped from winit. Edges latched until the first fixed step of the frame consumes them. | PP-010 (Stage 8) |
 | PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |

@@ -6,14 +6,13 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M7: Camera: VERIFIED (Linux).** `Camera2D` pans and zooms; whole frames match a per-pixel model under Xvfb + lavapipe.
-The owner's Windows look is pending and non-blocking. Next: **M8: Input: NOT_STARTED.**
-M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
+**M8: Input: IN_PROGRESS.** Keyboard input (PP-010) is VERIFIED on Linux; mouse input (PP-016) is next.
+M7, M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
 M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows, owner-confirmed). M0: VERIFIED.
 
 ## Current Stage
 
-**Stage 7: Camera & Coordinates: complete** (PP-009). Next: **Stage 8: Input System** (PP-010 keyboard, then PP-016 mouse).
+**Stage 8: Input System: in progress.** PP-010 (keyboard) done 2026-10-02. Next: **PP-016** (mouse), which completes Stage 8.
 
 ## Overall State
 
@@ -21,13 +20,15 @@ PurplePie opens a window through its own `Engine`/`Game` API and draws game
 state. Every entity with `Transform2D` + `render::Quad` is drawn as a solid-colour
 rectangle and every entity with `Transform2D` + `render::Sprite` as a textured rectangle, from one
 draw list sorted by the optional `render::Layer` component and batched by texture (ADR-021), as seen through one
-engine-owned `render::Camera2D` that games pan and zoom via `Context::camera_mut()` (ADR-022). Games load PNGs with `Context::load_texture`, which returns a plain
+engine-owned `render::Camera2D` that games pan and zoom via `Context::camera_mut()` (ADR-022).
+Keyboard state comes through `Context::input()` with engine-owned `KeyCode`s; every press reaches `fixed_update`
+and `update` exactly once (ADR-024). Games load PNGs with `Context::load_texture`, which returns a plain
 `TextureId` or a typed `Error::Asset`; the renderer uploads textures itself (ADR-020). World coordinates are +X right, +Y up,
 origin at the window centre, and 1 unit = 1 logical pixel (ADR-018). Game logic
 runs in a 60 Hz fixed-timestep `fixed_update` plus a per-frame `update` over one
 engine-owned `hecs::World`. GPU faults end the loop cleanly as `Error::Render`.
 The engine logs via `log`. CI passes on Linux, Windows and macOS. Licensed MIT OR Apache-2.0.
-There is no input abstraction yet.
+There is no mouse input yet.
 
 | Component | State | Notes |
 |---|---|---|
@@ -35,7 +36,7 @@ There is no input abstraction yet.
 | Lints (`unsafe_code = forbid`, `unwrap_used = warn`) | VERIFIED | No `unwrap`/`unsafe` in `src/`. `expect` only in tests. |
 | `error` (`Error`, `BoxError`, `Result`) | VERIFIED | 3 unit tests + 1 doctest. `Error::Asset` added (PP-008), covered by texture tests. |
 | `app::EngineConfig` | VERIFIED | 7 unit tests + 1 doctest |
-| `app::Game` / `Context` | VERIFIED | 6 unit tests. `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009). |
+| `app::Game` / `Context` | VERIFIED | 7 unit tests. `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009); `input` (PP-010). Borrows one `EngineState`. |
 | `app` frame pacing (`FramePacer`) | VERIFIED | 5 unit tests. 60 Hz redraw cap (ADR-014). |
 | `app::Engine` + runner (winit 0.30 lifecycle) | VERIFIED | Xvfb runs pass. Passes the DPI scale factor to the renderer (also on `ScaleFactorChanged`). Owns the camera and an event-driven logical viewport (PP-009). Windows: window, Escape and close confirmed by the owner. |
 | `time` (`Time`, `FixedTimestep`) | VERIFIED | 12 unit tests |
@@ -51,7 +52,7 @@ There is no input abstraction yet.
 | `render::Renderer` (wgpu) | VERIFIED | Linux: pixel-exact quads and sprites, resize, unmap/map, fault exits, texture upload/sync. Windows: purple window confirmed (Stage 4). |
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
-| `input` | NOT_STARTED | Stage 8 (Escape-to-exit is a config flag in `app` until then) |
+| `input` (`Input`, `KeyCode`) + `app::keymap` | VERIFIED (Linux) | 10 + 3 unit tests + 1 doctest; Xvfb XTEST runs (ADR-024). Mouse: PP-016. |
 | `assets` | NOT_STARTED | Stage 9. Textures already have handles and `Error::Asset` (PP-008, ADR-020). |
 
 ## Completed
@@ -69,6 +70,7 @@ There is no input abstraction yet.
 - PP-009: `Camera2D` + screen ↔ world mapping (Stage 7).
 - PP-003: Stage 1 closed after the owner confirmed Windows `cargo test`, Escape and close.
 - PP-013: license chosen: MIT OR Apache-2.0.
+- PP-010: keyboard input (Stage 8, part 1).
 
 ## In Progress
 
@@ -76,7 +78,7 @@ There is no input abstraction yet.
 
 ## Next
 
-- **PP-010: Stage 8 · Keyboard input.** See [TASKS.md](TASKS.md#pp-010-keyboard-input--next).
+- **PP-016: Stage 8 · Mouse input.** See [TASKS.md](TASKS.md#pp-016-mouse-input--next).
 
 ## Blocked
 
@@ -87,12 +89,13 @@ There is no input abstraction yet.
 - Rendering is capped at 60 fps by `FramePacer`, even on high-refresh displays (ADR-014). Revisit together with render interpolation.
 - The draw list is rebuilt and sorted every frame (O(n log n)), even when nothing changed: ~1.8 ms per 10,000 drawables in release (R-18).
 - Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Relative asset paths depend on the working directory (R-24). Both belong to PD-06 / PP-011.
-- `EngineConfig::exit_on_escape` hard-wires one key in `app`. Revisit when the input system exists (PP-010).
+- `EngineConfig::exit_on_escape` hard-wires one key in `app`, now redundant with `Input` but kept for compatibility (ADR-024). Revisit in Stage 10 (API refinement).
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
 
 ## Known Limitations
 
 - Windows (owner): the purple window (Stage 4), `cargo test`, Escape and the close button are confirmed. Stages 5–7 rendering, vsync pacing and GPU fault paths are unverified there. macOS compiles and passes `cargo test` in CI but its rendering has never been seen; Wayland is untested.
+- Keyboard: 99 physical keys only (no text input, gamepads or rebinding). An edge reaches `fixed_update` one frame late when the frame that saw it ran no fixed step.
 - One camera only, without rotation, and no screen-space (UI) layer that ignores it. A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. One texture per sprite (no atlas/UV rectangles). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
@@ -107,6 +110,11 @@ There is no input abstraction yet.
 
 ## Recent Changes
 
+- **2026-10-02: PP-010 Stage 8 keyboard input.**
+  - New public module `input`: `KeyCode` (99 physical keys) and `Input` (`pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`); `Context::input()`.
+  - Edges are kept separately for `fixed_update` (latched until the first fixed step) and `update` (per frame), so each press reaches each callback exactly once (ADR-024, resolves PD-03; R-05 mitigated).
+  - New `app/keymap.rs` (winit → `KeyCode`) and `app/state.rs` (`EngineState`; `Context::new` takes it instead of six arguments). Focus loss releases held keys; repeats and X11 synthetic presses are ignored; key/focus events logged at `debug`.
+  - Sandbox: arrows pan the camera, `=` / `-` zoom; the timed exit prints the `=` press counts per callback. No new dependencies.
 - **2026-10-01: owner confirmations recorded (no code changes).**
   - PP-003 DONE: on Windows, `cargo test` passes and Escape / the close button exit cleanly. M1 is VERIFIED.
   - CI: the first GitHub Actions run passed every job (fmt + clippy on Linux; check + test on Linux, Windows, macOS). R-23 closed.
@@ -184,32 +192,32 @@ There is no input abstraction yet.
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-01, after the final PP-009 code change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-02, after the final PP-010 code change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` | ✅ PASS |
-| `cargo test --locked` | ✅ PASS: 82 unit tests + 14 doctests, 5 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 96 unit tests + 15 doctests, 5 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
 | `cargo doc --no-deps` | ✅ no warnings |
 | `cargo build --locked` | ✅ PASS |
-| Xvfb whole-frame per-pixel model (static shapes + sprite texels; the rotating teal quad, spinner and moving quad are excluded) | ✅ **0 mismatches** for camera (0,0)×1 (768,600 px checked), (0,120)×2 (830,503 px), (200,0)×0.5 (855,852 px), and (0,120)×2 after resizing to 1000×600 (584,687 px) |
-| Sensitivity control | ✅ the (0,120)×2 frame checked against a model off by one world unit → 2,944 mismatches; against the default camera → 184,628 |
-| Xvfb: viewport reporting | ✅ timed exit prints `viewport 1280x720`, and `800x500` after resizing the window mid-run; camera from the env var echoed back |
-| Sandbox env var validation | ✅ `1,2` and `0,0,0` rejected with a clear message, exit 1 |
-| Xvfb: window destroyed mid-run | ✅ after the fix, 3/3 runs: `error: GPU rendering failed` / `caused by: the window's GPU surface was lost`, exit 1 (before the fix: winit panic, exit 101) |
-| Xvfb: 120 frames timed | ✅ exit 0; 119 fixed steps, mover at x = 238.0 |
-| Xvfb: unmap/map, 1×1 → 800×600, close button, Escape | ✅ keeps running; exit 0 on close and on Escape |
-| Texture file missing | ✅ `error: failed to load asset …`, exit 1, no panic |
-| No usable GPU backend | ✅ `error: failed to create the GPU surface`, exit 1 |
-| Idle CPU (lavapipe) | ✅ 1.25 s per 5 s; software GPU work, not a busy loop |
+| Mutation check | ✅ clearing fixed-step edges per frame (the naive design) fails 3 input tests |
+| Xvfb XTEST keys (focus, 0.5 s settle; hold → 0.5 s, hold ↑ 0.3 s, tap `=` ×3, tap `-`) | ✅ 3/3 runs identical: camera (155, 95) zoom 4; `'=' presses seen: 3 in fixed_update, 3 in update`; screenshot vs per-pixel model at that camera: **0 mismatches** (844,776 px). 5 more runs without debug logging and without the settle delay: identical |
+| Xvfb: focus removed while → held | ✅ pan stopped at focus loss: camera x = 170 ≈ 0.576 s × 300 px/s (the real key-up came 1.5 s later); log shows the synthetic release + `focus lost` |
+| Xvfb: OS auto-repeat | ✅ 15 repeat events logged while → was held; no extra presses |
+| One anomalous run | ⚠️ the very first keyboard run lost the → press (camera x = 0, y = 35). Not reproduced in 14 later runs; probably a focus race in WM-less Xvfb, unconfirmed (R-11) |
+| Xvfb: Escape exits; `q`, Space, Enter, F1 don't | ✅ |
+| Xvfb: whole-frame model at cameras (0,0)×1 and (0,120)×2 | ✅ 0 mismatches (Stage 7 regression) |
+| Xvfb: window destroyed mid-run | ✅ `error: GPU rendering failed` / `caused by: the window's GPU surface was lost`, exit 1 |
+| Xvfb: 120 frames timed; unmap/map, 1×1 → 800×600; close button | ✅ exit 0; 119 steps, mover at 238.0; keeps running; close → exit 0 |
+| Texture file missing / no GPU backend | ✅ clean errors, exit 1 |
+| Idle CPU (lavapipe) | ✅ 1.46 s per 5 s; software GPU work, not a busy loop |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
-Executed by Claude for this update: `cargo check --locked` (Cargo.toml changed), `cargo test --locked`, archive verification.
-Stages 5–7 on Windows have not been seen yet.
+Stages 5–8 on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-01. Stage 7 complete; PP-003, CI and PP-013 confirmed by the owner. PP-010 is next.
+2026-10-02. PP-010 done (Stage 8, part 1). PP-016 is next.
