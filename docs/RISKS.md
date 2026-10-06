@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-06 (PP-016 mouse input, Stage 8 complete).
+Last reviewed: 2026-10-06 (PP-011 asset root, Stage 9 complete).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -33,7 +33,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
 | R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
 | R-23 | CI platform jobs never exercised yet | CLOSED | — | Low | all |
-| R-24 | Asset paths depend on the working directory | OPEN | Medium | Low | 6, 9 |
+| R-24 | Asset paths depend on the working directory | MITIGATED | — | Low | 6, 9 |
 
 ## Details
 
@@ -175,4 +175,5 @@ Likelihood and impact are qualitative: Low, Medium or High.
 ### R-24: Asset paths depend on the working directory
 - **Trigger:** `Context::load_texture("assets/...")` resolves relative paths against the process's current directory, so a game started from another folder (a shortcut, a double-click on the `.exe`, `cargo run` from a subfolder) cannot find its files.
 - **Mitigation (PP-008):** the error is a clear `Error::Asset` naming the path, never a panic. The sandbox builds an absolute path from `CARGO_MANIFEST_DIR` at compile time.
-- **Fallback:** decide an asset root in PD-06 / PP-011 (e.g. next to the executable, overridable in `EngineConfig`).
+- **Mitigated (PP-011, ADR-025):** relative paths resolve against an asset root: `EngineConfig::with_asset_root`, else `assets/` next to the executable, else `assets/` in the working directory. Verified for `cargo run`, a shipped layout launched from elsewhere, and the no-folder error. Remaining: `cargo run` from a project subfolder finds no root; macOS `.app` bundles are not handled.
+- **Fallback:** embed assets in the binary for distribution.

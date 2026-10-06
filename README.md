@@ -9,7 +9,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 > batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` or the wheel zoom, left click
 > stamps a square at the cursor (a green marker follows it), Escape quits.** Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. Next: loading assets independently of the working directory (Stage 9).
+> Linux. Assets load from an `assets/` folder next to the executable (or in the project folder for `cargo run`).
+> Next: a complete example game, Breakout (Stage 10).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -35,8 +36,9 @@ struct Sandbox;
 impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
         // PNG only. A missing or broken file returns Error::Asset right here.
-        // Relative paths are resolved against the working directory.
-        let player = ctx.load_texture("assets/textures/player.png")?;
+        // Relative to the asset root: `assets/` next to the executable, else
+        // `assets/` in the working directory (ADR-025).
+        let player = ctx.load_texture("textures/player.png")?;
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, 100.0)),
             Sprite::new(player, Vec2::new(64.0, 64.0)),
@@ -83,6 +85,10 @@ cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets
 ```
+
+**Shipping a game:** copy the `assets/` folder next to the executable (for example
+`target/release/assets/`). PurplePie looks there first, then in `assets/` in the working directory,
+which is the project folder under `cargo run`. `EngineConfig::with_asset_root(path)` sets the folder explicitly.
 
 CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) on every push. All jobs passed on the first run (2026-10-01).
 

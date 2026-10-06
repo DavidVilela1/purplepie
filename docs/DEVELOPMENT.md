@@ -192,6 +192,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   click twice.
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
+- **Asset root (Stage 9+, ADR-025):** run with `PURPLEPIE_LOG=info` and check the `asset root:` line in four layouts:
+  from the project folder (working-directory fallback); a copy of the binary with `assets/` beside it started from an
+  unrelated folder (executable folder); the same copy without `assets/` (exit 1, error lists both searched folders);
+  the moved binary started from the project folder (working-directory fallback).
 - **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call; use a fresh Xvfb display, see R-22):**
   PP-009 showed that a per-frame `Window::inner_size()` panics inside winit once the X11 window is gone (R-22).
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.

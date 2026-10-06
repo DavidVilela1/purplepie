@@ -37,8 +37,8 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | VERIFIED (Linux; PP-008 + PP-015; Windows look pending) |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
 | **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | VERIFIED (Linux; PP-010 keyboard + PP-016 mouse; Windows look pending) |
-| **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
-| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012 | NOT_STARTED |
+| **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | VERIFIED (Linux; asset root, ADR-025) |
+| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012, PP-017 | NOT_STARTED |
 
 Each stage is one milestone. The sequence above is kept deliberately. Stage 3
 (ECS) comes before Stage 4 (GPU) so the first primitive (Stage 5) can be
@@ -179,7 +179,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Edge semantics with fixed steps (R-05) |
 | **Definition of Done** | Project DoD |
 
-## Stage 9: Assets & Resources → M9
+## Stage 9: Assets & Resources → M9 ✅
 
 | | |
 |---|---|
@@ -189,7 +189,8 @@ driven by real ECS data rather than a throwaway draw call.
 | **Files** | `src/render/texture.rs` path resolution, `EngineConfig`, `assets/` folder conventions |
 | **Expected result** | Games reference every asset kind via handles (textures already do: ADR-020). Missing files give a clear `Error::Asset` (exists since PP-008). |
 | **Validation** | Unit tests for the handle store and error paths. Smoke run. |
-| **Acceptance criteria** | PD-06 decided and recorded as an ADR (generalizing or superseding ADR-020) |
+| **As built (PP-011)** | Asset root (ADR-025): `EngineConfig::with_asset_root`, else `assets/` next to the executable, else `assets/` in the working directory; `Context::load_texture` takes paths relative to it; clear error listing the searched folders. Generic `Handle<T>` / unloading deferred (PD-06) until a second asset kind exists. |
+| **Acceptance criteria** | PD-06 decided and recorded as an ADR (✅ file location: ADR-025; handles deferred) |
 | **Risks** | Asset lifetime and ownership (R-17) |
 | **Definition of Done** | Project DoD |
 
@@ -199,8 +200,8 @@ driven by real ECS data rather than a throwaway draw call.
 |---|---|
 | **Objective** | Validate and refine the public API with a small real game |
 | **Prerequisites** | M8, M9 |
-| **Tasks** | PP-012 |
-| **Files** | `examples/` (e.g. Pong or Breakout), public API docs, `#![warn(missing_docs)]` |
+| **Tasks** | PP-012 (Breakout example, friction list), then PP-017 (API review, docs, workspace decision). Split on 2026-10-06. |
+| **Files** | `examples/breakout.rs`, `assets/`, public API docs, `#![warn(missing_docs)]` |
 | **Expected result** | A complete small game using only the public API |
 | **Validation** | Example builds and runs. API docs build without warnings. |
 | **Acceptance criteria** | ADR-008 reviewed. Workspace split decision (ADR-002 revisit) recorded. |

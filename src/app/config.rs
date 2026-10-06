@@ -1,5 +1,7 @@
 //! Engine configuration supplied by the game.
 
+use std::path::PathBuf;
+
 use crate::error::{Error, Result};
 use crate::render::Color;
 
@@ -39,6 +41,11 @@ pub struct EngineConfig {
     pub max_fixed_steps: u32,
     /// Color the window is cleared to every frame (default [`Color::PURPLEPIE`]).
     pub clear_color: Color,
+    /// Folder that relative asset paths (e.g. in
+    /// [`Context::load_texture`](crate::Context::load_texture)) are resolved
+    /// against. `None` (the default) means: the `assets` folder next to the
+    /// executable if it exists, else `assets` in the working directory (ADR-025).
+    pub asset_root: Option<PathBuf>,
 }
 
 impl EngineConfig {
@@ -65,6 +72,7 @@ impl EngineConfig {
             max_frame_dt: Self::DEFAULT_MAX_FRAME_DT,
             max_fixed_steps: Self::DEFAULT_MAX_FIXED_STEPS,
             clear_color: Color::PURPLEPIE,
+            asset_root: None,
         }
     }
 
@@ -118,6 +126,15 @@ impl EngineConfig {
         self
     }
 
+    /// Loads relative asset paths from `root` instead of the automatic choice
+    /// (ADR-025). A relative `root` is taken relative to the working directory
+    /// when the engine starts.
+    #[must_use]
+    pub fn with_asset_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.asset_root = Some(root.into());
+        self
+    }
+
     /// Checks the configuration for values the engine cannot use.
     pub(crate) fn validate(&self) -> Result<()> {
         if self.width == 0 {
@@ -153,6 +170,14 @@ impl Default for EngineConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asset_root_defaults_to_automatic_and_can_be_set() {
+        assert_eq!(EngineConfig::new("t").asset_root, None);
+        let config = EngineConfig::new("t").with_asset_root("data");
+        assert_eq!(config.asset_root, Some(PathBuf::from("data")));
+        assert!(config.validate().is_ok());
+    }
 
     #[test]
     fn new_uses_documented_defaults() {

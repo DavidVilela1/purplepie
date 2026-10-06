@@ -37,6 +37,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
 | ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
 | ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted (extended to the mouse by PP-016) | Yes (Stage 8, PP-010 keyboard, PP-016 mouse) |
+| ADR-025 | Asset root: relative asset paths resolve against one folder chosen at startup (config, else next to the executable, else the working directory) | Accepted | Yes (Stage 9, PP-011) |
 
 ---
 
@@ -885,7 +886,7 @@ component without touching wgpu (ADR-009: the renderer is crate-private, and
   can only come from the engine. It lives in the public `Sprite { texture, size, tint }` component.
 - **Loading:** `Context::load_texture(path) -> Result<TextureId>` reads and decodes the PNG
   **immediately**, so a missing or broken file is returned to the caller as
-  `Error::Asset { path, source }`. A path is resolved against the working directory. The same path
+  `Error::Asset { path, source }`. A path is resolved against the working directory *(superseded by ADR-025: the asset root)*. The same path
   spelling returns the same id (no second read). Failed loads store nothing. `Context::texture_size(id)`
   returns the size in texels.
 - **Store:** a crate-private `Textures` (owned by the runner, lent to `Context`) keeps every decoded
@@ -926,7 +927,7 @@ bad files where the game can handle them.
   value computed in linear space. Missing and corrupt files exit with `Error::Asset` and a cause chain, no panic.
 ### Negative
 - Every texture stays in RAM (CPU copy) and VRAM until the engine stops.
-- Relative paths depend on the working directory. (The sandbox uses `CARGO_MANIFEST_DIR`.)
+- Relative paths depend on the working directory. (The sandbox uses `CARGO_MANIFEST_DIR`.) *Resolved by ADR-025.*
 - An oversized texture is only detected at upload, so it stops the engine rather than returning from `load_texture`.
 
 ## Revisit Conditions
@@ -1154,13 +1155,65 @@ Same model, no new decision needed, so no separate ADR:
 
 ---
 
+# ADR-025: Asset root: relative asset paths resolve against one folder chosen at startup
+
+## Status
+Accepted (2026-10-06, PP-011). Resolves the file-location part of PD-06 and mitigates R-24. Generic handles and unloading
+(the rest of PD-06) are deferred until a second asset kind exists.
+
+## Context
+Since PP-008, `Context::load_texture` resolved relative paths against the process's working directory. That works for
+`cargo run` from the project folder, but a shipped game started by double-clicking its executable (working directory
+= wherever the OS chooses) could not find its files. The sandbox worked around it with a compile-time absolute path.
+
+## Decision
+- New crate-private module `assets` with `AssetRoot`, resolved **once** when the engine starts:
+  1. `EngineConfig::asset_root` / `with_asset_root(path)` if set (a relative root is joined to the working directory at
+     startup; it is used even if it doesn't exist, so typos surface as file-not-found errors naming the full path);
+  2. else `<executable's folder>/assets` if it is a directory;
+  3. else `<working directory>/assets` if it is a directory (the `cargo run` case);
+  4. else no root: loading a **relative** path fails with `Error::Asset` whose source lists both searched folders and
+     suggests `with_asset_root`. The engine logs the chosen root at `info` (or a `warn` when none).
+- `Context::load_texture(path)`: absolute paths are used unchanged; relative paths are joined to the root. The texture
+  cache key is the resolved path, so a relative and an absolute spelling of the same file share one `TextureId`.
+- `Context::asset_root()` exposes the chosen folder (`None` if none).
+- Path resolution lives in `assets`, called from `app`; `render::Textures` still receives a full path and stays
+  file-location-agnostic.
+
+## Alternatives Considered
+- **Working directory only (status quo):** breaks double-click launches.
+- **Executable folder only:** breaks `cargo run`, where the executable lives in `target/debug/`.
+- **Compile-time `CARGO_MANIFEST_DIR`:** an absolute path of the build machine; useless for shipped games.
+- **Embedding assets in the binary (`include_bytes!`):** no files to lose, but every asset change needs a rebuild and the
+  binary grows; can be added later as an option.
+- **Resolving the root per load:** the working directory could change mid-run and give inconsistent results.
+
+## Rationale
+The two common layouts (development: project folder; release: `assets/` next to the executable) both work without
+configuration, and every failure names exactly where PurplePie looked.
+
+## Consequences
+### Positive
+- Verified end to end: started from the project folder, via `cargo run`, as a "shipped" copy (binary + `assets/`)
+  launched from an unrelated folder, and as a moved binary run from the project folder (working-directory fallback).
+  With no `assets/` anywhere the sandbox exits 1 with the searched folders in the error, no panic.
+- The sandbox no longer needs `CARGO_MANIFEST_DIR`.
+### Negative
+- `cargo run` from a subfolder of the project (e.g. `src/`) finds no root unless the game sets one.
+- A release build must ship the `assets/` folder next to the executable (documented in the README).
+
+## Revisit Conditions
+Platform bundles (macOS `.app` `Resources/`), embedded assets, or a second asset kind (generic handles, PD-06).
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02. The file-location part of PD-06 was resolved by ADR-025 on 2026-10-06.
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-06 | Asset handle design (textures already decided by ADR-020) | Generalize ADR-020: typed `Handle<T>` + `Assets` store, synchronous loading, unloading | PP-011 (Stage 9) |
+| PD-06 | Generic asset handles and unloading (textures: ADR-020; where files are found: ADR-025) | Generalize ADR-020 into a typed `Handle<T>` + store with unloading **when a second asset kind exists** (fonts, sounds) | Not scheduled: first task that adds a second asset kind |

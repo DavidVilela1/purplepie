@@ -6,14 +6,14 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M8: Input: VERIFIED (Linux).** Keyboard (PP-010) and mouse (PP-016) input work under Xvfb with XTEST events.
-The owner's Windows look is pending and non-blocking. Next: **M9: Assets: NOT_STARTED.**
-M7, M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
+**M9: Resource/Asset Foundation: VERIFIED (Linux).** Asset files are found independently of the working directory
+(ADR-025). Next: **M10: Engine API Stabilization: NOT_STARTED** (example game, then API review).
+M8, M7, M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
 M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows, owner-confirmed). M0: VERIFIED.
 
 ## Current Stage
 
-**Stage 8: Input System: complete** (PP-010, PP-016). Next: **Stage 9: Assets** (PP-011, asset root).
+**Stage 9: Assets: complete** (PP-011). Next: **Stage 10: Engine/Game API Refinement** (PP-012 Breakout example, then PP-017 API review).
 
 ## Overall State
 
@@ -30,15 +30,16 @@ origin at the window centre, and 1 unit = 1 logical pixel (ADR-018). Game logic
 runs in a 60 Hz fixed-timestep `fixed_update` plus a per-frame `update` over one
 engine-owned `hecs::World`. GPU faults end the loop cleanly as `Error::Render`.
 The engine logs via `log`. CI passes on Linux, Windows and macOS. Licensed MIT OR Apache-2.0.
-Assets are loaded relative to the working directory (R-24); that is next.
+Relative asset paths resolve against an asset root: `EngineConfig::with_asset_root`, else `assets/` next to the
+executable, else `assets/` in the working directory (ADR-025).
 
 | Component | State | Notes |
 |---|---|---|
 | Crate layout (`purplepie` lib + `sandbox` bin) | VERIFIED | ADR-002 |
 | Lints (`unsafe_code = forbid`, `unwrap_used = warn`) | VERIFIED | No `unwrap`/`unsafe` in `src/`. `expect` only in tests. |
 | `error` (`Error`, `BoxError`, `Result`) | VERIFIED | 3 unit tests + 1 doctest. `Error::Asset` added (PP-008), covered by texture tests. |
-| `app::EngineConfig` | VERIFIED | 7 unit tests + 1 doctest |
-| `app::Game` / `Context` | VERIFIED | 8 unit tests. `cursor_world` (PP-016). `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009); `input` (PP-010). Borrows one `EngineState`. |
+| `app::EngineConfig` | VERIFIED | 8 unit tests + 1 doctest (`asset_root` added in PP-011) |
+| `app::Game` / `Context` | VERIFIED | 10 unit tests. `asset_root`, relative `load_texture` (PP-011). `cursor_world` (PP-016). `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009); `input` (PP-010). Borrows one `EngineState`. |
 | `app` frame pacing (`FramePacer`) | VERIFIED | 5 unit tests. 60 Hz redraw cap (ADR-014). |
 | `app::Engine` + runner (winit 0.30 lifecycle) | VERIFIED | Xvfb runs pass. Passes the DPI scale factor to the renderer (also on `ScaleFactorChanged`). Owns the camera and an event-driven logical viewport (PP-009). Windows: window, Escape and close confirmed by the owner. |
 | `time` (`Time`, `FixedTimestep`) | VERIFIED | 12 unit tests |
@@ -55,7 +56,7 @@ Assets are loaded relative to the working directory (R-24); that is next.
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
 | `input` (`Input`, `KeyCode`, `MouseButton`) + `app::{keymap, state}` | VERIFIED (Linux) | 15 + 5 + 2 unit tests + 1 doctest; Xvfb XTEST key/mouse runs (ADR-024). |
-| `assets` | NOT_STARTED | Stage 9. Textures already have handles and `Error::Asset` (PP-008, ADR-020). |
+| `assets` (`AssetRoot`) | VERIFIED (Linux) | 5 unit tests + end-to-end launch layouts (ADR-025). Generic handles/unloading deferred (PD-06). |
 
 ## Completed
 
@@ -74,6 +75,7 @@ Assets are loaded relative to the working directory (R-24); that is next.
 - PP-013: license chosen: MIT OR Apache-2.0.
 - PP-010: keyboard input (Stage 8, part 1).
 - PP-016: mouse input (Stage 8, part 2).
+- PP-011: asset root (Stage 9).
 
 ## In Progress
 
@@ -81,7 +83,7 @@ Assets are loaded relative to the working directory (R-24); that is next.
 
 ## Next
 
-- **PP-011: Stage 9 · Asset root.** See [TASKS.md](TASKS.md#pp-011-asset-root--next).
+- **PP-012: Stage 10 · Example game (Breakout).** See [TASKS.md](TASKS.md#pp-012-example-game-breakout--next).
 
 ## Blocked
 
@@ -91,7 +93,7 @@ Assets are loaded relative to the working directory (R-24); that is next.
 
 - Rendering is capped at 60 fps by `FramePacer`, even on high-refresh displays (ADR-014). Revisit together with render interpolation.
 - The draw list is rebuilt and sorted every frame (O(n log n)), even when nothing changed: ~1.8 ms per 10,000 drawables in release (R-18).
-- Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Relative asset paths depend on the working directory (R-24). Both belong to PD-06 / PP-011.
+- Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Deferred with generic handles (PD-06) until a second asset kind exists.
 - `EngineConfig::exit_on_escape` hard-wires one key in `app`, now redundant with `Input` but kept for compatibility (ADR-024). Revisit in Stage 10 (API refinement).
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
 
@@ -114,6 +116,11 @@ Assets are loaded relative to the working directory (R-24); that is next.
 
 ## Recent Changes
 
+- **2026-10-06: PP-011 Stage 9 asset root (Stage 9 complete).**
+  - New crate-private `src/assets/` (`AssetRoot`): relative asset paths resolve against `EngineConfig::with_asset_root`, else `assets/` next to the executable, else `assets/` in the working directory; chosen once at startup and logged (ADR-025, R-24 mitigated).
+  - `Context::load_texture` takes paths relative to that root (absolute paths unchanged); new `Context::asset_root()`; `EngineConfig::asset_root` / `with_asset_root`.
+  - Sandbox loads `textures/sandbox_quadrants.png`; README explains shipping `assets/` next to the executable.
+  - Stage 9 narrowed (generic handles + unloading wait for a second asset kind, PD-06). Stage 10 split into PP-012 (Breakout example) and PP-017 (API review). No new dependencies.
 - **2026-10-06: PP-016 Stage 8 mouse input (Stage 8 complete).**
   - `input::MouseButton` with `mouse_pressed` / `mouse_just_pressed` / `mouse_just_released`, `Input::cursor_position()` (logical px, `None` outside), `Input::scroll()` (lines), `Context::cursor_world()`. Keys and buttons share one edge implementation (ADR-024 extended).
   - The runner tracks the DPI scale from window events and handles mouse, cursor and wheel events; `app/state.rs` gained the physical → logical helper.
@@ -203,30 +210,32 @@ Assets are loaded relative to the working directory (R-24); that is next.
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-016 code change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-011 code change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` | ✅ PASS |
-| `cargo test --locked` | ✅ PASS: 106 unit tests + 15 doctests, 5 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 114 unit tests + 15 doctests, 5 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
 | `cargo doc --no-deps` | ✅ no warnings |
 | `cargo build --locked` | ✅ PASS |
-| Xvfb mouse: camera (100,50)×2, click at (400,300) and (900,500), cursor to (700,200) | ✅ `left clicks seen: 2 in fixed_update, 2 in update`; cursor `(700, 200)` screen → `(107.5, 70)` world printed at exit (after the wheel zoom to 8); screenshot vs per-pixel model with both stamps (world (−20,80), (230,−20)) and the marker (world (130,130)) at zoom 2: **0 mismatches** (798,632 px) |
-| Xvfb: cursor moved outside the window, then clicked | ✅ cursor `None`, marker hidden (frame matches the model without it), 0 clicks counted |
-| Xvfb: wheel | ✅ `click 4` and `click 5` each produce 2 `LineDelta` events from winit (debug log) → zoom ×4 / ÷4; documented X11/XTEST behaviour |
-| Xvfb: keyboard script (Stage 8 regression) | ✅ camera (160, 95) zoom 4, `=` seen 3/3 |
-| Xvfb: whole-frame model at camera (0,120)×2 | ✅ 0 mismatches once the marker under the default pointer position is modelled (400 px otherwise, as predicted) |
-| Xvfb: window destroyed mid-run | ⚠️ 1 winit panic (`Failed to destroy input context`) in the regression run; then 0/24 on fresh displays and 1/5 vs **2/4 for the Stage 8 build** after a keyboard run on the same display → pre-existing winit race, not a regression (R-22) |
-| Xvfb: 120 frames timed; unmap/map, 1×1 → 800×600; close; Escape | ✅ exit 0 in all; keeps running after unmap/1×1 |
-| Texture file missing / no GPU backend | ✅ clean errors, exit 1 |
-| Idle CPU (lavapipe) | ✅ 1.58 s per 5 s; software GPU work |
+| Run from the project folder / via `cargo run` | ✅ `asset root: /home/claude/PurplePie/assets` (working-directory fallback), sprite drawn, exit 0 |
+| "Shipped" copy (binary + `assets/`) started from an unrelated folder | ✅ asset root = the folder next to the executable, exit 0 |
+| Moved binary (no `assets/` beside it) run from the project folder | ✅ working-directory fallback, exit 0 |
+| No `assets/` next to the binary nor in the working directory | ✅ `warn` + `error: failed to load asset `textures/sandbox_quadrants.png`` / `caused by: no asset folder found (looked for …/ship/assets and …/elsewhere/assets); create one or set EngineConfig::with_asset_root`, exit 1, no panic |
+| Texture missing inside the root | ✅ error names the full resolved path, exit 1 |
+| Xvfb whole-frame models, cameras (0,0)×1 and (0,120)×2 (cursor marker at the default pointer modelled) | ✅ 0 mismatches |
+| Xvfb keyboard + mouse script | ✅ `=` seen 3/3, clicks 2/2, camera/cursor as expected |
+| Xvfb: timed 120 frames; unmap/map, 1×1 → 800×600; close; Escape | ✅ exit 0; 119 steps, mover at 238.0 |
+| Xvfb: window destroyed (fresh display) | ✅ `error: GPU rendering failed` / surface lost, exit 1 |
+| No GPU backend | ✅ clean error, exit 1 |
+| Idle CPU (lavapipe) | ✅ 1.56 s per 5 s |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
-Stages 5–8 on Windows have not been seen yet.
+Stages 5–9 on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-06. PP-016 done, Stage 8 complete. PP-011 is next.
+2026-10-06. PP-011 done, Stage 9 complete. PP-012 is next.

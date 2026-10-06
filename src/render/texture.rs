@@ -64,9 +64,10 @@ pub(crate) struct Textures {
 }
 
 impl Textures {
-    /// Loads and decodes the PNG at `path`. Relative paths are resolved against
-    /// the process's current working directory. Loading a path that is already
-    /// loaded (same spelling) returns the existing id without reading the file.
+    /// Loads and decodes the PNG at `path`, normally a full path from the asset
+    /// root (ADR-025; `Context::load_texture` resolves it). Loading a path that
+    /// is already loaded (same spelling) returns the existing id without reading
+    /// the file.
     pub(crate) fn load(&mut self, path: &Path) -> Result<TextureId> {
         if let Some(&id) = self.by_path.get(path) {
             return Ok(id);

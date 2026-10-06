@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-011: Stage 9 · Asset root: load game files independently of the working directory (PD-06)** · P1 · TODO ← **next task**
+- [ ] **PP-012: Stage 10 · Example game (Breakout) using only the public API** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -37,10 +37,11 @@ _None._
 - [x] **PP-013: Owner · Choose project license** · DONE (2026-10-01; MIT OR Apache-2.0)
 - [x] **PP-010: Stage 8 · Keyboard input** · DONE (2026-10-02; verified on Linux)
 - [x] **PP-016: Stage 8 · Mouse input** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-011: Stage 9 · Asset root** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
-- [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
+- [ ] **PP-017: Stage 10 · API review: docs, ADR-008 review, workspace-split decision** · P2 · TODO
 
 ---
 
@@ -171,19 +172,28 @@ _None._
 | Acceptance criteria | ✅ 1. Button edges unit-tested with 0/1/N steps via the shared implementation; no key/button bit sharing; focus release; cursor state; scroll once per callback. ✅ 2. Physical → logical → world at DPI 1.0/1.25/2.0 round-trips to the physical pixel. ✅ 3. Xvfb: camera (100,50)×2, clicks at (400,300) and (900,500), cursor at (700,200): 2 clicks seen in each callback, stamps and marker exactly where predicted (whole frame: 0 mismatches over 798,632 px); cursor outside the window → `None`, marker hidden, outside clicks ignored. ✅ 4. No winit types in the public API. ✅ 5. Stage 1–8 regressions unchanged (keyboard script identical). |
 | Notes | XTEST wheel clicks arrive twice from winit on X11 (ADR-024 extension). While re-running the window-destroy test, a **pre-existing** intermittent winit panic was found (IME cleanup on an externally destroyed X11 window); the Stage 8 build reproduces it too (R-22). Owner check on Windows: the green marker tracks the cursor, clicks stamp squares, one wheel notch = one zoom step. |
 
-### PP-011: Asset root ← NEXT
+### PP-011: Asset root
 | Field | Value |
 |---|---|
-| Stage | 9 → Milestone M9 · Priority P1 · TODO. Stage 9 narrowed on 2026-10-06 (see Why now). |
+| Stage | 9 → Milestone M9 · Priority P1 · **DONE** (2026-10-06). Completes Stage 9 (narrowed on 2026-10-06). |
 | Dependencies | PP-008 (DONE) |
-| Why now | Stage 8 is complete. The real asset problem today is R-24: relative paths depend on the working directory, so a game started by double-clicking its `.exe` can't find its files. Textures are still the only asset kind, so generic `Handle<T>` / unloading has no user yet and is deferred until a second kind (fonts, sounds) exists. |
-| Scope | Decide PD-06 for now as an ADR: relative asset paths resolve against an **asset root**, `EngineConfig::with_asset_root(path)`; default: the `assets/` folder next to the executable if it exists, else `./assets` in the working directory (covers `cargo run`). `Context::load_texture("textures/x.png")`. Absolute paths unchanged. The error names the resolved path and the root. Sandbox switches to `textures/sandbox_quadrants.png` (no more `CARGO_MANIFEST_DIR`). |
-| Acceptance criteria | 1. ADR (resolves the current part of PD-06; generic handles + unloading explicitly deferred). 2. Unit tests: resolution order, absolute paths, explicit root, missing-root error text. 3. Sandbox runs from the repo root, from another directory (with the asset folder next to the binary), and fails cleanly when the folder is missing. 4. Stage 1–8 regressions unchanged. |
+| Scope (as built) | New crate-private `src/assets/mod.rs`: `AssetRoot` (`resolve`, `for_process`, `path`, `locate`). `EngineConfig::asset_root` + `with_asset_root`. `EngineState` holds the root (resolved once in `Runner::new`, logged). `Context::load_texture` resolves relative paths against it (absolute paths unchanged; the cache key is the resolved path); new `Context::asset_root()`. Sandbox loads `textures/sandbox_quadrants.png` (no more `CARGO_MANIFEST_DIR`). ADR-025. No new dependencies. |
+| Acceptance criteria | ✅ 1. ADR-025 (file location decided; generic handles + unloading deferred in PD-06). ✅ 2. Unit tests: exe-folder-first order with working-directory fallback, a file named `assets` is not a folder, explicit root (relative → absolute, kept if missing), relative/absolute locate, no-root error lists the searched folders, relative and absolute spellings share a `TextureId`, config builder. ✅ 3. End to end: project folder, `cargo run`, shipped copy launched from another folder, moved binary from the project folder; no `assets/` anywhere → exit 1 with both searched folders named; missing file inside the root → full path in the error. ✅ 4. Stage 1–8 regressions unchanged. |
+| Notes | Release builds must ship `assets/` next to the executable (README). |
 
-### PP-012: Engine/game API refinement
-| Stage 10 → M10 · P3 · TODO | Depends on PP-010, PP-011 |
+### PP-012: Example game (Breakout) ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | Example game in `examples/`. ADR-008 reviewed. Workspace-split decision recorded. |
+| Stage | 10 → Milestone M10 · Priority P1 · TODO. Stage 10 was split into PP-012 (game) + PP-017 (API review) on 2026-10-06. |
+| Dependencies | PP-011, PP-016 (DONE) |
+| Why now | Stages 1–9 are done. A real game is the test the roadmap set for the public API: what's awkward, missing or wrong shows up only when something complete is built on it. |
+| Scope | `examples/breakout.rs` (`cargo run --example breakout`): paddle (keyboard and mouse), ball, a grid of bricks, walls, lives, win/lose and restart, all in game code with only the public API (simple AABB collisions in the example, not an engine physics system). Small PNG assets under `assets/`. No text rendering exists, so score/lives are shown with quads and printed to the console. A list of API friction points found while writing it, as input for PP-017. Engine changes only if a blocker is found (each documented). |
+| Acceptance criteria | 1. `cargo run --example breakout` plays a full game. 2. The example uses no crate-private items and no winit/wgpu. 3. Xvfb: scripted input (mouse/keys) moves the paddle, the ball breaks bricks, and losing all lives / clearing the board are reached by a deterministic test mode (seeded serve, fixed steps) whose final state is printed and checked. 4. CI builds the example (`cargo check --all-targets` already covers it). 5. Friction list recorded in TASKS/PP-017. |
+
+### PP-017: API review
+| Stage 10 → M10 · P2 · TODO | Depends on PP-012 |
+|---|---|
+| Acceptance criteria | `#![warn(missing_docs)]` clean. ADR-008 (Game/Context) reviewed against the example's friction list, with changes or reasons recorded. `exit_on_escape` decided. Workspace-split decision (ADR-002 revisit) recorded. README "getting started" matches the example. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

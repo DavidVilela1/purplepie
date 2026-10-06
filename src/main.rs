@@ -79,12 +79,10 @@ fn parse_camera(value: &str) -> Result<Camera2D, String> {
 const MOVER_VELOCITY: Vec2 = Vec2::new(120.0, 0.0);
 /// The mover bounces between `-MOVER_LIMIT` and `+MOVER_LIMIT` on the X axis.
 const MOVER_LIMIT: f32 = 500.0;
-/// The sandbox's test image (16×16 texels). The path is fixed at compile time,
-/// so `cargo run` works from any directory.
-const SPRITE_TEXTURE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/textures/sandbox_quadrants.png"
-);
+/// The sandbox's test image (16×16 texels), relative to the asset root
+/// (ADR-025): `assets/` next to the executable, else `assets/` in the working
+/// directory, which is the project folder under `cargo run`.
+const SPRITE_TEXTURE: &str = "textures/sandbox_quadrants.png";
 /// Camera pan speed with the arrow keys, in logical pixels per second (so it
 /// feels the same at any zoom).
 const PAN_SPEED: f32 = 300.0;

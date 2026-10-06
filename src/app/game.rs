@@ -105,17 +105,27 @@ impl<'a> Context<'a> {
     /// Loads a PNG image and returns a handle for [`Sprite`](crate::render::Sprite)s.
     ///
     /// The file is read and decoded now, so a problem is reported here as
-    /// [`Error::Asset`](crate::Error::Asset) (missing file, not a PNG, …). The
-    /// GPU upload happens before the next frame is drawn (ADR-020). Relative
-    /// paths are resolved against the current working directory. Loading the
-    /// same path again returns the same [`TextureId`] without reading the file.
+    /// [`Error::Asset`](crate::Error::Asset) (missing file, not a PNG, no asset
+    /// folder, …). The GPU upload happens before the next frame is drawn
+    /// (ADR-020). Relative paths such as `"textures/player.png"` are resolved
+    /// against the asset root ([`asset_root`](Self::asset_root), ADR-025);
+    /// absolute paths are used as they are. Loading the same file again returns
+    /// the same [`TextureId`] without reading it.
     /// Usually called from [`Game::init`].
     ///
     /// A texture larger than the GPU supports (at least 2048×2048 everywhere)
     /// is reported as `Error::Asset` when the next frame is drawn, which stops
     /// the engine.
     pub fn load_texture(&mut self, path: impl AsRef<Path>) -> Result<TextureId> {
-        self.state.textures.load(path.as_ref())
+        let file = self.state.assets.locate(path.as_ref())?;
+        self.state.textures.load(&file)
+    }
+
+    /// The folder relative asset paths are loaded from (ADR-025), or `None` if
+    /// no `assets` folder was found and none was configured with
+    /// [`EngineConfig::with_asset_root`](crate::EngineConfig::with_asset_root).
+    pub fn asset_root(&self) -> Option<&Path> {
+        self.state.assets.path()
     }
 
     /// Width and height of a loaded texture in texels, e.g. to give a
@@ -175,10 +185,15 @@ impl<'a> Context<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assets::AssetRoot;
+    use std::path::PathBuf;
 
     #[test]
     fn request_exit_sets_the_engine_flag() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         let mut ctx = Context::new(&mut state, 0.0);
         assert!(!ctx.exit_requested());
         ctx.request_exit();
@@ -188,7 +203,10 @@ mod tests {
 
     #[test]
     fn exposes_time_and_callback_dt() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         let ctx = Context::new(&mut state, 0.25);
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
@@ -196,7 +214,10 @@ mod tests {
 
     #[test]
     fn world_changes_made_through_the_context_persist() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         {
             let mut ctx = Context::new(&mut state, 0.0);
             ctx.world_mut().spawn((1_u32,));
@@ -207,7 +228,10 @@ mod tests {
 
     #[test]
     fn load_texture_errors_are_typed_and_sizes_are_reported() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         let mut ctx = Context::new(&mut state, 0.0);
         let err = ctx
             .load_texture("this/file/does/not/exist.png")
@@ -225,7 +249,10 @@ mod tests {
 
     #[test]
     fn camera_changes_persist_and_viewport_is_reported() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         state.viewport = Vec2::new(800.0, 600.0);
         {
             let mut ctx = Context::new(&mut state, 0.0);
@@ -239,7 +266,10 @@ mod tests {
 
     #[test]
     fn input_is_visible_through_the_context() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         state.input.key_down(crate::input::KeyCode::Space);
         let ctx = Context::new(&mut state, 0.0);
         assert!(ctx.input().pressed(crate::input::KeyCode::Space));
@@ -248,7 +278,10 @@ mod tests {
 
     #[test]
     fn cursor_world_goes_through_the_camera() {
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         state.viewport = Vec2::new(800.0, 600.0);
         state.camera = Camera2D::new(Vec2::new(100.0, 50.0), 2.0);
         assert_eq!(
@@ -263,10 +296,57 @@ mod tests {
     }
 
     #[test]
+    fn relative_texture_paths_load_from_the_asset_root() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        let mut ctx = Context::new(&mut state, 0.0);
+        let relative = ctx
+            .load_texture("textures/sandbox_quadrants.png")
+            .expect("relative to the root");
+        let absolute = ctx
+            .load_texture(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("assets/textures/sandbox_quadrants.png"),
+            )
+            .expect("absolute");
+        assert_eq!(relative, absolute, "same file, same texture");
+        assert!(
+            ctx.asset_root()
+                .is_some_and(|root| root.ends_with("assets"))
+        );
+    }
+
+    #[test]
+    fn without_an_asset_root_relative_loads_fail_but_absolute_ones_work() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::NotFound {
+                searched: vec![PathBuf::from("nowhere/assets")],
+            },
+        );
+        let mut ctx = Context::new(&mut state, 0.0);
+        let err = ctx
+            .load_texture("textures/sandbox_quadrants.png")
+            .expect_err("no root");
+        assert!(matches!(err, crate::Error::Asset { .. }));
+        assert_eq!(ctx.asset_root(), None);
+        ctx.load_texture(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/textures/sandbox_quadrants.png"
+        ))
+        .expect("absolute paths need no root");
+    }
+
+    #[test]
     fn default_callbacks_do_nothing() {
         struct Minimal;
         impl Game for Minimal {}
-        let mut state = EngineState::new(0.25);
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
         let mut ctx = Context::new(&mut state, 0.0);
         let mut game = Minimal;
         assert!(game.init(&mut ctx).is_ok());

@@ -1,5 +1,6 @@
 //! Engine-owned state lent to the game through [`Context`](super::Context).
 
+use crate::assets::AssetRoot;
 use crate::ecs::World;
 use crate::input::Input;
 use crate::math::Vec2;
@@ -21,10 +22,12 @@ pub(crate) struct EngineState {
     pub(crate) input: Input,
     /// Window drawing area in logical pixels, kept up to date from window events.
     pub(crate) viewport: Vec2,
+    /// Where relative asset paths are resolved (ADR-025), chosen at startup.
+    pub(crate) assets: AssetRoot,
 }
 
 impl EngineState {
-    pub(crate) fn new(fixed_dt: f64) -> Self {
+    pub(crate) fn new(fixed_dt: f64, assets: AssetRoot) -> Self {
         Self {
             exit_requested: false,
             time: Time::new(fixed_dt),
@@ -33,6 +36,7 @@ impl EngineState {
             camera: Camera2D::default(),
             input: Input::default(),
             viewport: Vec2::ZERO,
+            assets,
         }
     }
 }

@@ -30,6 +30,7 @@
 //! `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`.
 
 mod app;
+mod assets;
 pub mod ecs;
 mod error;
 pub mod input;

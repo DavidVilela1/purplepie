@@ -17,6 +17,7 @@ use super::game::{Context, Game};
 use super::keymap;
 use super::pacer::{FRAME_INTERVAL, FramePacer};
 use super::state::{EngineState, physical_to_logical, sanitize_scale_factor};
+use crate::assets::AssetRoot;
 use crate::error::{Error, Result};
 use crate::render::Renderer;
 use crate::time::FixedTimestep;
@@ -46,6 +47,13 @@ pub(crate) struct Runner<G: Game> {
 
 impl<G: Game> Runner<G> {
     pub(crate) fn new(config: EngineConfig, game: G) -> Self {
+        let assets = AssetRoot::for_process(config.asset_root.as_deref());
+        match &assets {
+            AssetRoot::Found(root) => log::info!("asset root: {}", root.display()),
+            AssetRoot::NotFound { searched } => {
+                log::warn!("no asset folder found (looked for {searched:?})");
+            }
+        }
         Self {
             game,
             window: None,
@@ -53,7 +61,7 @@ impl<G: Game> Runner<G> {
             initialized: false,
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
-            state: EngineState::new(config.fixed_dt),
+            state: EngineState::new(config.fixed_dt, assets),
             scale_factor: 1.0,
             last_frame: None,
             error: None,

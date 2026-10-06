@@ -21,8 +21,8 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 8 complete, PP-016):** `purplepie` provides `Engine`,
-`EngineConfig`, `Game`, `Context` (incl. `load_texture`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
+**Current reality (Stage 9 complete, PP-011):** `purplepie` provides `Engine`,
+`EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
 (`Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`). Every frame the engine clears the window and draws each entity
@@ -61,9 +61,10 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
-| `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps` + builders + `validate` | VERIFIED |
-| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
-| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
+| `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps`, `clear_color`, `asset_root` + builders + `validate` | VERIFIED |
+| `src/assets/mod.rs` | Crate-private `AssetRoot` (`resolve`, `for_process`, `path`, `locate`): the asset root chosen once at startup (ADR-025) | VERIFIED (5 unit tests + end-to-end layouts) |
+| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `asset_root()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
+| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport, `AssetRoot`; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
 | `src/app/keymap.rs` | winit → PurplePie input: `PhysicalKey` → `KeyCode` (bijection test), mouse buttons, wheel deltas → lines (ADR-024) | VERIFIED (5 unit tests) |
 | `src/input/mod.rs` | `pub mod input`: `KeyCode` (99 physical keys), `MouseButton`, `Input` (keys: `pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`; mouse: `mouse_pressed`, `mouse_just_pressed`, `mouse_just_released`, `cursor_position`, `scroll`); one shared `Buttons` edge implementation (ADR-024) | VERIFIED (15 unit tests + doctest, Xvfb XTEST runs) |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
@@ -99,7 +100,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
 | `render` | `pub(crate) Renderer`, pipelines, texture store, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer` | `wgpu`, `pollster`, `image` (PNG decode), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
 | `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
-| `assets` | `Handle<T>`, `Assets` store, loaders | `render` (GPU upload), `std::fs` | `app`, `input` | hot reload, async loading | 9 |
+| `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app`. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
 
 **Not present: `core`.** See ADR-003. It had no single responsibility and
 shadows Rust's built-in `core` crate.
@@ -149,7 +150,8 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
 resumed          → create Arc<Window> (once) → Renderer::new (if none; error → exit)
-                   → game.init(ctx) (once; error → exit). ctx.load_texture decodes now → Textures
+                   → game.init(ctx) (once; error → exit). ctx.load_texture: AssetRoot::locate (relative → root,
+                     chosen once in Runner::new, ADR-025) → decode now → Textures
                      (CPU, owned by the runner; outlives renderers: a new one re-uploads all)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
 RedrawRequested  → FRAME (skipped once exit has begun):
@@ -274,7 +276,7 @@ and alpha blending is straight alpha.
 ### Sprites and textures (Stage 6, ADR-020)
 
 ```text
-game:  id = ctx.load_texture(path)?        read + decode PNG now → Error::Asset on failure
+game:  id = ctx.load_texture(path)?        relative → asset root (ADR-025); read + decode PNG now → Error::Asset on failure
        spawn((Transform2D, Sprite::new(id, size).with_tint(c)))
 store: Textures (runner-owned, CPU): RGBA8 sRGB straight alpha, load order = TextureId, never unloaded
 frame: sprites.sync_textures(store)        upload entries ≥ uploaded count; > max_texture_dimension_2d → Error::Asset
