@@ -192,6 +192,7 @@ pub(crate) mod tests {
         list.build(
             &world,
             &super::super::draw::View::flat(Mat4::IDENTITY),
+            &super::super::texture::Textures::default(),
             &super::super::font::Fonts::default(),
             &mut super::super::atlas::GlyphAtlas::new(16),
         );

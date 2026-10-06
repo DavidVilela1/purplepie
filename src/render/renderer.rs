@@ -214,7 +214,7 @@ impl Renderer {
             target_is_srgb: self.config.format.is_srgb(),
         };
         self.draw_list
-            .build(world, &view, fonts, &mut self.glyph_atlas);
+            .build(world, &view, textures, fonts, &mut self.glyph_atlas);
         self.sprites
             .upload_glyphs(&self.queue, &mut self.glyph_atlas);
         self.instances
@@ -337,6 +337,7 @@ mod tests {
     /// texture cleared to opaque black, and reads the pixels back (RGBA8).
     fn render_offscreen(
         world: &World,
+        textures: &Textures,
         fonts: &Fonts,
         camera: &Camera2D,
         format: wgpu::TextureFormat,
@@ -344,7 +345,10 @@ mod tests {
     ) -> Vec<u8> {
         let (device, queue, faults) = headless_device_and_queue();
         let quads = QuadPipeline::new(&device, format);
-        let sprites = SpritePipeline::new(&device, format, atlas.size());
+        let mut sprites = SpritePipeline::new(&device, format, atlas.size());
+        sprites
+            .sync_textures(&device, &queue, textures)
+            .expect("textures fit");
         let mut draw_list = DrawList::default();
         let physical_size = Vec2::new(WIDTH as f32, HEIGHT as f32);
         let view = View {
@@ -352,7 +356,7 @@ mod tests {
             physical_size,
             target_is_srgb: format.is_srgb(),
         };
-        draw_list.build(world, &view, fonts, atlas);
+        draw_list.build(world, &view, textures, fonts, atlas);
         sprites.upload_glyphs(&queue, atlas);
         let mut instances = InstanceBuffer::new("test instances");
         instances.upload(&device, &queue, draw_list.instances());
@@ -497,6 +501,7 @@ mod tests {
             let mut atlas = GlyphAtlas::new(256);
             let pixels = render_offscreen(
                 &world,
+                &Textures::default(),
                 &fonts,
                 &camera,
                 wgpu::TextureFormat::Rgba8Unorm,
@@ -554,6 +559,7 @@ mod tests {
         let mut atlas = GlyphAtlas::new(256);
         let pixels = render_offscreen(
             &world,
+            &Textures::default(),
             &fonts,
             &Camera2D::default(),
             wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -605,6 +611,7 @@ mod tests {
             let mut atlas = GlyphAtlas::new(256);
             let pixels = render_offscreen(
                 &world,
+                &Textures::default(),
                 &fonts,
                 &Camera2D::default(),
                 wgpu::TextureFormat::Rgba8Unorm,
@@ -629,6 +636,71 @@ mod tests {
                 }
             }
             assert!(lit > 100, "{anchor:?}: text drawn ({lit} px)");
+        }
+    }
+
+    /// Sprite-sheet cells drawn at 4× (one texel = 4×4 pixels) show exactly
+    /// their own texels: border, inner colour and the white marker, with no
+    /// texel of a neighbouring cell; a negative x scale mirrors the cell.
+    #[test]
+    #[ignore = "needs a GPU adapter; run with `cargo test -- --ignored`"]
+    fn sprite_regions_show_exactly_their_texels() {
+        use super::super::{Sprite, SpriteGrid};
+        let (fonts, _) = super::super::font::tests::poppins();
+        let mut textures = Textures::default();
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets/textures/sandbox_sheet.png");
+        let sheet = textures.load(&path).expect("sheet");
+        let data = textures.get(sheet).expect("data").clone();
+        let texel = |x: u32, y: u32| {
+            let i = ((y * data.width + x) * 4) as usize;
+            [data.pixels[i], data.pixels[i + 1], data.pixels[i + 2]]
+        };
+        let grid = SpriteGrid::new(8, 8, 4, 2);
+        // (frame, top-left pixel of the 32×32 sprite, mirrored)
+        let cases = [
+            (0, (16, 16), false),
+            (5, (64, 16), false),
+            (6, (112, 16), true),
+            (3, (160, 72), false),
+        ];
+        let mut world = World::new();
+        for (frame, (left, top), mirrored) in cases {
+            let region = grid.frame(frame).expect("cell");
+            // Screen (left, top) → world centre of a 32×32 sprite (+Y up, origin at the centre).
+            let centre = Vec2::new(
+                left as f32 + 16.0 - WIDTH as f32 / 2.0,
+                HEIGHT as f32 / 2.0 - (top as f32 + 16.0),
+            );
+            let scale = Vec2::new(if mirrored { -1.0 } else { 1.0 }, 1.0);
+            world.spawn((
+                Transform2D::from_position(centre).with_scale(scale),
+                Sprite::new(sheet, region.size() * 4.0).with_region(region),
+            ));
+        }
+        let mut atlas = GlyphAtlas::new(64);
+        let pixels = render_offscreen(
+            &world,
+            &textures,
+            &fonts,
+            &Camera2D::default(),
+            wgpu::TextureFormat::Rgba8Unorm,
+            &mut atlas,
+        );
+        for (frame, (left, top), mirrored) in cases {
+            let region = grid.frame(frame).expect("cell");
+            for py in 0..32 {
+                for px in 0..32 {
+                    let tx = if mirrored { 7 - px / 4 } else { px / 4 };
+                    let want = texel(region.x + tx, region.y + py / 4);
+                    let i = (((top + py) * WIDTH + left + px) * 4) as usize;
+                    assert_eq!(
+                        [pixels[i], pixels[i + 1], pixels[i + 2]],
+                        want,
+                        "frame {frame}, pixel ({px}, {py})"
+                    );
+                }
+            }
         }
     }
 }

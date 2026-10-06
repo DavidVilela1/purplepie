@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-019: Sprite sheets: draw a sub-rectangle of a texture (`Sprite` region, grid helper)** · P1 · TODO ← **next task**
+- [ ] **PP-020: Sprite frame animation (time-driven `SpriteGrid` frames)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -42,6 +42,7 @@ _None._
 - [x] **PP-017: Stage 10 · API review** · DONE (2026-10-06; verified on Linux). Stages 0–10 (the portfolio scope) are complete.
 - [x] **PP-018a: Text rendering, part 1 (ADR-027): fonts, glyph atlas, `Text` component** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-018b: Text anchors/alignment, `measure_text`, Breakout HUD text** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-019: Sprite sheets: `Sprite` regions + `SpriteGrid`** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
@@ -221,14 +222,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-027 extension. Public `render::{TextAnchor, HorizontalAnchor, VerticalAnchor, TextMetrics}`; `Text::anchor` (default `BASELINE_LEFT`, unchanged behaviour) + `Text::with_anchor`; 12 anchor constants; horizontal anchors align every line (left/centre/right); vertical anchors use the font's ascent/descent (baseline/top/middle/bottom). Layout: first pass for line widths into a reused scratch buffer, line and block shifts rounded to whole pixels. `Context::measure_text(&Text) -> Option<TextMetrics>` (world units: width, height, ascent, descent, line height, lines) and `TextMetrics::bounds(anchor)`. Breakout: centred `SCORE n` label in the HUD, `YOU WIN!` / `GAME OVER` headline and a "Space, Up or click to …" hint (also shown while serving), each hidden with `Hidden` when empty; window title kept as a secondary display. No new dependencies. Coverage gamma for small text left as is until the owner's Windows look (R-25). |
 | Acceptance criteria | ✅ 1. Unit tests: metrics against the font tables (`H H`, multi-line, empty, trailing newline, invalid sizes), `bounds` for 6 anchors and 2 lines, rigid whole-pixel shifts for 6 anchors, per-line centring/right alignment, `Context::measure_text`. ✅ 2. GPU (`--ignored`): for 6 anchors, every lit pixel of a two-line text lies inside the `bounds` rectangle (±1 px); a deliberately wrong anchor makes it fail (mutation check). ✅ 3. Xvfb Breakout: every pixel that changed on the lose screen versus PP-018a (9,185 px) lies inside the measured boxes of `SCORE 14`, `GAME OVER` and the hint (0 outside); serve screen shows score and launch hint; the overlay keeps 339,277 px of `(161, 33, 47)` (347,496 before, the rest is now text). ✅ 4. Autoplay unchanged: `win` 7135 / 220, `lose` 892 / 14. ✅ 5. Sandbox label strip pixel-identical to PP-018a (default anchor); whole-frame model 0 mismatches; window-destroy fault test clean. Owner's Windows look still requested. |
 
-### PP-019: Sprite sheets ← NEXT
+### PP-019: Sprite sheets
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
-| Dependencies | PP-018a (`Instance::uv_rect` exists) |
-| Why now | First item of P2 in the ROADMAP: most 2D games pack frames and tiles into one image; today a sprite always shows its whole texture. The GPU path is already there (`uv_rect`), so this is mostly API and tests. |
-| Scope | A texel rectangle on `Sprite` (e.g. `Sprite::with_region(min, size)`, default = whole texture) mapped to `uv_rect`; a small helper to address a grid of equal cells (columns × rows, optional spacing); flipping if it falls out naturally; batching unchanged (same texture = same batch). Frame animation (time-driven region changes) stays a separate follow-up task. |
-| Acceptance criteria | Unit tests for region → UV mapping (edges, out-of-range clamping) and the grid helper; Xvfb pixel check that a region shows exactly those texels (no bleeding with `Nearest`); existing sprite pixels unchanged; Breakout autoplay unchanged. |
+| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · **DONE** (2026-10-06) |
+| Dependencies | PP-018a (`Instance::uv_rect`) |
+| Scope (as built) | ADR-020 extension. New `src/render/region.rs`: public `TextureRegion { x, y, width, height }` (texels, rows down; `size()`; crate-private `uv_rect` that cuts to the texture) and `SpriteGrid` (`new`, `with_spacing`, `with_margin`, `cell`, `frame`, `len`, `is_empty`; overflow-safe). `Sprite::region` + `with_region` (default `None` = whole texture). `DrawList::build` now also takes `&Textures` to turn regions into `uv_rect`; regions outside the texture or of unknown textures are skipped. Mirroring stays a negative transform scale (no flip flags). New asset `assets/textures/sandbox_sheet.png` (32×16, 4×2 cells of 8×8, each with its own border/inner colour and a white corner texel); the sandbox shows four cells at (400…520, −250), 32×32, the third mirrored. No new dependencies. |
+| Acceptance criteria | ✅ 1. Unit tests: region → UV (whole, partial, cut, empty, outside, overflow), grid cells with margin/spacing, row-major frames, degenerate/overflowing grids, draw list (regions as `uv_rect`, one batch per texture, skipped regions). ✅ 2. GPU (`--ignored`): four cells drawn at 4× (one mirrored) — every one of 4,096 pixels equals its own texel; fails when regions are ignored (mutation check). ✅ 3. Xvfb sandbox whole-frame model incl. the four cells: 0 mismatches at (0,0)×1; only the known cursor-marker pixels at (450,−250)×2 and (460,−240)×1.5; the model detects a wrong mirror (32 px) or a wrong cell (1,008 px). ✅ 4. Sprites without regions unchanged: Breakout lose screen pixel-identical to PP-018b; autoplay `win` 7135 / 220, `lose` 892 / 14. |
+
+### PP-020: Sprite frame animation ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 · Priority P1 · TODO |
+| Dependencies | PP-019 (DONE) |
+| Why now | Sheets without animation only cover tiles; walking characters, explosions and blinking UI need frames that change over time, and every game would otherwise re-write the same timer code. |
+| Scope | A plain-data animation component (a `SpriteGrid`, a frame range or list, frames per second, looping or once) and a system the game calls from `fixed_update` (like `ecs::integrate_velocity`) that advances it deterministically and writes `Sprite::region`; a way to tell that a one-shot animation finished. Lives in `render` (it writes `Sprite`). No new dependencies. |
+| Acceptance criteria | Unit tests for frame timing at the fixed step (loop, once, zero/negative fps, range edges, large dt); determinism (same steps → same frame); sandbox shows an animated cell and a timed Xvfb run shows the expected frame; existing sprites unchanged. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

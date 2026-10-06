@@ -32,7 +32,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-017 | GPU faults are fatal and reported as `Error::Render` | Accepted | Yes (Stage 4, PP-014) |
 | ADR-018 | World coordinates: +X right, +Y up, origin at the window centre, 1 unit = 1 logical pixel | Accepted (now the default camera, ADR-022) | Yes (Stage 5, PP-007) |
 | ADR-019 | Quads: one instanced pipeline, CPU-built clip matrices, embedded WGSL | Accepted ("one draw call for all quads" is now one per layer, ADR-021) | Yes (Stage 5, PP-007); instance code shared with sprites since PP-008 |
-| ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted (the "sprites drawn after quads" clause is superseded by ADR-021) | Yes (Stage 6, PP-008) |
+| ADR-020 | Textures: `TextureId` handles, decode on load, upload in the renderer; `image` (PNG only) | Accepted (the "sprites drawn after quads" clause is superseded by ADR-021; extended by PP-019: texture regions) | Yes (Stage 6, PP-008; regions + `SpriteGrid`: PP-019) |
 | ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
 | ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
 | ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
@@ -935,6 +935,24 @@ bad files where the game can handle them.
 ## Revisit Conditions
 PP-011 (asset system), memory pressure from many or large textures, the need for texture atlases or UV
 rectangles, or a need for linear filtering.
+
+## Extension: texture regions / sprite sheets (2026-10-06, PP-019)
+- **`Sprite::region: Option<TextureRegion>`** (builder `with_region`; `None` = whole texture, the previous behaviour).
+  `TextureRegion { x, y, width, height }` is in **texels**, top-left origin, rows down, like an image editor, matching how sheets are drawn and
+  avoiding float maths in game code. The draw list converts it to the instance's `uv_rect` (ADR-027) using the texture's size from the CPU
+  store; a region that sticks out is cut to the texture, one completely outside (or for an unknown texture) is not drawn.
+- **`SpriteGrid { cell_width, cell_height, columns, rows, spacing, margin }`** finds a cell's region by `cell(column,
+  row)` or by row-major `frame(index)`; overflow and out-of-range cells return `None`.
+- **No flip API**: mirroring is a negative transform scale (already supported, culling is off). **No new material**:
+  regions of one texture batch together (one draw call), so a whole sheet costs what one sprite texture did.
+- **Alternatives:** normalized UV rectangles in the public API (fragile and float-y for pixel art); a separate
+  `SpriteSheet` asset type with its own handle (a second handle kind for the same pixels; revisit with PD-06 generic
+  handles); per-sprite flip flags (duplicates negative scale).
+- **Verified:** an offscreen GPU test draws four cells at 4× (one mirrored) and every pixel equals its own texel (no
+  neighbouring-cell texel); the sandbox shows the same cells and matches the whole-frame model at zoom 1, 1.5 and 2.
+  Sprites without a region are pixel-identical to before (Breakout's lose screen unchanged).
+- **Revisit:** frame animation (PP-020) builds on `SpriteGrid::frame`; linear filtering (F9) would need padding between
+  cells (sampling bleeds across cell edges), so it stays `Nearest`-only for now.
 
 ---
 

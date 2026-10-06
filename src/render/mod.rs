@@ -2,7 +2,7 @@
 //!
 //! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
 //! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`,
-//! `TextAnchor`, `TextMetrics`).
+//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`).
 //! Crate-private: the `Renderer`, which owns every `wgpu` object, the CPU-side
 //! texture and font stores, and the glyph atlas. Game code never touches the
 //! GPU. The engine draws whatever the game state describes.
@@ -22,6 +22,7 @@ mod faults;
 mod font;
 mod instance;
 mod quad;
+mod region;
 mod renderer;
 mod sprite;
 mod text;
@@ -33,6 +34,7 @@ pub use draw::{Hidden, Layer};
 pub use font::FontId;
 pub(crate) use font::Fonts;
 pub use quad::Quad;
+pub use region::{SpriteGrid, TextureRegion};
 pub(crate) use renderer::Renderer;
 pub use sprite::Sprite;
 pub(crate) use text::measure as measure_text;

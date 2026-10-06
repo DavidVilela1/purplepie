@@ -10,15 +10,18 @@ use wgpu::util::DeviceExt as _;
 use super::Color;
 use super::atlas::GlyphAtlas;
 use super::quad::rect_pipeline;
+use super::region::TextureRegion;
 use super::texture::{TextureData, TextureId, Textures};
 use crate::error::{Error, Result};
 use crate::math::Vec2;
 
 /// A textured rectangle, drawn centred on the entity's [`Transform2D`](crate::math::Transform2D).
 ///
-/// The whole texture is stretched over `size` world units (before the
-/// transform's scale). `tint` multiplies every texel: [`Color::WHITE`] shows
-/// the texture unchanged, and a lower alpha fades it. An entity needs both
+/// The whole texture — or only its [`region`](Self::region), for sprite sheets
+/// and tiles — is stretched over `size` world units (before the transform's
+/// scale). `tint` multiplies every texel: [`Color::WHITE`] shows the texture
+/// unchanged, and a lower alpha fades it. To mirror a sprite, give its
+/// transform a negative scale on that axis. An entity needs both
 /// `Transform2D` and `Sprite` to be drawn. Draw order comes from the entity's
 /// [`Layer`](super::Layer) (default 0); within a layer, sprites are drawn after quads.
 ///
@@ -42,6 +45,9 @@ pub struct Sprite {
     pub size: Vec2,
     /// Multiplies the texture's colour and alpha (sRGB, straight alpha; ADR-015).
     pub tint: Color,
+    /// The part of the texture to show, in texels (`None`: all of it). See
+    /// [`SpriteGrid`](super::SpriteGrid) for sprite sheets.
+    pub region: Option<TextureRegion>,
 }
 
 impl Sprite {
@@ -51,7 +57,32 @@ impl Sprite {
             texture,
             size,
             tint: Color::WHITE,
+            region: None,
         }
+    }
+
+    /// The same sprite showing only `region` of its texture (one frame of a
+    /// sprite sheet, one tile). Sprites sharing a texture are still drawn
+    /// together, whatever their regions.
+    ///
+    /// ```no_run
+    /// use purplepie::math::{Transform2D, Vec2};
+    /// use purplepie::render::{Sprite, SpriteGrid};
+    /// # fn init(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
+    /// let sheet = ctx.load_texture("textures/hero.png")?;
+    /// let frames = SpriteGrid::new(16, 16, 4, 1); // four 16×16 frames side by side
+    /// if let Some(frame) = frames.frame(2) {
+    ///     ctx.world_mut().spawn((
+    ///         Transform2D::default(),
+    ///         Sprite::new(sheet, frame.size() * 4.0).with_region(frame),
+    ///     ));
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn with_region(mut self, region: TextureRegion) -> Self {
+        self.region = Some(region);
+        self
     }
 
     /// The same sprite with `tint` applied.
@@ -382,6 +413,7 @@ mod tests {
         list.build(
             &world,
             &super::super::draw::View::flat(vp),
+            &textures,
             &super::super::font::Fonts::default(),
             &mut super::super::atlas::GlyphAtlas::new(16),
         );

@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope (text rendering done; sprite sheets next).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope (text and sprite sheets done; animation next).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -13,7 +13,7 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 - **App and loop:** `Engine` owns the window (winit) and the GPU (wgpu); your `Game` gets `init`, a fixed-rate
   `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
 - **ECS:** one `hecs::World` for your entities and components; you call your own systems.
-- **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint) and `Text` (TrueType/OpenType fonts, rasterized
+- **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint, sprite-sheet regions via `SpriteGrid`) and `Text` (TrueType/OpenType fonts, rasterized
   sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, batched into instanced draw calls, seen
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
@@ -21,7 +21,7 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 - **Assets:** textures and fonts loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): text wrapping and shaping, audio, sprite sheets/animation, in-game UI widgets, physics,
+- Not included (yet): text wrapping and shaping, audio, sprite animation, in-game UI widgets, physics,
   scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
@@ -126,7 +126,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API
-├── assets/           textures/ (sandbox_quadrants.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), shaders/
+├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here

@@ -13,7 +13,7 @@ use super::instance::Instance;
 use super::quad::Quad;
 use super::sprite::Sprite;
 use super::text::{self, MAX_EM_PIXELS, Text};
-use super::texture::TextureId;
+use super::texture::{TextureId, Textures};
 use crate::ecs::{Entity, World, hecs::Without};
 use crate::math::{Mat4, Transform2D, Vec2};
 use glam::Vec3;
@@ -127,6 +127,7 @@ impl DrawList {
         &mut self,
         world: &World,
         view: &View,
+        textures: &Textures,
         fonts: &Fonts,
         atlas: &mut GlyphAtlas,
     ) {
@@ -150,13 +151,23 @@ impl DrawList {
             .query::<Without<(Entity, &Transform2D, &Sprite, Option<&Layer>), &Hidden>>()
             .iter()
         {
-            let instance = Instance::new(
+            let mut instance = Instance::new(
                 view_projection,
                 transform,
                 sprite.size,
                 sprite.tint,
                 target_is_srgb,
             );
+            if let Some(region) = sprite.region {
+                // Cut to the texture; nothing left (or an unknown texture) → not drawn.
+                let Some(uv_rect) = textures
+                    .get(sprite.texture)
+                    .and_then(|t| region.uv_rect(t.width, t.height))
+                else {
+                    continue;
+                };
+                instance.uv_rect = uv_rect;
+            }
             self.push(
                 entity,
                 layer,
@@ -383,6 +394,7 @@ mod tests {
         list.build(
             world,
             &View::flat(Mat4::IDENTITY),
+            &Textures::default(),
             &Fonts::default(),
             &mut GlyphAtlas::new(16),
         );
@@ -517,9 +529,21 @@ mod tests {
         let e = world.spawn((Transform2D::default(), quad(0x000001)));
         let mut list = DrawList::default();
         let (fonts, mut atlas) = (Fonts::default(), GlyphAtlas::new(16));
-        list.build(&world, &View::flat(Mat4::IDENTITY), &fonts, &mut atlas);
+        list.build(
+            &world,
+            &View::flat(Mat4::IDENTITY),
+            &Textures::default(),
+            &fonts,
+            &mut atlas,
+        );
         world.despawn(e).expect("entity exists");
-        list.build(&world, &View::flat(Mat4::IDENTITY), &fonts, &mut atlas);
+        list.build(
+            &world,
+            &View::flat(Mat4::IDENTITY),
+            &Textures::default(),
+            &fonts,
+            &mut atlas,
+        );
         assert!(list.instances().is_empty());
         assert!(list.batches().is_empty());
     }
@@ -537,7 +561,13 @@ mod tests {
             target_is_srgb: true,
             ..View::flat(vp)
         };
-        list.build(&world, &view, &Fonts::default(), &mut GlyphAtlas::new(16));
+        list.build(
+            &world,
+            &view,
+            &Textures::default(),
+            &Fonts::default(),
+            &mut GlyphAtlas::new(16),
+        );
         let instance = list.instances()[0];
         let m = Mat4::from_cols_array_2d(&instance.clip_from_local);
         let corner = m * glam::Vec4::new(0.5, 0.5, 0.0, 1.0);
@@ -572,7 +602,7 @@ mod tests {
         atlas: &mut GlyphAtlas,
     ) -> DrawList {
         let mut list = DrawList::default();
-        list.build(world, view, fonts, atlas);
+        list.build(world, view, &Textures::default(), fonts, atlas);
         list
     }
 
@@ -794,5 +824,85 @@ mod tests {
             let any = (0..h).any(|j| (0..w).any(|i| atlas.texel(x + i, y + j)[3] > 0));
             assert!(any, "glyph at {x},{y} is in the atlas");
         }
+    }
+
+    /// The 32×16 sandbox sprite sheet (4×2 cells of 8×8 texels).
+    fn sheet() -> (Textures, TextureId) {
+        let mut textures = Textures::default();
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets/textures/sandbox_sheet.png");
+        let id = textures.load(&path).expect("sheet loads");
+        (textures, id)
+    }
+
+    #[test]
+    fn sprite_regions_become_uv_rectangles_and_share_one_batch() {
+        let (textures, tex) = sheet();
+        let grid = super::super::SpriteGrid::new(8, 8, 4, 2);
+        let mut world = World::new();
+        world.spawn((Transform2D::default(), Sprite::new(tex, Vec2::ONE)));
+        for frame in [5, 0] {
+            let region = grid.frame(frame).expect("cell");
+            world.spawn((
+                Transform2D::default(),
+                Sprite::new(tex, Vec2::ONE).with_region(region),
+            ));
+        }
+        let mut list = DrawList::default();
+        list.build(
+            &world,
+            &View::flat(Mat4::IDENTITY),
+            &textures,
+            &Fonts::default(),
+            &mut GlyphAtlas::new(16),
+        );
+        let uvs: Vec<[f32; 4]> = list.instances().iter().map(|i| i.uv_rect).collect();
+        assert_eq!(
+            uvs,
+            [
+                Instance::FULL_UV,
+                [0.25, 0.5, 0.25, 0.5],
+                [0.0, 0.0, 0.25, 0.5]
+            ],
+            "entity order; frame 5 = column 1, row 1"
+        );
+        assert_eq!(
+            list.batches().len(),
+            1,
+            "regions of one texture are one draw call"
+        );
+    }
+
+    #[test]
+    fn regions_outside_the_texture_or_of_unknown_textures_are_not_drawn() {
+        let (textures, tex) = sheet();
+        let [_, unknown] = texture_ids();
+        let region = super::super::TextureRegion::new(32, 0, 8, 8);
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::default(),
+            Sprite::new(tex, Vec2::ONE).with_region(region),
+        ));
+        world.spawn((
+            Transform2D::default(),
+            Sprite::new(unknown, Vec2::ONE)
+                .with_region(super::super::TextureRegion::new(0, 0, 1, 1)),
+        ));
+        // Partly outside: cut to the texture, still drawn.
+        world.spawn((
+            Transform2D::default(),
+            Sprite::new(tex, Vec2::ONE)
+                .with_region(super::super::TextureRegion::new(24, 8, 64, 64)),
+        ));
+        let mut list = DrawList::default();
+        list.build(
+            &world,
+            &View::flat(Mat4::IDENTITY),
+            &textures,
+            &Fonts::default(),
+            &mut GlyphAtlas::new(16),
+        );
+        let uvs: Vec<[f32; 4]> = list.instances().iter().map(|i| i.uv_rect).collect();
+        assert_eq!(uvs, [[0.75, 0.5, 0.25, 0.5]]);
     }
 }

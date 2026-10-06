@@ -5,7 +5,8 @@
 //!
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
 //! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
-//! A text label at the bottom left lists these controls.
+//! A text label at the bottom left lists these controls; four sprite-sheet cells
+//! (one mirrored) sit at the bottom right.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -21,7 +22,7 @@ use std::process::ExitCode;
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite, Text};
+use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite, SpriteGrid, Text};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -84,6 +85,16 @@ const MOVER_LIMIT: f32 = 500.0;
 /// (ADR-025): `assets/` next to the executable, else `assets/` in the working
 /// directory, which is the project folder under `cargo run`.
 const SPRITE_TEXTURE: &str = "textures/sandbox_quadrants.png";
+/// A 32×16 sprite sheet: 4 × 2 cells of 8×8 texels, each with its own border
+/// colour, inner colour and a white texel in its top-left corner (PP-019).
+const SHEET_TEXTURE: &str = "textures/sandbox_sheet.png";
+/// Sheet cells shown in the sandbox: (frame, centre x, mirrored), all at y = −250, 32×32 world units.
+const SHEET_CELLS: [(u32, f32, bool); 4] = [
+    (0, 400.0, false),
+    (5, 440.0, false),
+    (6, 480.0, true),
+    (3, 520.0, false),
+];
 /// The font shipped with PurplePie (SIL Open Font License, `assets/fonts/OFL.txt`).
 const FONT: &str = "fonts/Poppins-Regular.ttf";
 /// The help label: its baseline starts here (world units) and its size is the em size.
@@ -121,7 +132,19 @@ impl Game for Sandbox {
         *ctx.camera_mut() = self.camera;
         let texture = ctx.load_texture(SPRITE_TEXTURE)?;
         let font = ctx.load_font(FONT)?;
+        let sheet = ctx.load_texture(SHEET_TEXTURE)?;
         let world = ctx.world_mut();
+        // Sprite sheet cells (regions of one texture, one draw call); one mirrored by a negative scale.
+        let grid = SpriteGrid::new(8, 8, 4, 2);
+        for (frame, x, mirrored) in SHEET_CELLS {
+            if let Some(region) = grid.frame(frame) {
+                let scale = Vec2::new(if mirrored { -1.0 } else { 1.0 }, 1.0);
+                world.spawn((
+                    Transform2D::from_position(Vec2::new(x, -250.0)).with_scale(scale),
+                    Sprite::new(sheet, region.size() * 4.0).with_region(region),
+                ));
+            }
+        }
         // Text (ADR-027): a help label in the bottom-left corner of the default view.
         world.spawn((
             Transform2D::from_position(LABEL_POSITION),

@@ -198,6 +198,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   ascent/descent at the `Camera2D::fit` zoom); the overlay colour `(161, 33, 47)` covers 339,277 px at 1024×768.
   Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
   scripts that also started Xvfb (it waits for the server forever).
+- **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.
+  In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
+  centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;
+  mirrored: texel column 7 − column) and expect 0 mismatches at zoom 1, 1.5 and 2 (apart from the cursor marker).
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
   `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
   rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;
