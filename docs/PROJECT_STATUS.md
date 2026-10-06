@@ -123,11 +123,13 @@ executable, else `assets/` in the working directory (ADR-025).
 - Under lavapipe (software GPU), idle CPU is about 0.75 s per 3 s (1.4 s per 5 s with sprites, PP-008). This is GPU work done on the CPU, not a busy loop.
 - Render interpolation is not implemented. `Time::alpha()` is exposed for it, but nothing uses it yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
-- `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised (R-19). The code uses let-chains (stable since 1.88).
+- `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-06: CI fix after PP-018b.** GitHub Actions' clippy (Rust 1.99) rejected `chunks_exact_mut(4)` in `render/atlas.rs` (new lint `chunks_exact_to_as_chunks`); replaced by `as_chunks_mut::<4>()`. Behaviour unchanged. Cowork cannot install Rust 1.99, so CI is the only check for lints newer than 1.95 (R-19).
 
 - **2026-10-06: PP-018b Text anchors, measuring and Breakout HUD text (phase P1 complete).**
   - New public API: `render::{TextAnchor, HorizontalAnchor, VerticalAnchor, TextMetrics}`, `Text::anchor` + `with_anchor` (default `BASELINE_LEFT` = PP-018a behaviour), `Context::measure_text`, `TextMetrics::bounds`.

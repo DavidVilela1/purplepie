@@ -103,9 +103,8 @@ impl GlyphAtlas {
 
     /// Empties the atlas (all cached glyphs are forgotten).
     pub(crate) fn reset(&mut self) {
-        for texel in self.pixels.chunks_exact_mut(4) {
-            texel.copy_from_slice(&CLEAR_TEXEL);
-        }
+        // `pixels` is RGBA8, so its length is a multiple of 4 (no remainder).
+        self.pixels.as_chunks_mut::<4>().0.fill(CLEAR_TEXEL);
         self.cache.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;

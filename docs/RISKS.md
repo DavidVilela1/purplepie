@@ -147,6 +147,11 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** A user builds with Rust 1.90–1.94. `rust-version = "1.90"` comes from dependency metadata, and only 1.95 was run.
 - **Mitigation:** Documented in TECH_STACK.
 - **Fallback:** Raise `rust-version` to the lowest version actually verified.
+- **Related (occurred 2026-10-06, after PP-018b):** the opposite direction. CI runs the *latest* stable (clippy 1.99), which
+  added `clippy::chunks_exact_to_as_chunks` and failed on `chunks_exact_mut(4)` in `render/atlas.rs`; Cowork has only
+  1.95 and cannot download newer toolchains (static.rust-lang.org is blocked by the egress proxy). Fixed with
+  `as_chunks_mut::<4>()` (stable since 1.88, so the MSRV holds). New lints in future stable releases can only be caught by
+  CI; fix them as they appear.
 
 ### R-20: Compile-time growth in a single crate
 - **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux (128 after `image` in PP-008). The spike took about 1m21s for a clean debug build in Cowork.
