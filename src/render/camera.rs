@@ -57,6 +57,30 @@ impl Camera2D {
         Self { position, zoom }
     }
 
+    /// A camera centred on `center` that shows the whole `size` (world
+    /// units) as large as possible in a `viewport`-sized window (logical
+    /// pixels, e.g. [`Context::viewport_size`](crate::Context::viewport_size)).
+    /// The other axis shows extra world. Returns the default zoom of 1 when
+    /// `size` or `viewport` has a zero or invalid component.
+    ///
+    /// ```
+    /// use purplepie::math::Vec2;
+    /// use purplepie::render::Camera2D;
+    ///
+    /// // An 800×600 playfield in a 1600×900 window: height limits, zoom 1.5.
+    /// let camera = Camera2D::fit(Vec2::ZERO, Vec2::new(800.0, 600.0), Vec2::new(1600.0, 900.0));
+    /// assert_eq!(camera.zoom, 1.5);
+    /// ```
+    pub fn fit(center: Vec2, size: Vec2, viewport: Vec2) -> Self {
+        let usable = |v: Vec2| v.is_finite() && v.x > 0.0 && v.y > 0.0;
+        let zoom = if usable(size) && usable(viewport) {
+            (viewport / size).min_element()
+        } else {
+            1.0
+        };
+        Self::new(center, zoom)
+    }
+
     /// The zoom actually used: `zoom` if it is finite and positive, else `1.0`.
     pub fn effective_zoom(&self) -> f32 {
         if self.zoom.is_finite() && self.zoom > 0.0 {
@@ -198,6 +222,21 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn fit_shows_the_whole_area_and_centres_it() {
+        let viewport = Vec2::new(1024.0, 768.0);
+        let camera = Camera2D::fit(Vec2::new(10.0, -5.0), Vec2::new(912.0, 812.0), viewport);
+        let (min, max) = camera.visible_world_rect(viewport);
+        // Height is the limiting axis: exactly 812 units tall, wider than 912.
+        assert!((max.y - min.y - 812.0).abs() < 1e-3);
+        assert!(max.x - min.x >= 912.0);
+        assert!(((min + max) / 2.0).abs_diff_eq(Vec2::new(10.0, -5.0), 1e-4));
+        for bad in [Vec2::ZERO, Vec2::new(f32::NAN, 1.0)] {
+            assert_eq!(Camera2D::fit(Vec2::ZERO, bad, viewport).zoom, 1.0);
+            assert_eq!(Camera2D::fit(Vec2::ZERO, Vec2::ONE, bad).zoom, 1.0);
         }
     }
 

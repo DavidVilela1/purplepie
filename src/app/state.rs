@@ -24,6 +24,8 @@ pub(crate) struct EngineState {
     pub(crate) viewport: Vec2,
     /// Where relative asset paths are resolved (ADR-025), chosen at startup.
     pub(crate) assets: AssetRoot,
+    /// A window title requested by the game, applied by the runner after the callback.
+    pub(crate) window_title: Option<String>,
 }
 
 impl EngineState {
@@ -37,6 +39,7 @@ impl EngineState {
             input: Input::default(),
             viewport: Vec2::ZERO,
             assets,
+            window_title: None,
         }
     }
 }

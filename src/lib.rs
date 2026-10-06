@@ -29,6 +29,8 @@
 //! Current status, architecture and roadmap: `docs/PROJECT_STATUS.md`,
 //! `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`.
 
+#![warn(missing_docs)]
+
 mod app;
 mod assets;
 pub mod ecs;

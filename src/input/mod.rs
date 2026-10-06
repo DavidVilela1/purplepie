@@ -32,7 +32,11 @@ macro_rules! key_codes {
         #[non_exhaustive]
         #[repr(u8)]
         pub enum KeyCode {
-            $($(#[$doc])* $name,)+
+            $(
+                #[doc = concat!("The `", stringify!($name), "` key (US-layout position).")]
+                $(#[$doc])*
+                $name,
+            )+
         }
 
         impl KeyCode {
@@ -74,8 +78,11 @@ const _: () = assert!(KeyCode::ALL.len() <= 128);
 #[non_exhaustive]
 #[repr(u8)]
 pub enum MouseButton {
+    /// The primary (usually left) button.
     Left,
+    /// The secondary (usually right) button.
     Right,
+    /// The wheel button.
     Middle,
     /// The "back" side button.
     Back,

@@ -14,13 +14,13 @@ directory on 2026-09-30, with no decision content changed.
 | ADR | Title | Status | Implemented |
 |---|---|---|---|
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
-| ADR-002 | Single package: engine library + `sandbox` binary | Accepted | Yes (Stage 0) |
+| ADR-002 | Single package: engine library + `sandbox` binary | Accepted (reaffirmed by ADR-026) | Yes (Stage 0); `examples/` added in Stage 10 |
 | ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9 |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted | Partially: Stages 1–3 subset + `load_texture` (Stage 6) + camera/viewport (Stage 7) + `input` (Stage 8). `Context` now borrows one engine-owned `EngineState` |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted (reviewed by ADR-026) | Yes: `init`/`fixed_update`/`update`; `Context` = world, time, dt, input, cursor, camera, viewport, textures, asset root, window title, exit |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
@@ -38,6 +38,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
 | ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted (extended to the mouse by PP-016) | Yes (Stage 8, PP-010 keyboard, PP-016 mouse) |
 | ADR-025 | Asset root: relative asset paths resolve against one folder chosen at startup (config, else next to the executable, else the working directory) | Accepted | Yes (Stage 9, PP-011) |
+| ADR-026 | API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`; `missing_docs` enforced | Accepted | Yes (Stage 10, PP-017) |
 
 ---
 
@@ -1204,6 +1205,67 @@ configuration, and every failure names exactly where PurplePie looked.
 
 ## Revisit Conditions
 Platform bundles (macOS `.app` `Resources/`), embedded assets, or a second asset kind (generic handles, PD-06).
+
+---
+
+# ADR-026: API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`
+
+## Status
+Accepted (2026-10-06, PP-017). Reviews ADR-008 (engine/game API) and ADR-002 (single package). Completes Stage 10.
+
+## Context
+PP-012 built a complete game (`examples/breakout.rs`) on the public API with no engine changes and recorded ten friction
+points (F1–F10, TASKS PP-012). Stage 10 asks for a decision on each, a check of the `Game`/`Context` design, the fate of
+`EngineConfig::exit_on_escape`, and whether to split the crate.
+
+## Decision
+**ADR-008 stands.** `Game` (`init` / `fixed_update` / `update`, all optional) plus a per-call `&mut Context` worked for a full
+game: every interaction Breakout needed went through `Context`, and keeping gameplay in `fixed_update` made it deterministic.
+
+| Friction | Decision |
+|---|---|
+| F1 No text rendering | **Deferred**, post-portfolio feature PP-018 (needs a font dependency and a glyph atlas; too big for a review task). F2 covers the most urgent need meanwhile. |
+| F2 No runtime window title | **Added** `Context::set_window_title(title)`. Applied by the runner after the callback, only when requested (no per-frame window call, R-22). |
+| F3 No visibility toggle | **Added** the `render::Hidden` marker component. The draw list skips entities that have it (`hecs::Without`). |
+| F4 Copying values out of `Context` before mutating the world | **No change.** It's the borrow checker enforcing one `&mut Context`; splitting `Context` into simultaneous borrows would complicate the API for a few saved lines. Documented on `Context::world_mut`. |
+| F5 Verbose per-entity component access | **No change.** It's hecs's API (`world.get::<&mut T>(e)`), re-exported deliberately (ADR-006); wrapping it would duplicate hecs. |
+| F6 No "cursor moved" signal | **No change.** Two lines in the game (`last != current`); revisit if a second game needs it. |
+| F7 No camera fit helper | **Added** `Camera2D::fit(center, size, viewport)`: the largest zoom that shows the whole area (invalid sizes → zoom 1). |
+| F8 `request_exit` has no exit code | **No change.** `Engine::run` returns `Result<()>`; a game that needs a process exit code can call `std::process::exit` after `run` returns. |
+| F9 `Nearest` sampling aliases scaled-down sprites | **Deferred** with sprite sheets / per-texture sampling options (post-portfolio). |
+| F10 No randomness helper | **No change, by design.** Games bring their own generator (determinism and choice of algorithm stay with the game). |
+
+- **`exit_on_escape` stays**, default `true`: a convenience for prototypes, handled before input reaches the game; games that
+  want Escape (pause menus) turn it off and read `Input`. Its doc comment now says so.
+- **Single crate stays** (ADR-002 reaffirmed): ~5,800 lines in `src/` (tests included), clean builds dominated by
+  dependency compilation (wgpu), and module boundaries already enforced by convention and the per-task import checks. Revisit when a feature brings
+  a heavy optional dependency (text, audio) that should be feature-gated or separately versioned.
+- **`#![warn(missing_docs)]`** is enabled in `lib.rs`; with clippy's `-D warnings` in CI, undocumented public items fail the build.
+
+## Alternatives Considered
+- **Fix every friction item now:** F1 (text) alone is a stage of work; F4/F5 would add API surface that mostly duplicates
+  Rust/hecs. The review should leave the API smaller and clearer, not bigger.
+- **A `Visible(bool)` component instead of a `Hidden` marker:** every drawable would need it or a default; a marker is
+  absent by default and costs nothing for the common case.
+- **Workspace split now (core / render / input / app crates):** more `Cargo.toml`s and public re-exports to maintain with
+  one consumer; no measured build-time problem yet.
+
+## Rationale
+Change the API only where a real game showed a missing capability that is small, general and testable; record everything
+else so later work starts from the evidence.
+
+## Consequences
+### Positive
+- Breakout uses all three additions: the end-screen overlay is one entity toggled with `Hidden`, the camera uses
+  `Camera2D::fit`, and the window title shows score and lives. Its autoplay results are unchanged (the gameplay code is).
+- Public items are fully documented and kept so by CI.
+### Negative
+- Text, sprite sheets and sampling options remain missing for now (PP-018 first).
+- `exit_on_escape` remains a second way to handle one key.
+
+## Revisit Conditions
+A second example game (re-check F4–F6 with fresh evidence), text rendering (PP-018), or a heavy optional dependency
+(workspace split).
 
 ---
 

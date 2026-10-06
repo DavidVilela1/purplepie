@@ -11,7 +11,7 @@ use super::instance::Instance;
 use super::quad::Quad;
 use super::sprite::Sprite;
 use super::texture::TextureId;
-use crate::ecs::{Entity, World};
+use crate::ecs::{Entity, World, hecs::Without};
 use crate::math::{Mat4, Transform2D};
 
 /// Draw order for an entity's [`Quad`] or [`Sprite`]: higher layers are drawn
@@ -35,6 +35,21 @@ use crate::math::{Mat4, Transform2D};
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Layer(pub i32);
+
+/// Marks an entity that is not drawn, without removing its [`Quad`] or
+/// [`Sprite`]: insert it to hide, remove it to show again.
+///
+/// ```
+/// use purplepie::math::{Transform2D, Vec2};
+/// use purplepie::render::{Color, Hidden, Quad};
+///
+/// let mut world = purplepie::ecs::World::new();
+/// let overlay = world.spawn((Transform2D::default(), Quad::new(Vec2::splat(100.0), Color::BLACK), Hidden));
+/// world.remove_one::<Hidden>(overlay).expect("shown again");
+/// world.insert_one(overlay, Hidden).expect("hidden again");
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Hidden;
 
 /// What a batch is drawn with: the solid-colour quad pipeline, or the sprite
 /// pipeline with one texture bound.
@@ -97,7 +112,7 @@ impl DrawList {
             });
         };
         for (entity, transform, quad, layer) in world
-            .query::<(Entity, &Transform2D, &Quad, Option<&Layer>)>()
+            .query::<Without<(Entity, &Transform2D, &Quad, Option<&Layer>), &Hidden>>()
             .iter()
         {
             let instance = Instance::new(
@@ -110,7 +125,7 @@ impl DrawList {
             push(entity, layer, Material::Color, instance);
         }
         for (entity, transform, sprite, layer) in world
-            .query::<(Entity, &Transform2D, &Sprite, Option<&Layer>)>()
+            .query::<Without<(Entity, &Transform2D, &Sprite, Option<&Layer>), &Hidden>>()
             .iter()
         {
             let instance = Instance::new(
@@ -282,6 +297,19 @@ mod tests {
         let list = built(&world);
         assert_eq!(list.instances().len(), 2);
         assert_eq!(list.batches().len(), 2);
+    }
+
+    #[test]
+    fn hidden_entities_are_not_drawn() {
+        let [tex] = texture_ids();
+        let mut world = World::new();
+        world.spawn((Transform2D::default(), quad(0x000001), Hidden));
+        world.spawn((Transform2D::default(), Sprite::new(tex, Vec2::ONE), Hidden));
+        let shown = world.spawn((Transform2D::default(), quad(0x000002)));
+        let list = built(&world);
+        assert_eq!(colors(&list), [0x000002]);
+        world.insert_one(shown, Hidden).expect("entity exists");
+        assert!(built(&world).instances().is_empty());
     }
 
     #[test]

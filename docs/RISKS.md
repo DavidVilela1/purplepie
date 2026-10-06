@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-06 (PP-011 asset root, Stage 9 complete).
+Last reviewed: 2026-10-06 (PP-017 API review, Stages 0–10 complete).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -22,7 +22,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-10 | Renderer overengineering / scope creep | OPEN | Medium | High | all |
 | R-11 | Headless-only validation in Cowork | MATERIALIZED | High | Medium | 1+ |
 | R-12 | Cross-platform window behavior | OPEN | Medium | Medium | 1, 4, 7 |
-| R-13 | Future public API stability | OPEN | Medium | Medium | 10 |
+| R-13 | Future public API stability | MONITORING | Medium | Medium | 10+ |
 | R-14 | Windows build environment (MSVC linker) | MITIGATED | — | High | 0 |
 | R-15 | Project inside OneDrive | MATERIALIZED | Medium | Medium | 1+ |
 | R-16 | Documentation drift | MONITORING | Medium | Medium | all |
@@ -108,6 +108,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** Stage 10 review finds `Game`/`Context` awkward in a real game.
 - **Mitigation:** Version stays 0.x. API refinement is a planned stage. Changes are recorded in DECISIONS.
 - **Fallback:** Accept breaking changes before 1.0.
+- **PP-012/PP-017:** a complete game needed no engine changes; the review (ADR-026) added three small APIs and recorded decisions for all ten friction points. `missing_docs` is enforced. Remaining exposure: text rendering (PP-018) will add new public types.
 
 ### R-14: Windows build environment (MSVC linker)
 - **Trigger (occurred 2026-09-30):** `cargo test` failed with `linker link.exe not found` on the owner's Windows laptop. `check` and `clippy` passed because they do not link.
@@ -145,7 +146,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-20: Compile-time growth in a single crate
 - **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux (128 after `image` in PP-008). The spike took about 1m21s for a clean debug build in Cowork.
-- **Mitigation:** Incremental builds. Measure at Stage 10.
+- **Mitigation:** Incremental builds. Stage 10 review (ADR-026) kept the single crate: build cost is dominated by dependencies, not by PurplePie's ~5,800 lines. Revisit with the first heavy optional dependency (text, audio).
 - **Fallback:** Workspace split (ADR-002 revisit).
 
 ### R-21: ECS integration complexity

@@ -9,8 +9,8 @@
 //! Everything game-specific lives here: paddle and ball physics, collisions
 //! (axis-aligned boxes), bricks, lives, score, and the win/lose screens. There
 //! is no text rendering yet, so the HUD is drawn with sprites and quads (lives
-//! as small balls, a progress bar for cleared bricks) and events are printed
-//! to the console.
+//! as small balls, a progress bar for cleared bricks), the score and lives are
+//! in the window title, and events are printed to the console.
 //!
 //! `PURPLEPIE_BREAKOUT_AUTOPLAY=win` lets a simple bot play until the board is
 //! cleared; `=lose` parks the paddle until all lives are gone. Both print a
@@ -20,7 +20,7 @@
 use purplepie::ecs::{self, Entity, Velocity, World};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Layer, Quad, Sprite, TextureId};
+use purplepie::render::{Camera2D, Color, Hidden, Layer, Quad, Sprite, TextureId};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 // --- Playfield (world units; the camera is zoomed to fit it into the window) ---
@@ -130,6 +130,8 @@ struct Breakout {
     overlay: Option<Entity>,
     /// Autoplay: the fixed step at which the game ended.
     finished_at: Option<u64>,
+    /// The last window title set, to update it only when it changes.
+    title: Option<String>,
 }
 
 impl Breakout {
@@ -151,6 +153,7 @@ impl Breakout {
             progress: None,
             overlay: None,
             finished_at: None,
+            title: None,
         }
     }
 
@@ -401,16 +404,25 @@ impl Breakout {
             State::Lost => Some(Color::rgba(0.9, 0.2, 0.2, 0.45)),
             State::Serve | State::Playing => None,
         };
-        match (overlay_color, self.overlay) {
-            (Some(color), None) => {
-                self.overlay =
-                    Some(world.spawn((Transform2D::default(), Quad::new(FIELD, color), Layer(20))));
+        // One overlay entity, shown or hidden with the `Hidden` marker.
+        let overlay = *self.overlay.get_or_insert_with(|| {
+            world.spawn((
+                Transform2D::default(),
+                Quad::new(FIELD, Color::TRANSPARENT),
+                Layer(20),
+                Hidden,
+            ))
+        });
+        match overlay_color {
+            Some(color) => {
+                if let Ok(mut quad) = world.get::<&mut Quad>(overlay) {
+                    quad.color = color;
+                }
+                let _ = world.remove_one::<Hidden>(overlay);
             }
-            (None, Some(entity)) => {
-                let _ = world.despawn(entity);
-                self.overlay = None;
+            None => {
+                let _ = world.insert_one(overlay, Hidden);
             }
-            _ => {}
         }
     }
 
@@ -508,12 +520,24 @@ impl Game for Breakout {
 
     fn update(&mut self, ctx: &mut Context<'_>) {
         // Fit the walls and the HUD into the window, whatever its size.
-        let viewport = ctx.viewport_size();
         let needed = FIELD + 2.0 * Vec2::splat(WALL) + 2.0 * MARGIN;
-        if viewport.x > 0.0 && viewport.y > 0.0 {
-            let camera = ctx.camera_mut();
-            camera.zoom = (viewport / needed).min_element();
-            camera.position = Vec2::new(0.0, MARGIN.y / 2.0 - 10.0);
+        let center = Vec2::new(0.0, MARGIN.y / 2.0 - 10.0);
+        *ctx.camera_mut() = Camera2D::fit(center, needed, ctx.viewport_size());
+
+        // No text rendering yet: show score and lives in the window title.
+        let title = format!(
+            "PurplePie Breakout - score {} - lives {}{}",
+            self.score,
+            self.lives,
+            match self.state {
+                State::Won => " - you win! (Space to play again)",
+                State::Lost => " - game over (Space to play again)",
+                State::Serve | State::Playing => "",
+            }
+        );
+        if self.title.as_deref() != Some(title.as_str()) {
+            ctx.set_window_title(title.clone());
+            self.title = Some(title);
         }
     }
 }

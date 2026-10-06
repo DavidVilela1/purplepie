@@ -38,7 +38,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
 | **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | VERIFIED (Linux; PP-010 keyboard + PP-016 mouse; Windows look pending) |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | VERIFIED (Linux; asset root, ADR-025) |
-| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012, PP-017 | IN_PROGRESS (PP-012 Breakout ✅; PP-017 API review next) |
+| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012, PP-017 | VERIFIED (Linux; PP-012 Breakout + PP-017 API review, ADR-026) |
 
 Each stage is one milestone. The sequence above is kept deliberately. Stage 3
 (ECS) comes before Stage 4 (GPU) so the first primitive (Stage 5) can be
@@ -194,7 +194,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Asset lifetime and ownership (R-17) |
 | **Definition of Done** | Project DoD |
 
-## Stage 10: Engine/Game API Refinement → M10
+## Stage 10: Engine/Game API Refinement → M10 ✅
 
 | | |
 |---|---|
@@ -205,12 +205,18 @@ driven by real ECS data rather than a throwaway draw call.
 | **Expected result** | A complete small game using only the public API |
 | **As built (PP-012)** | `examples/breakout.rs`: complete Breakout on the public API only, no engine changes needed; deterministic autoplay test modes; friction list F1–F10 in TASKS (PP-012) feeds PP-017. |
 | **Validation** | Example builds and runs. API docs build without warnings. |
-| **Acceptance criteria** | ADR-008 reviewed. Workspace split decision (ADR-002 revisit) recorded. |
+| **As built (PP-017)** | ADR-026: `Game`/`Context` kept, single crate kept, `missing_docs` enforced; added `Hidden`, `Camera2D::fit`, `Context::set_window_title`; text rendering deferred to PP-018. |
+| **Acceptance criteria** | ADR-008 reviewed (✅ ADR-026). Workspace split decision (ADR-002 revisit) recorded (✅ single crate). |
 | **Risks** | API instability (R-13) |
 | **Definition of Done** | Project DoD |
 
+## After Stage 10
+
+Stages 0–10 (the portfolio scope) are complete. Work continues one task at a time from real needs:
+
+- **PP-018 Text rendering** (next): the biggest gap Breakout hit (ADR-026, F1).
+
 ## Not scheduled
 
-Render interpolation, shape/text/debug renderers, audio, scenes and
-serialization, hot reload, editor tooling. These become tasks only when a
-concrete need appears.
+Render interpolation, shape/debug renderers, audio, sprite sheets and animation, per-texture sampling options,
+scenes and serialization, hot reload, editor tooling. These become tasks only when a concrete need appears.

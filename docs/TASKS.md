@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-017: Stage 10 · API review: docs, ADR-008 review against the Breakout friction list, workspace-split decision** · P1 · TODO ← **next task**
+- [ ] **PP-018: Text rendering (post-portfolio; friction F1)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -39,6 +39,7 @@ _None._
 - [x] **PP-016: Stage 8 · Mouse input** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-011: Stage 9 · Asset root** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-012: Stage 10 · Example game (Breakout)** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-017: Stage 10 · API review** · DONE (2026-10-06; verified on Linux). Stages 0–10 (the portfolio scope) are complete.
 
 ## Future
 
@@ -190,14 +191,22 @@ _None._
 | Acceptance criteria | ✅ 1. Full game playable; restart flow verified (3 balls lost via XTEST → `0` lives → Space → `new game`). ✅ 2. Example compiles as an external crate (only public items), no winit/wgpu/hecs paths. ✅ 3. Xvfb: cursor at x = 300 → paddle centre exactly 300 px; click launches; holding → moves the paddle 293 px in ~0.5 s; autoplay **win** = `Won after 7135 fixed steps; bricks 60/60; lives 3; score 220` (3 runs identical), **lose** = `Lost after 892 fixed steps; bricks 8/60; lives 0; score 14` (4 runs identical); lose end screen: overlay pixels exactly the linear-space blend `(161, 33, 47)`. ✅ 4. CI: `cargo check/clippy --all-targets` include the example. ✅ 5. Friction list below. |
 | API friction found (input for PP-017) | **F1** No text rendering: score/lives drawn with sprites, events printed to the console (biggest gap for games). **F2** Window title can't change at runtime. **F3** No way to hide a drawable without despawning it (overlay respawned; the sandbox uses scale 0). **F4** Reading `ctx.input()` / `cursor_world()` while mutating the world needs values copied out first (one `&mut Context`); fine but noisy. **F5** Per-entity component access is verbose (`world.get::<&mut T>(e).ok()` helpers written by hand). **F6** "Cursor moved this frame?" needs manual tracking (no `cursor_delta`). **F7** Fitting a world rectangle to the window is manual math (`Camera2D` has no `fit`). **F8** `request_exit` can't carry an exit code; test modes rely on stdout. **F9** Small sprites from larger textures alias with `Nearest` sampling (ball). **F10** No randomness helper (an LCG in the example; probably right to keep out of the engine). Working well: fixed-step determinism, `Layer`, tinted shared texture batching, asset root, input edges. |
 
-### PP-017: API review ← NEXT
+### PP-017: API review
 | Field | Value |
 |---|---|
-| Stage | 10 → Milestone M10 · Priority P1 · TODO |
+| Stage | 10 → Milestone M10 · Priority P1 · **DONE** (2026-10-06). Completes Stage 10 and the portfolio scope (Stages 0–10). |
 | Dependencies | PP-012 (DONE) |
-| Why now | Closes the portfolio scope (M10): the API has now been used by a real game, and its friction list (PP-012) says where it hurts. |
-| Scope | `#![warn(missing_docs)]` clean. Review ADR-008 against F1–F10: decide each (fix now if small and clearly right, e.g. F3 visibility or F7 camera fit; defer with a reason otherwise, e.g. F1 text rendering as a post-portfolio feature). Decide `exit_on_escape`. Workspace-split decision (ADR-002 revisit). README "getting started" based on the example. Record the outcome as an ADR. |
-| Acceptance criteria | 1. Zero `missing_docs` warnings. 2. Every friction item has a recorded decision. 3. Workspace decision recorded. 4. README matches the example. 5. Stage 1–10 regressions unchanged, autoplay results identical (or the change explained). |
+| Scope (as built) | `#![warn(missing_docs)]` in `lib.rs` (4 gaps fixed: `KeyCode` variants get generated docs, `MouseButton` variants). Friction decisions F1–F10 in ADR-026: **added** `render::Hidden` (marker; the draw list skips it via `hecs::Without`), `Camera2D::fit(center, size, viewport)` and `Context::set_window_title` (applied by the runner only when requested); **deferred** text (PP-018) and sampling options; **no change** for F4/F5/F6/F8/F10 with reasons. `exit_on_escape` kept (documented). Single crate kept (ADR-002 reaffirmed). Breakout uses `Hidden` for its end-screen overlay, `Camera2D::fit` and a score/lives window title. README rewritten: features, getting started (compile-checked), example. |
+| Acceptance criteria | ✅ 1. Zero `missing_docs` warnings (clippy `-D warnings` passes with the lint on). ✅ 2. Every friction item has a recorded decision (ADR-026). ✅ 3. Workspace decision recorded. ✅ 4. README matches the example and compiles. ✅ 5. Regressions unchanged; Breakout autoplay identical (`win` 7135 steps / score 220; `lose` 892 / 14) and the lose overlay has exactly the same pixels (347,496 × `(161,33,47)`) now that it is a `Hidden`-toggled entity. |
+
+### PP-018: Text rendering ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio (after Stage 10) · Priority P1 · TODO. Friction F1 from Breakout (ADR-026). |
+| Dependencies | PP-017 (DONE) |
+| Why now | The biggest gap a real game hit: score, lives and messages had to be faked with quads, the window title and the console. Almost every game needs on-screen text. |
+| Scope (to split when started) | Decide the approach as an ADR: font rasterizer dependency (verify current crates and their dependency cost per ADR-013) vs. a bitmap font; glyph atlas texture reusing the sprite pipeline; a `Text` component (string, size, colour, anchor) drawn through the existing draw list and layers; fonts loaded through the asset root (first second asset kind → revisit PD-06). Probably split into (a) decision + glyph atlas + drawing ASCII text, (b) layout/alignment and use in Breakout. |
+| Acceptance criteria | Defined when the task is split; at minimum: pixel-checked glyph rendering under Xvfb, `Error::Asset` for missing fonts, Breakout showing score and lives as text. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

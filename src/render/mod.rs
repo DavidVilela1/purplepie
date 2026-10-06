@@ -1,7 +1,7 @@
 //! Rendering (ADR-005, ADR-009).
 //!
 //! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
-//! `Sprite` and `Layer` components, `TextureId`). Crate-private: the `Renderer`, which owns every
+//! `Sprite`, `Layer` and `Hidden` components, `TextureId`). Crate-private: the `Renderer`, which owns every
 //! `wgpu` object, and the CPU-side texture store. Game code never touches the
 //! GPU. The engine draws whatever the game state describes.
 //!
@@ -23,7 +23,7 @@ mod texture;
 
 pub use camera::Camera2D;
 pub use color::Color;
-pub use draw::Layer;
+pub use draw::{Hidden, Layer};
 pub use quad::Quad;
 pub(crate) use renderer::Renderer;
 pub use sprite::Sprite;

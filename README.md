@@ -3,37 +3,40 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 10 in progress: a complete Breakout game runs on the engine (`cargo run --example breakout`).** `cargo run` opens a window
-> where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
-> sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`,
-> batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` or the wheel zoom, left click
-> stamps a square at the cursor (a green marker follows it), Escape quits.** Game logic runs in a 60 Hz
-> fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. Assets load from an `assets/` folder next to the executable (or in the project folder for `cargo run`).
-> Next: the final API review (Stage 10).
+> **Status: Stages 0–10 complete.** The engine runs a complete game: `cargo run --example breakout`.
+> Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
-## Design in one paragraph (target; see PROJECT_STATUS for what exists)
+## What it does
 
-The engine is the `purplepie` library. Games are separate binaries (starting
-with `sandbox`) that implement a small `Game` trait and receive a `Context`
-containing the ECS `World`, `Time` and `Input`. The engine owns the event loop,
-window and GPU, runs a fixed 60 Hz simulation step plus a per-frame update, and
-renders entities that carry `Transform2D` + `Sprite`. Game code never touches
-`wgpu` or `winit`.
+- **App and loop:** `Engine` owns the window (winit) and the GPU (wgpu); your `Game` gets `init`, a fixed-rate
+  `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
+- **ECS:** one `hecs::World` for your entities and components; you call your own systems.
+- **2D rendering:** solid `Quad`s and textured `Sprite`s (PNG, tint), ordered by `Layer`, hidden with `Hidden`, batched by
+  texture into instanced draw calls, seen through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
+- **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
+  once per callback regardless of frame rate.
+- **Assets:** paths relative to an `assets/` folder found next to the executable or in the project folder.
+- **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
+- Not included (yet): text rendering, audio, sprite sheets/animation, physics, scenes. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Getting started
+
+`examples/breakout.rs` is a complete game and the best reference. The smallest useful game looks like this
+(game code never touches `wgpu` or `winit`):
 
 ```rust
-// Works today (Stage 6). Coordinates: +X right, +Y up, origin at the window
-// centre, 1 unit = 1 logical pixel (ADR-018).
+// Coordinates: +X right, +Y up, origin at the window centre,
+// 1 unit = 1 logical pixel at zoom 1 (ADR-018).
 use purplepie::ecs::{self, Velocity};
 use purplepie::input::KeyCode;
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
-struct Sandbox;
+struct MyGame;
 
-impl Game for Sandbox {
+impl Game for MyGame {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
         // PNG only. A missing or broken file returns Error::Asset right here.
         // Relative to the asset root: `assets/` next to the executable, else
@@ -42,12 +45,12 @@ impl Game for Sandbox {
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, 100.0)),
             Sprite::new(player, Vec2::new(64.0, 64.0)),
-            Velocity(Vec2::new(50.0, 0.0)), // 50 logical px per second
+            Velocity(Vec2::new(50.0, 0.0)), // 50 world units per second
         ));
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, -100.0)),
             Quad::new(Vec2::new(200.0, 20.0), Color::WHITE),
-            Layer(1), // drawn over layer-0 sprites (no Layer = layer 0; quads go first within a layer)
+            Layer(1), // drawn over layer-0 sprites (no Layer = layer 0)
         ));
         Ok(())
     }
@@ -64,14 +67,22 @@ impl Game for Sandbox {
             ctx.camera_mut().zoom *= 1.5;
         }
     }
+
+    fn update(&mut self, ctx: &mut Context<'_>) {
+        let title = format!("My Game - {:.0} s", ctx.time().elapsed());
+        ctx.set_window_title(title);
+    }
 }
 
 fn main() -> purplepie::Result<()> {
-    let config = EngineConfig::new("Sandbox").with_size(1280, 720);
+    let config = EngineConfig::new("My Game").with_size(1280, 720);
     // .with_clear_color(Color::hex(0x202030)) to change the background
-    Engine::new(config)?.run(Sandbox)
+    Engine::new(config)?.run(MyGame)
 }
 ```
+
+The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
+square at the cursor, Escape quits.
 
 ## Build
 

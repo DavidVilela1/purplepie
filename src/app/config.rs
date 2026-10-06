@@ -24,10 +24,11 @@ pub struct EngineConfig {
     pub height: u32,
     /// Whether the user can resize the window.
     pub resizable: bool,
-    /// Whether pressing Escape closes the application.
+    /// Whether pressing Escape closes the application (default `true`).
     ///
-    /// Convenience for early development. Games will be able to handle keys
-    /// themselves once the input system exists (Stage 8).
+    /// A convenience shortcut handled before input reaches the game (ADR-026).
+    /// Turn it off to use Escape yourself, e.g. for a pause menu, through
+    /// [`Context::input`](crate::Context::input).
     pub exit_on_escape: bool,
     /// Length of one fixed simulation step in seconds (default `1/60`). Must be
     /// finite and > 0.

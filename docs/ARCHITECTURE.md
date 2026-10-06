@@ -21,11 +21,11 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 9 complete; Stage 10 in progress, PP-012):** `purplepie` provides `Engine`,
+**Current reality (Stages 0–10 complete, PP-017):** `purplepie` provides `Engine`,
 `EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
-(`Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`). Every frame the engine clears the window and draws each entity
+(`Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`, `Hidden`). Every frame the engine clears the window and draws each entity
 that has `Transform2D` + `Quad` (solid colour, ADR-019) or `Transform2D` + `Sprite` (textured, ADR-020), sorted by
 `Layer` and batched by texture (ADR-021), as seen through the one engine-owned `Camera2D` (ADR-022; default view ADR-018). The `sandbox` game shows reference quads (one moving,
 two overlapping the sprite to show draw order) and two sprites from one PNG (one tinted and spinning); its camera can be
@@ -63,8 +63,8 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps`, `clear_color`, `asset_root` + builders + `validate` | VERIFIED |
 | `src/assets/mod.rs` | Crate-private `AssetRoot` (`resolve`, `for_process`, `path`, `locate`): the asset root chosen once at startup (ADR-025) | VERIFIED (5 unit tests + end-to-end layouts) |
-| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `asset_root()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
-| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport, `AssetRoot`; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
+| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `asset_root()`, `set_window_title()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
+| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport, `AssetRoot`, pending window title; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
 | `src/app/keymap.rs` | winit → PurplePie input: `PhysicalKey` → `KeyCode` (bijection test), mouse buttons, wheel deltas → lines (ADR-024) | VERIFIED (5 unit tests) |
 | `src/input/mod.rs` | `pub mod input`: `KeyCode` (99 physical keys), `MouseButton`, `Input` (keys: `pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`; mouse: `mouse_pressed`, `mouse_just_pressed`, `mouse_just_released`, `cursor_position`, `scroll`); one shared `Buttons` edge implementation (ADR-024) | VERIFIED (15 unit tests + doctest, Xvfb XTEST runs) |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
@@ -72,8 +72,8 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
 | `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`; crate-private `Renderer`, `Textures` | VERIFIED |
-| `src/render/camera.rs` | Public `Camera2D { position, zoom }`: `IDENTITY`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection` (ADR-018, ADR-022) | VERIFIED (7 unit tests + doctest, Xvfb whole-frame checks) |
-| `src/render/draw.rs` | Public `Layer(i32)` component. Crate-private `DrawList` (collect quads + sprites, sort by (layer, material, entity), build `Batch` runs) and `Material` (ADR-021) | VERIFIED (7 unit tests + doctest, Xvfb overlap checks) |
+| `src/render/camera.rs` | Public `Camera2D { position, zoom }`: `IDENTITY`, `fit`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection` (ADR-018, ADR-022) | VERIFIED (7 unit tests + doctest, Xvfb whole-frame checks) |
+| `src/render/draw.rs` | Public `Layer(i32)` and `Hidden` components (hidden entities are skipped). Crate-private `DrawList` (collect quads + sprites, sort by (layer, material, entity), build `Batch` runs) and `Material` (ADR-021) | VERIFIED (7 unit tests + doctest, Xvfb overlap checks) |
 | `src/render/quad.rs` | Public `Quad { size, color }` component. Crate-private `QuadPipeline` (`bind`), `rect_pipeline` (pipeline builder shared with sprites; ADR-019) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
 | `src/render/instance.rs` | `Instance` (80 B Pod: clip matrix + colour/tint) and `InstanceBuffer` (growable vertex buffer), shared by quads and sprites | VERIFIED |
 | `src/render/texture.rs` | Public `TextureId`. Crate-private `Textures` store (decoded RGBA8 in load order, path → id cache; owned by the runner) and `decode_png` (ADR-020) | VERIFIED (unit tests) |
@@ -146,7 +146,7 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current (Stage 8, PP-016)
+### Current (Stage 10, PP-017)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
@@ -163,6 +163,7 @@ RedrawRequested  → FRAME (skipped once exit has begun):
                                → input.end_fixed_step (fixed edges consumed)   stop early on request_exit
                      time.set_alpha(fixed.alpha())
                      game.update(ctx, dt = delta)                      unless exit requested
+                     apply a requested window title (set_window_title; also after init)
                      input.end_frame                                   frame edges consumed
                      renderer.render(&world, &textures, &camera, pre_present_notify)   unless exit requested; Err → exit
                        (upload new textures → DrawList: collect quads + sprites, sort by
@@ -222,7 +223,7 @@ All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMo
 |---|---|
 | `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
 | `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
-| `Time`, `Input`, `KeyCode`, `MouseButton`, `Color`, `TextureId`, `Layer`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
+| `Time`, `Input`, `KeyCode`, `MouseButton`, `Color`, `TextureId`, `Layer`, `Hidden`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
@@ -292,7 +293,7 @@ order: see "Draw order and batching" (ADR-021)
 
 ```text
 key per drawable = (Layer (default 0), material rank (quad = 0, sprite = 1 + TextureId), entity index)
-DrawList::build: query (Entity, Transform2D, Quad, Option<Layer>) + (Entity, Transform2D, Sprite, Option<Layer>)
+DrawList::build: query (Entity, Transform2D, Quad, Option<Layer>) + (Entity, Transform2D, Sprite, Option<Layer>), both Without<Hidden>
                  → sort_unstable_by_key (keys are unique → deterministic) → instances in draw order
                  → batches = runs of equal (layer, material)
 record_batches:  one shared instance buffer bound once; pipeline switched only when the material kind changes;

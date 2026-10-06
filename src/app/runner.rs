@@ -100,6 +100,14 @@ impl<G: Game> Runner<G> {
             physical_to_logical(f64::from(width), f64::from(height), self.scale_factor);
     }
 
+    /// Applies a title the game requested with `Context::set_window_title`.
+    /// Only called when there is a request, never as a per-frame window query.
+    fn apply_window_title(&mut self) {
+        if let (Some(title), Some(window)) = (self.state.window_title.take(), &self.window) {
+            window.set_title(&title);
+        }
+    }
+
     /// Feeds a key event to `Input`, after the optional Escape-to-exit shortcut.
     fn keyboard(&mut self, event_loop: &ActiveEventLoop, event: &KeyEvent, is_synthetic: bool) {
         let pressed = event.state == ElementState::Pressed;
@@ -210,6 +218,7 @@ impl<G: Game> Runner<G> {
             self.game.update(&mut Context::new(&mut self.state, delta));
         }
         self.state.input.end_frame();
+        self.apply_window_title();
         if self.state.exit_requested {
             event_loop.exit();
         } else {
@@ -238,6 +247,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
                 self.fail(event_loop, error);
                 return;
             }
+            self.apply_window_title();
             self.exit_if_requested(event_loop);
         }
     }

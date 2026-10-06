@@ -84,6 +84,8 @@ impl<'a> Context<'a> {
     /// Read [`dt`](Self::dt) into a local first when passing both to a system,
     /// because the world borrow is exclusive:
     /// `let dt = ctx.dt(); ecs::integrate_velocity(ctx.world_mut(), dt);`
+    /// The same applies to [`input`](Self::input), [`cursor_world`](Self::cursor_world)
+    /// and [`camera`](Self::camera): copy what you need out of them first (ADR-026).
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.state.world
     }
@@ -169,6 +171,13 @@ impl<'a> Context<'a> {
             .input
             .cursor_position()
             .map(|screen| state.camera.screen_to_world(screen, state.viewport))
+    }
+
+    /// Changes the window title, e.g. to show the score. Applied after the
+    /// current callback returns; calling it again in the same callback replaces
+    /// the earlier request.
+    pub fn set_window_title(&mut self, title: impl Into<String>) {
+        self.state.window_title = Some(title.into());
     }
 
     /// Asks the engine to shut down cleanly. No further game callbacks are made.
@@ -337,6 +346,23 @@ mod tests {
             "/assets/textures/sandbox_quadrants.png"
         ))
         .expect("absolute paths need no root");
+    }
+
+    #[test]
+    fn window_title_requests_are_kept_until_applied() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::NotFound {
+                searched: Vec::new(),
+            },
+        );
+        {
+            let mut ctx = Context::new(&mut state, 0.0);
+            ctx.set_window_title("first");
+            ctx.set_window_title(String::from("Score: 10"));
+        }
+        assert_eq!(state.window_title.take().as_deref(), Some("Score: 10"));
+        assert_eq!(state.window_title, None);
     }
 
     #[test]

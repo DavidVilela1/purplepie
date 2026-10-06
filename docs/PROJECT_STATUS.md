@@ -6,13 +6,14 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M10: Engine API Stabilization: IN_PROGRESS.** A complete Breakout game (PP-012) runs on the public API with no engine
-changes; the API review (PP-017) finishes M10. M9, M8, M7, M6, M5: VERIFIED (Linux; Windows look pending).
-M4: VERIFIED (Linux + Windows purple window). M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows). M0: VERIFIED.
+**M10: Engine API Stabilization: VERIFIED (Linux).** All milestones M0–M10 are reached: the portfolio scope is complete.
+A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 have not been looked at on Windows yet
+(M1 and M4 are owner-confirmed there; CI builds and tests on Linux, Windows and macOS).
 
 ## Current Stage
 
-**Stage 10: Engine/Game API Refinement: in progress.** PP-012 done 2026-10-06. Next: **PP-017** (API review), which completes Stage 10.
+**Stage 10: Engine/Game API Refinement: complete** (PP-012, PP-017). Stages 0–10 are done.
+Next: post-portfolio work, starting with **PP-018 Text rendering**.
 
 ## Overall State
 
@@ -38,7 +39,7 @@ executable, else `assets/` in the working directory (ADR-025).
 | Lints (`unsafe_code = forbid`, `unwrap_used = warn`) | VERIFIED | No `unwrap`/`unsafe` in `src/`. `expect` only in tests. |
 | `error` (`Error`, `BoxError`, `Result`) | VERIFIED | 3 unit tests + 1 doctest. `Error::Asset` added (PP-008), covered by texture tests. |
 | `app::EngineConfig` | VERIFIED | 8 unit tests + 1 doctest (`asset_root` added in PP-011) |
-| `app::Game` / `Context` | VERIFIED | 10 unit tests. `asset_root`, relative `load_texture` (PP-011). `cursor_world` (PP-016). `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009); `input` (PP-010). Borrows one `EngineState`. |
+| `app::Game` / `Context` | VERIFIED | 11 unit tests. `set_window_title` (PP-017). `asset_root`, relative `load_texture` (PP-011). `cursor_world` (PP-016). `load_texture`, `texture_size` (PP-008); `camera`, `camera_mut`, `viewport_size` (PP-009); `input` (PP-010). Borrows one `EngineState`. |
 | `app` frame pacing (`FramePacer`) | VERIFIED | 5 unit tests. 60 Hz redraw cap (ADR-014). |
 | `app::Engine` + runner (winit 0.30 lifecycle) | VERIFIED | Xvfb runs pass. Passes the DPI scale factor to the renderer (also on `ScaleFactorChanged`). Owns the camera and an event-driven logical viewport (PP-009). Windows: window, Escape and close confirmed by the owner. |
 | `time` (`Time`, `FixedTimestep`) | VERIFIED | 12 unit tests |
@@ -55,7 +56,7 @@ executable, else `assets/` in the working directory (ADR-025).
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
 | `input` (`Input`, `KeyCode`, `MouseButton`) + `app::{keymap, state}` | VERIFIED (Linux) | 15 + 5 + 2 unit tests + 1 doctest; Xvfb XTEST key/mouse runs (ADR-024). |
-| `examples/breakout.rs` | VERIFIED (Linux) | Complete game on the public API; deterministic autoplay (win: 7135 steps, score 220; lose: 892 steps) and XTEST paddle/launch/restart checks (PP-012). |
+| `examples/breakout.rs` | VERIFIED (Linux) | Complete game on the public API; deterministic autoplay (win: 7135 steps, score 220; lose: 892 steps) and XTEST paddle/launch/restart checks (PP-012). Uses `Hidden`, `Camera2D::fit` and the window title since PP-017. |
 | `assets` (`AssetRoot`) | VERIFIED (Linux) | 5 unit tests + end-to-end launch layouts (ADR-025). Generic handles/unloading deferred (PD-06). |
 
 ## Completed
@@ -77,6 +78,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-016: mouse input (Stage 8, part 2).
 - PP-011: asset root (Stage 9).
 - PP-012: Breakout example game (Stage 10, part 1).
+- PP-017: API review (Stage 10, part 2). Portfolio scope (Stages 0–10) complete.
 
 ## In Progress
 
@@ -84,7 +86,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-017: Stage 10 · API review.** See [TASKS.md](TASKS.md#pp-017-api-review--next).
+- **PP-018: Text rendering** (post-portfolio). See [TASKS.md](TASKS.md#pp-018-text-rendering--next).
 
 ## Blocked
 
@@ -95,7 +97,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Rendering is capped at 60 fps by `FramePacer`, even on high-refresh displays (ADR-014). Revisit together with render interpolation.
 - The draw list is rebuilt and sorted every frame (O(n log n)), even when nothing changed: ~1.8 ms per 10,000 drawables in release (R-18).
 - Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Deferred with generic handles (PD-06) until a second asset kind exists.
-- `EngineConfig::exit_on_escape` hard-wires one key in `app`, now redundant with `Input` but kept for compatibility (ADR-024). Revisit in Stage 10 (API refinement).
+- `EngineConfig::exit_on_escape` is a second way to handle Escape; kept on purpose as a prototyping convenience (ADR-026).
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
 
 ## Known Limitations
@@ -106,7 +108,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. One texture per sprite (no atlas/UV rectangles). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
-- API gaps found by the Breakout example (friction list F1–F10 in TASKS, PP-012): no text rendering, no runtime window title, no visibility toggle, no exit code from `request_exit`, no camera fit helper, no cursor delta. PP-017 decides each.
+- No text rendering yet (PP-018 next); sprites use `Nearest` sampling only (scaled-down sprites alias). Other Breakout friction points were decided in ADR-026 (some deliberately unchanged).
 - GPU faults are not recoverable. A lost surface or device ends the game with `Error::Render` (ADR-017).
 - The GPU fault test is `#[ignore]` (it needs a GPU), so CI does not run it. Run it with `cargo test -- --ignored`.
 - Under lavapipe (software GPU), idle CPU is about 0.75 s per 3 s (1.4 s per 5 s with sprites, PP-008). This is GPU work done on the CPU, not a busy loop.
@@ -118,6 +120,12 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Recent Changes
 
+- **2026-10-06: PP-017 Stage 10 API review (Stages 0–10 complete).**
+  - ADR-026: `Game` + `Context` kept (ADR-008 reviewed), single crate kept (ADR-002 reaffirmed), `exit_on_escape` kept; decisions for Breakout's friction points F1–F10.
+  - New public API: `render::Hidden` (skip drawing an entity), `Camera2D::fit(center, size, viewport)`, `Context::set_window_title`.
+  - `#![warn(missing_docs)]` enforced (CI fails on undocumented public items).
+  - Breakout: `Hidden` overlay, `Camera2D::fit`, score and lives in the window title; autoplay results unchanged.
+  - README rewritten (features, getting started, example). Next: PP-018 text rendering.
 - **2026-10-06: PP-012 Stage 10 Breakout example.**
   - New `examples/breakout.rs` (`cargo run --example breakout`): a complete game (paddle, ball, 60 bricks, lives, score, win/lose/restart, HUD, camera fitted to the window) using only the public API. No engine changes were needed.
   - New assets `assets/textures/breakout/{ball,brick}.png`.
@@ -217,30 +225,29 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-012 change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-017 change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
-| `cargo check --locked --all-targets --all-features` (includes the example) | ✅ PASS |
-| `cargo clippy --locked --all-targets --all-features -- -D warnings` | ✅ PASS |
-| `cargo test --locked` | ✅ PASS: 114 unit tests + 15 doctests, 5 ignored (GPU) |
+| `cargo check --locked --all-targets --all-features` | ✅ PASS |
+| `cargo clippy --locked --all-targets --all-features -- -D warnings` (with `missing_docs`) | ✅ PASS (0 warnings) |
+| `cargo test --locked` | ✅ PASS: 117 unit tests + 17 doctests, 5 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
 | `cargo doc --no-deps` | ✅ no warnings |
 | `cargo build --locked`, `cargo build --example breakout` | ✅ PASS |
-| `src/` vs the Stage 9 archive | ✅ identical (no engine changes) |
-| Breakout autoplay `win` | ✅ `Won after 7135 fixed steps; bricks 60/60; lives 3; score 220`, identical in 3 runs (one with 3 games sharing the CPU) |
-| Breakout autoplay `lose` | ✅ `Lost after 892 fixed steps; bricks 8/60; lives 0; score 14`, identical in 4 runs |
-| Breakout lose end screen | ✅ overlay pixels exactly `(161, 33, 47)` = linear-space blend of 45% red over the background; lives HUD empty; progress bar at 8/60 |
-| Breakout XTEST: cursor to x = 300 | ✅ paddle (1,824 px, 114 px wide = 120 × zoom 0.946) centred at exactly x = 300 |
-| Breakout XTEST: click, then hold → 0.5 s | ✅ `launch` printed; paddle moved 293 px |
-| Breakout XTEST: lose 3 balls, press Space | ✅ `lives left: 0` … `new game` |
-| Breakout: Escape | ✅ exit 0 |
-| Sandbox regressions (timed run, camera (0,120)×2 whole-frame model) | ✅ 119 steps / mover 238.0; 0 mismatches |
+| README getting-started code | ✅ compiles as an example |
+| Breakout autoplay `win` / `lose` | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
+| Breakout lose end screen | ✅ overlay pixels identical to PP-012 (347,496 px of `(161, 33, 47)`), now a `Hidden`-toggled entity |
+| Breakout window title (`xdotool getwindowname`) | ✅ `PurplePie Breakout - score 2 - lives 3` during play; `… score 14 - lives 0 - game over (Space to play again)` at the end |
+| Breakout XTEST: cursor to x = 300 | ✅ paddle centred at exactly x = 300 (`Camera2D::fit` gives the same zoom as before) |
+| Sandbox: title unchanged, timed 120 frames, keyboard + mouse script, unmap/1×1/resize, close | ✅ `PurplePie Sandbox`; 119 steps / mover 238.0; `=` 3/3, clicks 2/2; exit 0 |
+| Sandbox: camera (0,120)×2 whole-frame model | ✅ 0 mismatches |
+| Window destroyed (fresh display) / missing asset / no GPU | ✅ clean errors, exit 1 |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
 Stages 5–10 on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-06. PP-012 done (Stage 10, part 1). PP-017 is next.
+2026-10-06. PP-017 done: Stages 0–10 complete. PP-018 (text rendering) is next.
