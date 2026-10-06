@@ -450,8 +450,10 @@ mod tests {
             font,
             fonts.get(font).expect("font"),
             em_px,
+            crate::render::TextAnchor::BASELINE_LEFT,
             atlas,
             false,
+            &mut Vec::new(),
             |g| glyphs.push(g),
         )
         .expect("fits");
@@ -574,6 +576,59 @@ mod tests {
             for y in 0..HEIGHT {
                 assert_eq!(at(x, y), [0, 255, 0], "the layer-1 quad covers the text");
             }
+        }
+    }
+
+    /// Anchored text stays inside the rectangle `TextMetrics::bounds` predicts
+    /// (±1 px), on the side of the position the anchor says.
+    #[test]
+    #[ignore = "needs a GPU adapter; run with `cargo test -- --ignored`"]
+    fn anchored_text_lands_inside_its_measured_bounds() {
+        use super::super::text::{TextAnchor, measure};
+        let (fonts, font) = super::super::font::tests::poppins();
+        let content = "Hg\nPie";
+        let metrics = measure(content, fonts.get(font).expect("font"), 24.0);
+        let centre = Vec2::new(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0);
+        for anchor in [
+            TextAnchor::TOP_LEFT,
+            TextAnchor::TOP_RIGHT,
+            TextAnchor::BOTTOM_LEFT,
+            TextAnchor::BOTTOM_RIGHT,
+            TextAnchor::CENTER,
+            TextAnchor::BASELINE_CENTER,
+        ] {
+            let mut world = World::new();
+            world.spawn((
+                Transform2D::default(),
+                Text::new(content, font, 24.0).with_anchor(anchor),
+            ));
+            let mut atlas = GlyphAtlas::new(256);
+            let pixels = render_offscreen(
+                &world,
+                &fonts,
+                &Camera2D::default(),
+                wgpu::TextureFormat::Rgba8Unorm,
+                &mut atlas,
+            );
+            // World (+Y up, origin at the centre) → screen pixels (+Y down).
+            let (min, max) = metrics.bounds(anchor);
+            let (left, right) = (centre.x + min.x - 1.0, centre.x + max.x + 1.0);
+            let (top, bottom) = (centre.y - max.y - 1.0, centre.y - min.y + 1.0);
+            let mut lit = 0;
+            for y in 0..HEIGHT {
+                for x in 0..WIDTH {
+                    if pixels[((y * WIDTH + x) * 4) as usize] == 0 {
+                        continue;
+                    }
+                    lit += 1;
+                    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                    assert!(
+                        (left..=right).contains(&px) && (top..=bottom).contains(&py),
+                        "{anchor:?}: lit pixel ({x}, {y}) outside {left}..{right} × {top}..{bottom}"
+                    );
+                }
+            }
+            assert!(lit > 100, "{anchor:?}: text drawn ({lit} px)");
         }
     }
 }

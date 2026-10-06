@@ -1,7 +1,8 @@
 //! Rendering (ADR-005, ADR-009).
 //!
 //! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
-//! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`).
+//! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`,
+//! `TextAnchor`, `TextMetrics`).
 //! Crate-private: the `Renderer`, which owns every `wgpu` object, the CPU-side
 //! texture and font stores, and the glyph atlas. Game code never touches the
 //! GPU. The engine draws whatever the game state describes.
@@ -34,6 +35,7 @@ pub(crate) use font::Fonts;
 pub use quad::Quad;
 pub(crate) use renderer::Renderer;
 pub use sprite::Sprite;
-pub use text::Text;
+pub(crate) use text::measure as measure_text;
+pub use text::{HorizontalAnchor, Text, TextAnchor, TextMetrics, VerticalAnchor};
 pub use texture::TextureId;
 pub(crate) use texture::Textures;

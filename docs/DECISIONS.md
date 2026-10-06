@@ -20,7 +20,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted (reviewed by ADR-026) | Yes: `init`/`fixed_update`/`update`; `Context` = world, time, dt, input, cursor, camera, viewport, textures, fonts, asset root, window title, exit |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted (reviewed by ADR-026) | Yes: `init`/`fixed_update`/`update`; `Context` = world, time, dt, input, cursor, camera, viewport, textures, fonts, text measuring, asset root, window title, exit |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
@@ -39,7 +39,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted (extended to the mouse by PP-016) | Yes (Stage 8, PP-010 keyboard, PP-016 mouse) |
 | ADR-025 | Asset root: relative asset paths resolve against one folder chosen at startup (config, else next to the executable, else the working directory) | Accepted | Yes (Stage 9, PP-011) |
 | ADR-026 | API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`; `missing_docs` enforced | Accepted | Yes (Stage 10, PP-017) |
-| ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component; `FontId` handles; Poppins shipped (OFL) | Accepted | Partly (PP-018a: fonts, atlas, `Text`; alignment and Breakout HUD in PP-018b) |
+| ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component (with `TextAnchor`); `FontId` handles; `Context::measure_text`; Poppins shipped (OFL) | Accepted (extended by PP-018b) | Yes (PP-018a: fonts, atlas, `Text`; PP-018b: anchors, measuring, Breakout HUD) |
 
 ---
 
@@ -1225,7 +1225,7 @@ game: every interaction Breakout needed went through `Context`, and keeping game
 
 | Friction | Decision |
 |---|---|
-| F1 No text rendering | **Deferred**, post-portfolio feature PP-018 (needs a font dependency and a glyph atlas; too big for a review task). F2 covers the most urgent need meanwhile. |
+| F1 No text rendering | **Deferred**, post-portfolio feature PP-018 (needs a font dependency and a glyph atlas; too big for a review task). F2 covers the most urgent need meanwhile. **Resolved 2026-10-06 by ADR-027 (PP-018a/b).** |
 | F2 No runtime window title | **Added** `Context::set_window_title(title)`. Applied by the runner after the callback, only when requested (no per-frame window call, R-22). |
 | F3 No visibility toggle | **Added** the `render::Hidden` marker component. The draw list skips entities that have it (`hecs::Without`). |
 | F4 Copying values out of `Context` before mutating the world | **No change.** It's the borrow checker enforcing one `&mut Context`; splitting `Context` into simultaneous borrows would complicate the API for a few saved lines. Documented on `Context::world_mut`. |
@@ -1273,7 +1273,7 @@ A second example game (re-check F4–F6 with fresh evidence), text rendering (PP
 # ADR-027: Text: `ab_glyph` + one glyph atlas drawn by the sprite pipeline; `Text` component; `FontId` handles
 
 ## Status
-Accepted (2026-10-06, PP-018a). Resolves friction F1 (ADR-026) in part: alignment and the Breakout HUD follow in PP-018b.
+Accepted (2026-10-06, PP-018a; extended by PP-018b the same day: anchors, measuring, Breakout HUD). Resolves friction F1 (ADR-026).
 Extends ADR-019/ADR-020 (instance data gains a UV rectangle) and ADR-021 (a third material, drawn last in each layer).
 Decides PD-06 for now: fonts get their own `FontId` like `TextureId`; generic handles stay deferred.
 
@@ -1330,7 +1330,7 @@ camera and DPI handling, so it behaves like every other drawable and is testable
   outside the label: 0 mismatches) and close to FreeType's rendering of the same font.
 - `uv_rect` also enables sprite sheets later without another instance-format change.
 ### Negative
-- No shaping (no ligatures, complex scripts, right-to-left), no font fallback, no measuring or alignment API yet (PP-018b).
+- No shaping (no ligatures, complex scripts, right-to-left), no font fallback. (Measuring and alignment: see the extension below.)
 - Coverage is blended in linear space on sRGB targets (ADR-015), so light-on-dark text looks slightly bolder than
   gamma-space renderers at small sizes.
 - Continuous zooming rasterizes every new size; a full atlas costs a re-layout (logged once at `info`).
@@ -1339,6 +1339,26 @@ camera and DPI handling, so it behaves like every other drawable and is testable
 ## Revisit Conditions
 A need for shaping or non-Latin scripts (consider `cosmic-text`/`swash`), many sizes or very large text (signed distance
 fields), a third asset kind or unloading (generic handles, PD-06), or atlas resets showing up in profiles.
+
+## Extension: anchors and measuring (2026-10-06, PP-018b)
+- **`Text::anchor: TextAnchor { horizontal, vertical }`** (default `BASELINE_LEFT`, the PP-018a behaviour; builder
+  `with_anchor`; 12 constants such as `TOP_LEFT`, `CENTER`, `BOTTOM_RIGHT`). `HorizontalAnchor` = `Left | Center |
+  Right` puts that edge of **every line** at the position, so it also left/centre/right-aligns multi-line text.
+  `VerticalAnchor` = `Baseline | Top | Middle | Bottom`, measured from the font's ascent and descent lines (the same for
+  any string), so text does not jump when its characters change (e.g. a score going from 9 to 10 keeps its height).
+- **Layout** stays pixel-exact: each line's shift (`−width × 0 | ½ | 1`) and the block's vertical shift are rounded to
+  whole pixels before the glyphs are placed. The line widths come from a first pass over the string into a reused
+  scratch buffer (no per-frame allocation).
+- **`Context::measure_text(&Text) -> Option<TextMetrics>`** returns world-unit `width` (widest line, advance widths +
+  kerning), `height`, `ascent`, `descent`, `line_height` and `lines`, independent of camera and window; and
+  **`TextMetrics::bounds(anchor)`** gives the block's rectangle relative to the entity position (+Y up), e.g. for a
+  panel behind the text. Drawn text can differ by up to a pixel (rounding).
+- **Alternatives:** a separate `align` field next to an anchor (two concepts for one need in a 2D HUD; can be split later
+  if text boxes with wrapping arrive); ink bounds instead of font metrics (would make text move as characters change);
+  measuring through the renderer (would need a frame and depend on the camera).
+- **Breakout** now shows its score, the win/lose headline and the next action as `Text` (centred), verified: all pixels
+  that changed on the lose screen lie inside the rectangles `TextMetrics::bounds` predicts, and the autoplay results are
+  unchanged.
 
 ---
 

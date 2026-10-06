@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-018b: Text layout/alignment + Breakout HUD text (post-portfolio; friction F1)** · P1 · TODO ← **next task**
+- [ ] **PP-019: Sprite sheets: draw a sub-rectangle of a texture (`Sprite` region, grid helper)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -41,6 +41,7 @@ _None._
 - [x] **PP-012: Stage 10 · Example game (Breakout)** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-017: Stage 10 · API review** · DONE (2026-10-06; verified on Linux). Stages 0–10 (the portfolio scope) are complete.
 - [x] **PP-018a: Text rendering, part 1 (ADR-027): fonts, glyph atlas, `Text` component** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-018b: Text anchors/alignment, `measure_text`, Breakout HUD text** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
@@ -212,13 +213,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-027. New dependency `ab_glyph` 0.2.32 (`std` only; +0 crates on Linux, +4 on Windows). `Context::load_font(path) -> Result<FontId>` (asset root, parse on load, `Error::Asset`, dedup by path); crate-private `render::Fonts` in `EngineState`. Public `render::{Text, FontId}`: `Text::new(content, font, size).with_color(..)`; origin = left end of the first baseline, `size` = em size in world units, `\n` = new line, control chars skipped, kerning from `kern`. Crate-private `render/atlas.rs` (1024² RGBA shelf-packed glyph atlas, white + coverage alpha, 1-texel border, dirty-row uploads, cleared and re-laid out once per frame when full) and `render/text.rs` (layout in whole pixels). The draw list rasterizes at the on-screen size (zoom × DPI × transform scale), snaps the origin to a physical pixel and emits one instance per glyph as a third material (`Glyphs`, drawn after sprites in each layer, one draw per run). `Instance` gains `uv_rect` (80 → 96 B); `sprite.wgsl` uses it; glyphs are drawn by the sprite pipeline with the atlas bound through a linear sampler. Font shipped: `assets/fonts/Poppins-Regular.ttf` + `OFL.txt`. Sandbox shows a help label. |
 | Acceptance criteria | ✅ 1. ADR-027 records the approach, the measured dependency cost and the alternatives. ✅ 2. Unit tests: font store (ids, dedup, `Error::Asset` for missing/garbage files, via `Context` too), atlas (white + alpha, padding, cache per size, no overlaps, full → reset, dirty rows), layout (advance, baseline, spaces, newlines, control chars), draw list (text after quads/sprites, one batch per layer, `Hidden`, zero scale / zero size / NaN / oversize skipped, glyph rectangles on whole physical pixels at zoom 0.75/1/2 and DPI 1/1.25/2, atlas overflow → one reset). ✅ 3. GPU (`--ignored`, lavapipe): offscreen render of text at fractional positions (zoom 1 and 2) matches the CPU rasterization within 1/255 on every pixel; layer order and colour checked (red text over a blue quad, hidden under a layer-1 green quad). ✅ 4. Xvfb sandbox: whole-frame model outside the label 0 mismatches at camera (0,0)×1 (only the known cursor-marker pixels at (−300,−280)×2 and (100,40)×0.5); the label matches FreeType's rendering of the same font closely (IoU 0.77/0.86/0.59 at 20/40/10 px, mean difference 5/3/14 per 255; visually identical layout, slightly bolder because of linear blending). ✅ 5. Regressions: Breakout autoplay `win` 7135 / 220 and `lose` 892 / 14 unchanged, lose overlay still 347,496 px of `(161,33,47)`; window-destroy fault test clean `Error::Render` (2/2). |
 
-### PP-018b: Text layout/alignment + Breakout HUD text ← NEXT
+### PP-018b: Text anchors/alignment, measuring, Breakout HUD text
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio · Priority P1 · TODO |
+| Stage | Post-portfolio · Priority P1 · **DONE** (2026-10-06). Completes PP-018 and friction F1. |
 | Dependencies | PP-018a (DONE) |
-| Scope | Measure text (`Context::measure_text` or a font-metrics query returning width/line height in world units); an anchor/alignment option on `Text` (left/centre/right, baseline/top/middle) so HUD text can be centred or right-aligned without manual maths; Breakout shows score, lives and the win/lose message as `Text` (the window title can stay as a secondary display); README feature list and example updated. Consider a coverage gamma adjustment for small light-on-dark text if it looks too heavy on Windows. |
-| Acceptance criteria | Unit tests for measuring and every anchor; pixel check under Xvfb that centred/right-aligned text lands where measured; Breakout autoplay results unchanged (gameplay code untouched) with the HUD text visible in screenshots; owner look on Windows requested. |
+| Scope (as built) | ADR-027 extension. Public `render::{TextAnchor, HorizontalAnchor, VerticalAnchor, TextMetrics}`; `Text::anchor` (default `BASELINE_LEFT`, unchanged behaviour) + `Text::with_anchor`; 12 anchor constants; horizontal anchors align every line (left/centre/right); vertical anchors use the font's ascent/descent (baseline/top/middle/bottom). Layout: first pass for line widths into a reused scratch buffer, line and block shifts rounded to whole pixels. `Context::measure_text(&Text) -> Option<TextMetrics>` (world units: width, height, ascent, descent, line height, lines) and `TextMetrics::bounds(anchor)`. Breakout: centred `SCORE n` label in the HUD, `YOU WIN!` / `GAME OVER` headline and a "Space, Up or click to …" hint (also shown while serving), each hidden with `Hidden` when empty; window title kept as a secondary display. No new dependencies. Coverage gamma for small text left as is until the owner's Windows look (R-25). |
+| Acceptance criteria | ✅ 1. Unit tests: metrics against the font tables (`H H`, multi-line, empty, trailing newline, invalid sizes), `bounds` for 6 anchors and 2 lines, rigid whole-pixel shifts for 6 anchors, per-line centring/right alignment, `Context::measure_text`. ✅ 2. GPU (`--ignored`): for 6 anchors, every lit pixel of a two-line text lies inside the `bounds` rectangle (±1 px); a deliberately wrong anchor makes it fail (mutation check). ✅ 3. Xvfb Breakout: every pixel that changed on the lose screen versus PP-018a (9,185 px) lies inside the measured boxes of `SCORE 14`, `GAME OVER` and the hint (0 outside); serve screen shows score and launch hint; the overlay keeps 339,277 px of `(161, 33, 47)` (347,496 before, the rest is now text). ✅ 4. Autoplay unchanged: `win` 7135 / 220, `lose` 892 / 14. ✅ 5. Sandbox label strip pixel-identical to PP-018a (default anchor); whole-frame model 0 mismatches; window-destroy fault test clean. Owner's Windows look still requested. |
+
+### PP-019: Sprite sheets ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
+| Dependencies | PP-018a (`Instance::uv_rect` exists) |
+| Why now | First item of P2 in the ROADMAP: most 2D games pack frames and tiles into one image; today a sprite always shows its whole texture. The GPU path is already there (`uv_rect`), so this is mostly API and tests. |
+| Scope | A texel rectangle on `Sprite` (e.g. `Sprite::with_region(min, size)`, default = whole texture) mapped to `uv_rect`; a small helper to address a grid of equal cells (columns × rows, optional spacing); flipping if it falls out naturally; batching unchanged (same texture = same batch). Frame animation (time-driven region changes) stays a separate follow-up task. |
+| Acceptance criteria | Unit tests for region → UV mapping (edges, out-of-range clamping) and the grid helper; Xvfb pixel check that a region shows exactly those texels (no bleeding with `Nearest`); existing sprite pixels unchanged; Breakout autoplay unchanged. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

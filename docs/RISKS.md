@@ -112,6 +112,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Fallback:** Accept breaking changes before 1.0.
 - **PP-012/PP-017:** a complete game needed no engine changes; the review (ADR-026) added three small APIs and recorded decisions for all ten friction points. `missing_docs` is enforced. Remaining exposure: text rendering (PP-018) will add new public types.
 - **PP-018a:** added `Text`, `FontId` and `Context::load_font` (ADR-027). `Text` fields are public plain data like `Sprite`; alignment/anchors (PP-018b) will add a field, which is a breaking change for struct-literal users (constructors are the documented path).
+- **PP-018b:** that field arrived (`Text::anchor`), plus `TextAnchor`/`TextMetrics` and `Context::measure_text`; the default anchor keeps PP-018a's behaviour (sandbox label pixel-identical).
 
 ### R-14: Windows build environment (MSVC linker)
 - **Trigger (occurred 2026-09-30):** `cargo test` failed with `linker link.exe not found` on the owner's Windows laptop. `check` and `clippy` passed because they do not link.
@@ -189,7 +190,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Mitigation:** glyphs are cached per 1/64 px of em size; the atlas is cleared rather than grown; text > 512 px is
   skipped; layout is pixel-exact and GPU output matches the CPU rasterization (ignored GPU test). Linear sampling keeps
   rotated text smooth.
-- **Fallback:** a coverage gamma/contrast adjustment (candidate for PP-018b after the owner's Windows look), a larger or
+- **Fallback:** a coverage gamma/contrast adjustment (after the owner's Windows look; PP-018b deliberately left it out), a larger or
   growing atlas, size bucketing while zooming, or signed-distance-field glyphs; `cosmic-text` for shaping (ADR-027
   revisit conditions).
 

@@ -1,16 +1,17 @@
 //! Breakout, built only on PurplePie's public API (PP-012).
 //!
 //! Run with `cargo run --example breakout` from the project folder (textures
-//! are loaded from `assets/textures/breakout/`).
+//! are loaded from `assets/textures/breakout/`, the font from `assets/fonts/`).
 //!
 //! Controls: ←/→ or A/D move the paddle, or move the mouse; Space, ↑ or a left
 //! click launches the ball and restarts after a win or loss; Escape quits.
 //!
 //! Everything game-specific lives here: paddle and ball physics, collisions
-//! (axis-aligned boxes), bricks, lives, score, and the win/lose screens. There
-//! is no text rendering yet, so the HUD is drawn with sprites and quads (lives
-//! as small balls, a progress bar for cleared bricks), the score and lives are
-//! in the window title, and events are printed to the console.
+//! (axis-aligned boxes), bricks, lives, score, and the win/lose screens. The
+//! HUD shows the score as text (PP-018b), lives as small balls and cleared
+//! bricks as a progress bar; centred text announces the win/lose screens and
+//! how to launch. The window title repeats score and lives, and events are
+//! printed to the console.
 //!
 //! `PURPLEPIE_BREAKOUT_AUTOPLAY=win` lets a simple bot play until the board is
 //! cleared; `=lose` parks the paddle until all lives are gone. Both print a
@@ -20,7 +21,9 @@
 use purplepie::ecs::{self, Entity, Velocity, World};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Camera2D, Color, Hidden, Layer, Quad, Sprite, TextureId};
+use purplepie::render::{
+    Camera2D, Color, FontId, Hidden, Layer, Quad, Sprite, Text, TextAnchor, TextureId,
+};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 // --- Playfield (world units; the camera is zoomed to fit it into the window) ---
@@ -108,7 +111,19 @@ impl Lcg {
 struct Textures {
     ball: TextureId,
     brick: TextureId,
+    font: FontId,
 }
+
+/// The HUD's text entities.
+struct Labels {
+    score: Entity,
+    /// "YOU WIN!" / "GAME OVER", centred on the playfield.
+    headline: Entity,
+    /// What to press next, under the headline or above the paddle.
+    hint: Entity,
+}
+
+const TEXT_COLOR: u32 = 0xF1FAEE;
 
 struct Breakout {
     autoplay: Autoplay,
@@ -128,6 +143,7 @@ struct Breakout {
     hud: Vec<Entity>,
     progress: Option<Entity>,
     overlay: Option<Entity>,
+    labels: Option<Labels>,
     /// Autoplay: the fixed step at which the game ended.
     finished_at: Option<u64>,
     /// The last window title set, to update it only when it changes.
@@ -152,6 +168,7 @@ impl Breakout {
             hud: Vec::new(),
             progress: None,
             overlay: None,
+            labels: None,
             finished_at: None,
             title: None,
         }
@@ -364,12 +381,40 @@ impl Breakout {
         }
     }
 
-    /// Lives as small balls, cleared bricks as a bar, and the win/lose overlay.
+    /// Lives as small balls, cleared bricks as a bar, the score, the win/lose
+    /// overlay and its text.
     fn update_hud(&mut self, world: &mut World) {
         let Some(textures) = &self.textures else {
             return;
         };
         let hud_y = FIELD.y / 2.0 + WALL + 30.0;
+        let font = textures.font;
+        let labels = self.labels.get_or_insert_with(|| {
+            let label = |world: &mut World, position: Vec2, size: f32, layer: i32| {
+                world.spawn((
+                    Transform2D::from_position(position),
+                    Text::new("", font, size)
+                        .with_color(Color::hex(TEXT_COLOR))
+                        .with_anchor(TextAnchor::CENTER),
+                    Layer(layer),
+                ))
+            };
+            Labels {
+                score: label(world, Vec2::new(0.0, hud_y), 28.0, 10),
+                headline: label(world, Vec2::new(0.0, 40.0), 64.0, 21),
+                hint: label(world, Vec2::ZERO, 24.0, 21),
+            }
+        });
+        let (headline, hint, hint_y) = match self.state {
+            State::Won => ("YOU WIN!", "Space, Up or click to play again", -30.0),
+            State::Lost => ("GAME OVER", "Space, Up or click to play again", -30.0),
+            State::Serve => ("", "Space, Up or click to launch", PADDLE_Y + 90.0),
+            State::Playing => ("", "", 0.0),
+        };
+        let score = format!("SCORE {}", self.score);
+        set_label(world, labels.score, &score, None);
+        set_label(world, labels.headline, headline, None);
+        set_label(world, labels.hint, hint, Some(Vec2::new(0.0, hint_y)));
         while self.hud.len() < self.lives as usize {
             let i = self.hud.len() as f32;
             let x = -FIELD.x / 2.0 + 12.0 + i * 28.0;
@@ -439,6 +484,24 @@ impl Breakout {
     }
 }
 
+/// Sets a label's text (only when it changed) and position; empty text hides it.
+fn set_label(world: &mut World, label: Entity, content: &str, position: Option<Vec2>) {
+    if let Ok((transform, text)) = world.query_one_mut::<(&mut Transform2D, &mut Text)>(label) {
+        if text.content != content {
+            text.content.clear();
+            text.content.push_str(content);
+        }
+        if let Some(position) = position {
+            transform.position = position;
+        }
+    }
+    if content.is_empty() {
+        let _ = world.insert_one(label, Hidden);
+    } else {
+        let _ = world.remove_one::<Hidden>(label);
+    }
+}
+
 /// How deep two centred boxes overlap on each axis, or `None` if they don't.
 fn overlap(a: Vec2, a_size: Vec2, b: Vec2, b_size: Vec2) -> Option<Vec2> {
     let depth = (a_size + b_size) / 2.0 - (a - b).abs();
@@ -450,6 +513,7 @@ impl Game for Breakout {
         self.textures = Some(Textures {
             ball: ctx.load_texture("textures/breakout/ball.png")?,
             brick: ctx.load_texture("textures/breakout/brick.png")?,
+            font: ctx.load_font("fonts/Poppins-Regular.ttf")?,
         });
         let world = ctx.world_mut();
         // Walls: left, right, top.
@@ -524,7 +588,7 @@ impl Game for Breakout {
         let center = Vec2::new(0.0, MARGIN.y / 2.0 - 10.0);
         *ctx.camera_mut() = Camera2D::fit(center, needed, ctx.viewport_size());
 
-        // No text rendering yet: show score and lives in the window title.
+        // The window title repeats score and lives (handy in the taskbar).
         let title = format!(
             "PurplePie Breakout - score {} - lives {}{}",
             self.score,

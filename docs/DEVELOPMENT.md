@@ -193,6 +193,9 @@ Interactive checks inside `xvfb-run` (there is no window manager):
 - **Breakout example (Stage 10+):** `PURPLEPIE_BREAKOUT_AUTOPLAY=win` (≈2 min under lavapipe) and `=lose` (≈15 s) must print
   the same `autoplay finished: …` line on every run (it is deterministic: the simulation runs only in `fixed_update` with a
   seeded generator); current values are in TASKS (PP-012). Change them only with an explained gameplay or engine change.
+  Since PP-018b the lose screen also shows text: compare it with an earlier screenshot and check that every changed
+  pixel lies inside the rectangles `TextMetrics::bounds` predicts (compute them from the font's advance widths and
+  ascent/descent at the `Camera2D::fit` zoom); the overlay colour `(161, 33, 47)` covers 339,277 px at 1024×768.
   Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
   scripts that also started Xvfb (it waits for the server forever).
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test

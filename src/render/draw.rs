@@ -114,6 +114,8 @@ pub(crate) struct DrawList {
     items: Vec<Item>,
     instances: Vec<Instance>,
     batches: Vec<Batch>,
+    /// Scratch space for text layout (one entry per line).
+    line_widths: Vec<f32>,
 }
 
 impl DrawList {
@@ -251,8 +253,10 @@ impl DrawList {
                 text.font,
                 font,
                 placement.em_px,
+                text.anchor,
                 atlas,
                 skip_when_full,
+                &mut self.line_widths,
                 |glyph| {
                     let (w, h) = glyph.image.size;
                     let (u, v) = glyph.image.texel;
@@ -646,8 +650,10 @@ mod tests {
                 font,
                 fonts.get(font).expect("font"),
                 20.0 * zoom,
+                crate::render::TextAnchor::BASELINE_LEFT,
                 &mut atlas,
                 false,
+                &mut Vec::new(),
                 |g| expected.push(g),
             )
             .expect("fits");
@@ -703,8 +709,10 @@ mod tests {
                 font,
                 fonts.get(font).expect("font"),
                 16.0 * scale,
+                crate::render::TextAnchor::BASELINE_LEFT,
                 &mut atlas,
                 false,
+                &mut Vec::new(),
                 |g| expected.push(g.image.size),
             )
             .expect("fits");

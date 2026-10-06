@@ -7,7 +7,7 @@ use crate::ecs::World;
 use crate::error::Result;
 use crate::input::Input;
 use crate::math::Vec2;
-use crate::render::{Camera2D, FontId, TextureId};
+use crate::render::{Camera2D, FontId, Text, TextMetrics, TextureId};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -137,6 +137,19 @@ impl<'a> Context<'a> {
     pub fn load_font(&mut self, path: impl AsRef<Path>) -> Result<FontId> {
         let file = self.state.assets.locate(path.as_ref())?;
         self.state.fonts.load(&file)
+    }
+
+    /// The size of `text` in world units: its widest line, its height and the
+    /// font's line metrics (ADR-027). Use it with
+    /// [`TextMetrics::bounds`](crate::render::TextMetrics::bounds) to place a
+    /// panel behind text, or to lay out text next to other things.
+    /// `None` only for a font id that came from a different engine run.
+    ///
+    /// The result does not depend on the camera or the window; drawn text is
+    /// placed on whole pixels, so it can differ by up to a pixel.
+    pub fn measure_text(&self, text: &Text) -> Option<TextMetrics> {
+        let font = self.state.fonts.get(text.font)?;
+        Some(crate::render::measure_text(&text.content, font, text.size))
     }
 
     /// The folder relative asset paths are loaded from (ADR-025), or `None` if
@@ -297,6 +310,30 @@ mod tests {
             .expect("absolute");
         assert_eq!(relative, absolute, "same file, same font");
         assert_eq!(state.fonts.len(), 1);
+    }
+
+    #[test]
+    fn measure_text_reports_world_unit_metrics() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        let mut ctx = Context::new(&mut state, 0.0);
+        let font = ctx.load_font("fonts/Poppins-Regular.ttf").expect("font");
+        let one = ctx
+            .measure_text(&Text::new("HH", font, 100.0))
+            .expect("known font");
+        // Poppins: 'H' advances 692/1000 em; ascent 1050, descent 350, gap 100 (units per 1000).
+        assert!((one.width - 138.4).abs() < 1e-3, "{one:?}");
+        assert!((one.ascent - 105.0).abs() < 1e-3 && (one.descent - 35.0).abs() < 1e-3);
+        assert!((one.height - 140.0).abs() < 1e-3 && (one.line_height - 150.0).abs() < 1e-3);
+        assert_eq!(one.lines, 1);
+        let two = ctx
+            .measure_text(&Text::new("HH\nH", font, 100.0))
+            .expect("known font");
+        assert_eq!(two.lines, 2);
+        assert!((two.width - one.width).abs() < 1e-3, "the widest line");
+        assert!((two.height - 290.0).abs() < 1e-3);
     }
 
     #[test]

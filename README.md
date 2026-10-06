@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; now growing past the portfolio scope (text rendering: part 1 done).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope (text rendering done; sprite sheets next).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -14,14 +14,14 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
 - **ECS:** one `hecs::World` for your entities and components; you call your own systems.
 - **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint) and `Text` (TrueType/OpenType fonts, rasterized
-  sharp at the on-screen size), ordered by `Layer`, hidden with `Hidden`, batched into instanced draw calls, seen
+  sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, batched into instanced draw calls, seen
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
   once per callback regardless of frame rate.
 - **Assets:** textures and fonts loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): text alignment/measuring and shaping, audio, sprite sheets/animation, in-game UI widgets, physics,
+- Not included (yet): text wrapping and shaping, audio, sprite sheets/animation, in-game UI widgets, physics,
   scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
@@ -35,7 +35,7 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 use purplepie::ecs::{self, Velocity};
 use purplepie::input::KeyCode;
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Layer, Quad, Sprite, Text};
+use purplepie::render::{Color, Layer, Quad, Sprite, Text, TextAnchor};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct MyGame;
@@ -56,11 +56,13 @@ impl Game for MyGame {
             Quad::new(Vec2::new(200.0, 20.0), Color::WHITE),
             Layer(1), // drawn over layer-0 sprites (no Layer = layer 0)
         ));
-        // Text: the position is the left end of the baseline; 24 = font size in world units.
+        // Text: 24 = font size in world units; the anchor puts the text's top centre at the position.
         let font = ctx.load_font("fonts/Poppins-Regular.ttf")?;
         ctx.world_mut().spawn((
-            Transform2D::from_position(Vec2::new(-300.0, 250.0)),
-            Text::new("Hello, PurplePie!", font, 24.0).with_color(Color::hex(0xF1FAEE)),
+            Transform2D::from_position(Vec2::new(0.0, 340.0)),
+            Text::new("Hello, PurplePie!", font, 24.0)
+                .with_color(Color::hex(0xF1FAEE))
+                .with_anchor(TextAnchor::TOP_CENTER),
         ));
         Ok(())
     }
