@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-02 (PP-010 keyboard input).
+Last reviewed: 2026-10-06 (PP-016 mouse input, Stage 8 complete).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -100,6 +100,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** DPI scaling, Wayland vs X11, macOS main-thread rules, minimize reporting a 0×0 size.
 - **Mitigation:** No platform-specific code. Physical sizes for the surface. Never configure 0×0.
 - **PP-009:** the camera's screen ↔ world mapping is unit-tested against the renderer's projection at DPI scales 1.0, 1.25 and 2.0. Xvfb only exercises scale 1.0, so real high-DPI displays (the owner's Windows laptop) are still unverified.
+- **PP-016:** cursor positions use the DPI scale tracked from window events; physical → logical → world is unit-tested at 1.0/1.25/2.0. Wheel: winit/X11 doubles synthetic (XTEST) wheel clicks (ADR-024 extension); real-device behaviour per platform unverified.
 - **2026-10-01:** on Windows the owner confirmed `cargo test`, Escape and the close button; CI compiles and tests on Windows and macOS. macOS rendering and Wayland are still unseen.
 - **Fallback:** Platform-specific workarounds behind `cfg`, each documented.
 
@@ -155,7 +156,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
 ### R-22: Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept
 - **Trigger (occurred, PP-014):** recreating a surface for a destroyed X11 window panicked in wgpu-hal 30.0.1 (`vulkan/instance.rs:407`, an `expect`), not returning an error.
 - **Trigger (occurred, PP-009):** `Window::inner_size()` on a destroyed X11 window panicked in winit 0.30.13 (`platform_impl/linux/x11/window.rs:1248`, `GetGeometry` → `unwrap`). It was hit by a per-frame viewport query and caught by the window-destroy fault test before delivery.
-- **Mitigation:** avoid the triggering calls (`Lost` is fatal, ADR-017; the viewport is event-driven and the window is not queried per frame, ADR-022). Keep the end-to-end fault tests (DEVELOPMENT §8) and re-run them after every wgpu or winit upgrade (R-01, R-02), and after any change that adds a per-frame window or surface call.
+- **Trigger (occurred, PP-016 validation; pre-existing):** when another X client destroys the window, winit 0.30.13 can panic in its own
+  `DestroyNotify` handling (`event_processor.rs:842`, `remove_context(..).expect("Failed to destroy input context")`, BadDrawable) if it
+  processes that event before PurplePie's next frame reports the lost surface. After a keyboard-input run on the same Xvfb display:
+  **1/5 runs with the PP-016 build and 2/4 with the Stage 8 (pre-PP-016) build** (control). Without prior keyboard input on the display:
+  0/24 across both builds. So it is a timing race inside winit, not caused by the mouse code; it only affects windows destroyed by another
+  X11 client (e.g. `xkill`), never a normal close.
+- **Mitigation:** avoid the triggering calls (`Lost` is fatal, ADR-017; the viewport and DPI scale are event-driven and the window is not queried per frame, ADR-022). Run the window-destroy smoke test on a fresh Xvfb display.
+- **Open option (not taken):** wrap `run_app` in `catch_unwind` to turn this panic into an `Error`. It would also swallow genuine bugs and needs an ADR; revisit with the winit 0.31 migration (ADR-004). Keep the end-to-end fault tests (DEVELOPMENT §8) and re-run them after every wgpu or winit upgrade (R-01, R-02), and after any change that adds a per-frame window or surface call.
 - **Fallback:** Report upstream, or pin to a wgpu version without the panic.
 
 ### R-23: CI platform jobs never exercised yet

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-016: Stage 8 · Mouse input (buttons, cursor in screen and world coordinates)** · P1 · TODO ← **next task**
+- [ ] **PP-011: Stage 9 · Asset root: load game files independently of the working directory (PD-06)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -36,10 +36,10 @@ _None._
 - [x] **PP-009: Stage 7 · Camera2D & coordinates** · DONE (2026-10-01; verified on Linux)
 - [x] **PP-013: Owner · Choose project license** · DONE (2026-10-01; MIT OR Apache-2.0)
 - [x] **PP-010: Stage 8 · Keyboard input** · DONE (2026-10-02; verified on Linux)
+- [x] **PP-016: Stage 8 · Mouse input** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
-- [ ] **PP-011: Stage 9 · Assets & resources** · P3 · TODO
 - [ ] **PP-012: Stage 10 · Engine/game API refinement with an example game** · P3 · TODO
 
 ---
@@ -162,19 +162,23 @@ _None._
 | Acceptance criteria | ✅ 1. ADR-024. ✅ 2. Unit tests: press/hold/release, OS repeat, tap within a frame, 0 / 1 / N fixed steps, focus release, release-without-press, axis, key bits; keymap bijection. A mutation to per-frame edge clearing fails 3 tests. ✅ 3. No winit types in the public API (`input` has no dependencies). ✅ 4. Xvfb XTEST: 3 `=` taps → seen 3× in `fixed_update` and 3× in `update`, zoom 4 after one `-`; held arrows panned (155, 95); that frame matched the per-pixel model with 0 mismatches (3 runs, identical results); focus removed while → was held stopped the pan at the focus loss; Escape exits, other keys don't. ✅ 5. Stage 1–7 regressions unchanged. |
 | Notes | One early run (before debug logging) lost the → press; it never reproduced in 14 later runs. Probably a focus race in WM-less Xvfb, unconfirmed (R-11). Owner check on Windows: arrows pan, `=` / `-` zoom, Escape quits. |
 
-### PP-016: Mouse input ← NEXT
+### PP-016: Mouse input
 | Field | Value |
 |---|---|
-| Stage | 8 → Milestone M8 · Priority P1 · TODO |
-| Dependencies | PP-010 (DONE), PP-009 (DONE) |
-| Why now | Completes Stage 8. Cursor-to-world is what the camera's `screen_to_world` was built for, and most games need clicking. |
-| Scope | `MouseButton` (Left, Right, Middle, Back, Forward) through the same edge model as keys (ADR-024). Cursor position in logical screen pixels (physical ÷ scale factor, from `CursorMoved`) and `Context::cursor_world()` via the camera; `None` when the cursor is outside the window. Wheel delta per frame. Focus loss releases buttons. Sandbox: a marker quad follows the cursor in world space. |
-| Acceptance criteria | 1. Button edges unit-tested with 0/1/N steps (shared with keys). 2. Cursor physical → logical → world tested at DPI 1.0/1.25/2.0. 3. Xvfb: `xdotool mousemove` + click puts the marker at the predicted pixels under a panned/zoomed camera. 4. No winit types in the public API. 5. Stage 1–8 regressions unchanged. ADR only if the model deviates from ADR-024. |
+| Stage | 8 → Milestone M8 · Priority P1 · **DONE** (2026-10-06). Completes Stage 8. |
+| Dependencies | PP-010, PP-009 (DONE) |
+| Scope (as built) | `input::MouseButton` (Left, Right, Middle, Back, Forward) with `mouse_pressed` / `mouse_just_pressed` / `mouse_just_released`; keys and buttons now share one `Buttons` edge implementation. `Input::cursor_position()` (logical screen px, `None` outside the window) and `Input::scroll()` (lines, same once-per-callback delivery). `Context::cursor_world()`. `app/keymap.rs` translates buttons and wheel deltas; `app/state.rs` gained `physical_to_logical` / `sanitize_scale_factor`; the runner tracks the DPI scale from window events and handles `MouseInput`, `CursorMoved`, `CursorLeft`, `MouseWheel` (wheel logged at `debug`). Sandbox: green marker follows the cursor, left click stamps a cyan square, wheel zooms; the timed exit prints click counts and the cursor. ADR-024 extended (no new ADR). |
+| Acceptance criteria | ✅ 1. Button edges unit-tested with 0/1/N steps via the shared implementation; no key/button bit sharing; focus release; cursor state; scroll once per callback. ✅ 2. Physical → logical → world at DPI 1.0/1.25/2.0 round-trips to the physical pixel. ✅ 3. Xvfb: camera (100,50)×2, clicks at (400,300) and (900,500), cursor at (700,200): 2 clicks seen in each callback, stamps and marker exactly where predicted (whole frame: 0 mismatches over 798,632 px); cursor outside the window → `None`, marker hidden, outside clicks ignored. ✅ 4. No winit types in the public API. ✅ 5. Stage 1–8 regressions unchanged (keyboard script identical). |
+| Notes | XTEST wheel clicks arrive twice from winit on X11 (ADR-024 extension). While re-running the window-destroy test, a **pre-existing** intermittent winit panic was found (IME cleanup on an externally destroyed X11 window); the Stage 8 build reproduces it too (R-22). Owner check on Windows: the green marker tracks the cursor, clicks stamp squares, one wheel notch = one zoom step. |
 
-### PP-011: Assets & resources
-| Stage 9 → M9 · P3 · TODO | Depends on PP-008 |
+### PP-011: Asset root ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | PD-06 decided (generalizing ADR-020: other asset kinds, unloading). Handle store tests. `Error::Asset` (exists since PP-008) for every asset kind. |
+| Stage | 9 → Milestone M9 · Priority P1 · TODO. Stage 9 narrowed on 2026-10-06 (see Why now). |
+| Dependencies | PP-008 (DONE) |
+| Why now | Stage 8 is complete. The real asset problem today is R-24: relative paths depend on the working directory, so a game started by double-clicking its `.exe` can't find its files. Textures are still the only asset kind, so generic `Handle<T>` / unloading has no user yet and is deferred until a second kind (fonts, sounds) exists. |
+| Scope | Decide PD-06 for now as an ADR: relative asset paths resolve against an **asset root**, `EngineConfig::with_asset_root(path)`; default: the `assets/` folder next to the executable if it exists, else `./assets` in the working directory (covers `cargo run`). `Context::load_texture("textures/x.png")`. Absolute paths unchanged. The error names the resolved path and the root. Sandbox switches to `textures/sandbox_quadrants.png` (no more `CARGO_MANIFEST_DIR`). |
+| Acceptance criteria | 1. ADR (resolves the current part of PD-06; generic handles + unloading explicitly deferred). 2. Unit tests: resolution order, absolute paths, explicit root, missing-root error text. 3. Sandbox runs from the repo root, from another directory (with the asset folder next to the binary), and fails cleanly when the folder is missing. 4. Stage 1–8 regressions unchanged. |
 
 ### PP-012: Engine/game API refinement
 | Stage 10 → M10 · P3 · TODO | Depends on PP-010, PP-011 |
@@ -184,4 +188,4 @@ _None._
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|
-| Acceptance criteria | ✅ `license = "MIT OR Apache-2.0"` in `Cargo.toml`. ✅ `LICENSE-MIT` (copyright holder David Vilela, 2026) + `LICENSE-APACHE` (canonical Apache-2.0 text, copied byte-for-byte from the cargo registry; MD5 `3b83ef96…`). ✅ README License + Contribution sections. ✅ PD-07 closed → ADR-023. |
+| Acceptance criteria | ✅ `license = "MIT OR Apache-2.0"` in `Cargo.toml`. ✅ `LICENSE-MIT` (copyright holder David Vilela, 2026) + `LICENSE-APACHE` (canonical Apache-2.0 text from the cargo registry; the owner then filled in the appendix's copyright line, "Copyright 2026 David Vilela", on GitHub on 2026-10-02). ✅ README License + Contribution sections. ✅ PD-07 closed → ADR-023. |

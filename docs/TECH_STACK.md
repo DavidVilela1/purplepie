@@ -63,6 +63,10 @@ download other toolchains. Raise the value if a lower toolchain fails.
 * `ActiveEventLoop::exit()` for shutdown; `exiting` for final cleanup.
 * **X11 pitfall (PP-009):** `Window::inner_size()` makes an X server round trip and `unwrap`s the result, so it panics
   if the window was destroyed externally. Take sizes from `WindowEvent::Resized` instead of querying every frame.
+* **X11 wheel (PP-016):** wheel buttons 4–7 are turned into `MouseWheel` on both press **and** release unless XI2 flags them as
+  emulated; XTEST clicks are not flagged, so `xdotool click 4` produces two `LineDelta(0, 1)` events.
+* **X11 external destroy (PP-016):** `DestroyNotify` handling calls `remove_context(..).expect(..)` for the IME input context, which can
+  panic with BadDrawable when the window was destroyed by another client (intermittent; see R-22).
 
 ## hecs 0.11 API note
 

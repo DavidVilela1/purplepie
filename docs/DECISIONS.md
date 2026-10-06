@@ -36,7 +36,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-021 | Draw order and batching: optional `Layer` component, one sorted draw list, one draw call per (layer, material) run | Accepted | Yes (Stage 6, PP-015) |
 | ADR-022 | One engine-owned `Camera2D { position, zoom }` in `Context`; screen ↔ world in logical pixels | Accepted | Yes (Stage 7, PP-009) |
 | ADR-023 | License: MIT OR Apache-2.0 | Accepted | Yes (PP-013) |
-| ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted | Yes (Stage 8, PP-010) |
+| ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted (extended to the mouse by PP-016) | Yes (Stage 8, PP-010 keyboard, PP-016 mouse) |
 
 ---
 
@@ -1061,7 +1061,7 @@ nobody may legally reuse the code. Every dependency PurplePie uses is available 
 
 ## Decision
 Dual license, **MIT OR Apache-2.0**, at the user's option: `license = "MIT OR Apache-2.0"` in `Cargo.toml`,
-`LICENSE-MIT` (copyright 2026 David Vilela) and `LICENSE-APACHE` (canonical Apache-2.0 text), plus the usual Rust
+`LICENSE-MIT` (copyright 2026 David Vilela) and `LICENSE-APACHE` (canonical Apache-2.0 text; its appendix line reads "Copyright 2026 David Vilela", filled in by the owner on 2026-10-02), plus the usual Rust
 "Contribution" clause in the README (contributions are dual licensed under the same terms).
 
 ## Alternatives Considered
@@ -1136,6 +1136,21 @@ small, unit-tested, platform-free module.
 
 ## Revisit Conditions
 Text input, gamepads, key rebinding / action maps, or more than 128 keys.
+
+## Extension: mouse (2026-10-06, PP-016)
+Same model, no new decision needed, so no separate ADR:
+- `MouseButton { Left, Right, Middle, Back, Forward }` (extra buttons ignored) with `mouse_pressed` / `mouse_just_pressed` /
+  `mouse_just_released`. Keys and buttons share one implementation (a `Buttons` bit-mask set with both edge sets), so
+  the 0/1/N-step guarantees are identical. Focus loss releases mouse buttons too.
+- **Cursor** = plain state: `Input::cursor_position()` in **logical screen pixels** (top-left origin, +Y down, ADR-022),
+  converted from winit's physical position with the window's DPI scale (tracked from window events, never queried per
+  frame); `None` after `CursorLeft`. `Context::cursor_world()` = `camera.screen_to_world(cursor, viewport)`.
+- **Wheel** = `Input::scroll()` in lines (`y > 0` = away from the user), delivered once to `fixed_update` and once to
+  `update` like an edge. Touchpad pixel deltas: physical → logical → ÷ 20 px per line.
+- **Observed (X11 + XTEST only):** winit 0.30.13 reports **two** `MouseWheel` events per synthetic wheel click (it maps
+  both the button-4/5 press and release, and XTEST events are not flagged as emulated). Real X11 wheels arrive as XI2
+  axis motion instead. PurplePie passes events through unchanged, so under xdotool one click = 2 lines. Unverified on
+  real hardware (R-12).
 
 ---
 

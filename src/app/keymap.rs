@@ -1,9 +1,37 @@
-//! winit → PurplePie key translation (ADR-024). The only place that knows
-//! both key types, so `input` stays free of winit.
+//! winit → PurplePie input translation (ADR-024): keys, mouse buttons and
+//! wheel deltas. The only place that knows both sides, so `input` stays free
+//! of winit.
 
+use winit::event::{MouseButton as WinitButton, MouseScrollDelta};
 use winit::keyboard::{KeyCode as W, PhysicalKey};
 
-use crate::input::KeyCode as K;
+use crate::input::{KeyCode as K, MouseButton, PIXELS_PER_SCROLL_LINE};
+use crate::math::Vec2;
+
+/// The PurplePie mouse button, or `None` for extra buttons.
+pub(crate) fn translate_button(button: WinitButton) -> Option<MouseButton> {
+    Some(match button {
+        WinitButton::Left => MouseButton::Left,
+        WinitButton::Right => MouseButton::Right,
+        WinitButton::Middle => MouseButton::Middle,
+        WinitButton::Back => MouseButton::Back,
+        WinitButton::Forward => MouseButton::Forward,
+        WinitButton::Other(_) => return None,
+    })
+}
+
+/// A wheel movement in lines (`y > 0` = away from the user). Pixel deltas
+/// (touchpads) are physical pixels: divided by the DPI scale, then by
+/// `PIXELS_PER_SCROLL_LINE`.
+pub(crate) fn scroll_lines(delta: MouseScrollDelta, scale_factor: f64) -> Vec2 {
+    match delta {
+        MouseScrollDelta::LineDelta(x, y) => Vec2::new(x, y),
+        MouseScrollDelta::PixelDelta(p) => {
+            let logical = super::state::physical_to_logical(p.x, p.y, scale_factor);
+            logical / PIXELS_PER_SCROLL_LINE
+        }
+    }
+}
 
 /// The PurplePie key for a physical key, or `None` for keys PurplePie does
 /// not track (media keys, IME keys, unidentified scancodes, …).
@@ -240,6 +268,36 @@ mod tests {
         assert_eq!(
             translate(PhysicalKey::Code(W::ArrowLeft)),
             Some(K::ArrowLeft)
+        );
+    }
+
+    #[test]
+    fn mouse_buttons_map_one_to_one_and_extras_are_ignored() {
+        let mapped: Vec<MouseButton> = [
+            WinitButton::Left,
+            WinitButton::Right,
+            WinitButton::Middle,
+            WinitButton::Back,
+            WinitButton::Forward,
+        ]
+        .into_iter()
+        .filter_map(translate_button)
+        .collect();
+        assert_eq!(mapped, MouseButton::ALL);
+        assert_eq!(translate_button(WinitButton::Other(9)), None);
+    }
+
+    #[test]
+    fn wheel_lines_pass_through_and_pixels_are_converted() {
+        assert_eq!(
+            scroll_lines(MouseScrollDelta::LineDelta(0.0, 1.0), 2.0),
+            Vec2::new(0.0, 1.0)
+        );
+        let pixels = winit::dpi::PhysicalPosition::new(0.0, 80.0);
+        // 80 physical px at scale 2 = 40 logical px = 2 lines.
+        assert_eq!(
+            scroll_lines(MouseScrollDelta::PixelDelta(pixels), 2.0),
+            Vec2::new(0.0, 2.0)
         );
     }
 

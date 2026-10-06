@@ -1,4 +1,4 @@
-//! Keyboard input state (ADR-024).
+//! Keyboard and mouse input state (ADR-024).
 //!
 //! [`Input`] answers three questions per [`KeyCode`]: is it held
 //! ([`pressed`](Input::pressed)), did it go down ([`just_pressed`](Input::just_pressed)),
@@ -15,7 +15,10 @@
 //!   that has one; if it has several, only the first one sees it.
 //!
 //! So `just_pressed` is safe to use in either callback, and a press is never
-//! lost or doubled.
+//! lost or doubled. Mouse buttons and wheel movement follow the same rules.
+//! The cursor position is plain state (the latest position).
+
+use crate::math::Vec2;
 
 /// Declares [`KeyCode`] and its list of all keys from one table.
 macro_rules! key_codes {
@@ -63,27 +66,36 @@ key_codes! {
     NumpadAdd, NumpadSubtract, NumpadMultiply, NumpadDivide, NumpadEnter, NumpadDecimal,
 }
 
-// Every key must fit in the 128-bit `KeySet`.
+// Every key must fit in a 128-bit mask.
 const _: () = assert!(KeyCode::ALL.len() <= 128);
 
-/// A set of keys as a 128-bit mask (one bit per `KeyCode`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct KeySet(u128);
-
-impl KeySet {
-    fn bit(key: KeyCode) -> u128 {
-        1 << (key as u8)
-    }
-    fn contains(self, key: KeyCode) -> bool {
-        self.0 & Self::bit(key) != 0
-    }
-    fn insert(&mut self, key: KeyCode) {
-        self.0 |= Self::bit(key);
-    }
-    fn remove(&mut self, key: KeyCode) {
-        self.0 &= !Self::bit(key);
-    }
+/// A mouse button. Other buttons (some mice have more) are ignored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    /// The "back" side button.
+    Back,
+    /// The "forward" side button.
+    Forward,
 }
+
+impl MouseButton {
+    /// Every mouse button PurplePie knows.
+    pub const ALL: &'static [MouseButton] = &[
+        MouseButton::Left,
+        MouseButton::Right,
+        MouseButton::Middle,
+        MouseButton::Back,
+        MouseButton::Forward,
+    ];
+}
+
+/// Logical pixels of a touchpad (pixel-precise) scroll that count as one wheel line.
+pub(crate) const PIXELS_PER_SCROLL_LINE: f32 = 20.0;
 
 /// Which callback is reading the input: decides which edge set is visible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,40 +104,120 @@ enum Phase {
     Frame,
 }
 
-/// Keyboard state for the current callback. See the [module docs](self) for
-/// how edges relate to `fixed_update` and `update`.
+/// Held state plus the two edge sets of ADR-024, for up to 128 buttons
+/// (keys or mouse buttons), as bit masks indexed by the enum discriminant.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Buttons {
+    held: u128,
+    /// Edges for `update`: everything since the previous frame.
+    frame_pressed: u128,
+    frame_released: u128,
+    /// Edges for `fixed_update`: kept until a fixed step has seen them.
+    fixed_pressed: u128,
+    fixed_released: u128,
+}
+
+impl Buttons {
+    fn held(&self, bit: u8) -> bool {
+        self.held & (1 << bit) != 0
+    }
+
+    fn just_pressed(&self, bit: u8, phase: Phase) -> bool {
+        let set = match phase {
+            Phase::Fixed => self.fixed_pressed,
+            Phase::Frame => self.frame_pressed,
+        };
+        set & (1 << bit) != 0
+    }
+
+    fn just_released(&self, bit: u8, phase: Phase) -> bool {
+        let set = match phase {
+            Phase::Fixed => self.fixed_released,
+            Phase::Frame => self.frame_released,
+        };
+        set & (1 << bit) != 0
+    }
+
+    /// Ignored if already held (OS key repeat).
+    fn down(&mut self, bit: u8) {
+        let mask = 1 << bit;
+        if self.held & mask != 0 {
+            return;
+        }
+        self.held |= mask;
+        self.frame_pressed |= mask;
+        self.fixed_pressed |= mask;
+    }
+
+    /// Ignored if not held (a release without a press).
+    fn up(&mut self, bit: u8) {
+        let mask = 1 << bit;
+        if self.held & mask == 0 {
+            return;
+        }
+        self.held &= !mask;
+        self.frame_released |= mask;
+        self.fixed_released |= mask;
+    }
+
+    fn release_all(&mut self) {
+        self.frame_released |= self.held;
+        self.fixed_released |= self.held;
+        self.held = 0;
+    }
+
+    fn end_fixed_step(&mut self) {
+        self.fixed_pressed = 0;
+        self.fixed_released = 0;
+    }
+
+    fn end_frame(&mut self) {
+        self.frame_pressed = 0;
+        self.frame_released = 0;
+    }
+}
+
+/// Keyboard and mouse state for the current callback. See the
+/// [module docs](self) for how edges relate to `fixed_update` and `update`;
+/// mouse buttons and the wheel follow the same rules as keys.
 ///
 /// ```
-/// use purplepie::input::KeyCode;
+/// use purplepie::input::{KeyCode, MouseButton};
 /// # fn fixed_update(ctx: &mut purplepie::Context<'_>) {
 /// let input = ctx.input();
 /// let dx = input.axis(KeyCode::ArrowLeft, KeyCode::ArrowRight); // −1, 0 or 1
 /// if input.just_pressed(KeyCode::Space) {
 ///     // jump: runs once per press, however many fixed steps the frame has
 /// }
+/// if input.mouse_just_pressed(MouseButton::Left) {
+///     if let Some(target) = ctx.cursor_world() {
+///         // shoot towards `target` (world coordinates)
+///         # let _ = target;
+///     }
+/// }
 /// # let _ = dx;
 /// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct Input {
-    held: KeySet,
-    /// Edges for `update`: everything since the previous frame.
-    frame_pressed: KeySet,
-    frame_released: KeySet,
-    /// Edges for `fixed_update`: kept until a fixed step has seen them.
-    fixed_pressed: KeySet,
-    fixed_released: KeySet,
+    keys: Buttons,
+    mouse: Buttons,
+    /// Logical pixels, top-left origin, +Y down; `None` outside the window.
+    cursor: Option<Vec2>,
+    /// Wheel movement in lines since the previous frame / not yet seen by a fixed step.
+    frame_scroll: Vec2,
+    fixed_scroll: Vec2,
     phase: Phase,
 }
 
 impl Default for Input {
     fn default() -> Self {
         Self {
-            held: KeySet::default(),
-            frame_pressed: KeySet::default(),
-            frame_released: KeySet::default(),
-            fixed_pressed: KeySet::default(),
-            fixed_released: KeySet::default(),
+            keys: Buttons::default(),
+            mouse: Buttons::default(),
+            cursor: None,
+            frame_scroll: Vec2::ZERO,
+            fixed_scroll: Vec2::ZERO,
             phase: Phase::Frame,
         }
     }
@@ -134,25 +226,19 @@ impl Default for Input {
 impl Input {
     /// Whether `key` is held down now.
     pub fn pressed(&self, key: KeyCode) -> bool {
-        self.held.contains(key)
+        self.keys.held(key as u8)
     }
 
     /// Whether `key` went down since this callback last looked (see the module docs).
     /// A key pressed and released within one frame is both `just_pressed` and
     /// `just_released`, but not `pressed`.
     pub fn just_pressed(&self, key: KeyCode) -> bool {
-        match self.phase {
-            Phase::Fixed => self.fixed_pressed.contains(key),
-            Phase::Frame => self.frame_pressed.contains(key),
-        }
+        self.keys.just_pressed(key as u8, self.phase)
     }
 
     /// Whether `key` went up since this callback last looked (see the module docs).
     pub fn just_released(&self, key: KeyCode) -> bool {
-        match self.phase {
-            Phase::Fixed => self.fixed_released.contains(key),
-            Phase::Frame => self.frame_released.contains(key),
-        }
+        self.keys.just_released(key as u8, self.phase)
     }
 
     /// `-1.0` while only `negative` is held, `1.0` while only `positive` is held,
@@ -166,32 +252,77 @@ impl Input {
         KeyCode::ALL.iter().copied().filter(|&k| self.pressed(k))
     }
 
+    /// Whether `button` is held down now.
+    pub fn mouse_pressed(&self, button: MouseButton) -> bool {
+        self.mouse.held(button as u8)
+    }
+
+    /// Whether `button` went down since this callback last looked (same rules as keys).
+    pub fn mouse_just_pressed(&self, button: MouseButton) -> bool {
+        self.mouse.just_pressed(button as u8, self.phase)
+    }
+
+    /// Whether `button` went up since this callback last looked (same rules as keys).
+    pub fn mouse_just_released(&self, button: MouseButton) -> bool {
+        self.mouse.just_released(button as u8, self.phase)
+    }
+
+    /// The cursor in **screen** coordinates: logical pixels from the top-left of
+    /// the window's drawing area, +Y down (ADR-022). `None` while the cursor is
+    /// outside the window. For world coordinates use
+    /// [`Context::cursor_world`](crate::Context::cursor_world).
+    pub fn cursor_position(&self) -> Option<Vec2> {
+        self.cursor
+    }
+
+    /// Mouse wheel movement since this callback last looked, in lines (notches):
+    /// `y > 0` is away from the user ("scroll up"), `x > 0` is to the right.
+    /// Each movement is reported once to `fixed_update` and once to `update`,
+    /// like key edges. Touchpad pixel scrolling counts 20 logical pixels per line.
+    pub fn scroll(&self) -> Vec2 {
+        match self.phase {
+            Phase::Fixed => self.fixed_scroll,
+            Phase::Frame => self.frame_scroll,
+        }
+    }
+
     /// A key went down. Repeats of an already held key are ignored.
     pub(crate) fn key_down(&mut self, key: KeyCode) {
-        if self.held.contains(key) {
-            return;
-        }
-        self.held.insert(key);
-        self.frame_pressed.insert(key);
-        self.fixed_pressed.insert(key);
+        self.keys.down(key as u8);
     }
 
     /// A key went up. A release without a matching press (e.g. the key was held
     /// before the window got focus) is ignored.
     pub(crate) fn key_up(&mut self, key: KeyCode) {
-        if !self.held.contains(key) {
-            return;
-        }
-        self.held.remove(key);
-        self.frame_released.insert(key);
-        self.fixed_released.insert(key);
+        self.keys.up(key as u8);
     }
 
-    /// Releases every held key (the window lost focus, so releases would be missed).
-    pub(crate) fn release_all(&mut self) {
-        for &key in KeyCode::ALL {
-            self.key_up(key);
+    pub(crate) fn mouse_down(&mut self, button: MouseButton) {
+        self.mouse.down(button as u8);
+    }
+
+    pub(crate) fn mouse_up(&mut self, button: MouseButton) {
+        self.mouse.up(button as u8);
+    }
+
+    /// The cursor moved to `position` (logical pixels), or left the window (`None`).
+    pub(crate) fn set_cursor(&mut self, position: Option<Vec2>) {
+        self.cursor = position;
+    }
+
+    /// The wheel moved by `lines`.
+    pub(crate) fn add_scroll(&mut self, lines: Vec2) {
+        if lines.is_finite() {
+            self.frame_scroll += lines;
+            self.fixed_scroll += lines;
         }
+    }
+
+    /// Releases every held key and mouse button (the window lost focus, so
+    /// releases would be missed).
+    pub(crate) fn release_all(&mut self) {
+        self.keys.release_all();
+        self.mouse.release_all();
     }
 
     /// Call before each `fixed_update`.
@@ -201,15 +332,17 @@ impl Input {
 
     /// Call after each `fixed_update`: the fixed-step edges have now been seen.
     pub(crate) fn end_fixed_step(&mut self) {
-        self.fixed_pressed = KeySet::default();
-        self.fixed_released = KeySet::default();
+        self.keys.end_fixed_step();
+        self.mouse.end_fixed_step();
+        self.fixed_scroll = Vec2::ZERO;
         self.phase = Phase::Frame;
     }
 
     /// Call after `update`: the frame edges have now been seen.
     pub(crate) fn end_frame(&mut self) {
-        self.frame_pressed = KeySet::default();
-        self.frame_released = KeySet::default();
+        self.keys.end_frame();
+        self.mouse.end_frame();
+        self.frame_scroll = Vec2::ZERO;
     }
 }
 
@@ -374,6 +507,96 @@ mod tests {
         assert_eq!(input.axis(ArrowLeft, ArrowRight), 0.0, "both cancel");
         input.key_up(ArrowRight);
         assert_eq!(input.axis(ArrowLeft, ArrowRight), -1.0);
+    }
+
+    #[test]
+    fn mouse_buttons_follow_the_same_edge_rules_as_keys() {
+        let mut input = Input::default();
+        input.mouse_down(MouseButton::Left);
+        input.mouse_down(MouseButton::Left); // duplicate: ignored
+        let mut fixed_presses = 0;
+        // A frame with no fixed step, then one with three.
+        assert!(
+            input.mouse_just_pressed(MouseButton::Left),
+            "update sees it now"
+        );
+        input.end_frame();
+        for _ in 0..3 {
+            input.begin_fixed_step();
+            fixed_presses += usize::from(input.mouse_just_pressed(MouseButton::Left));
+            assert!(input.mouse_pressed(MouseButton::Left));
+            input.end_fixed_step();
+        }
+        assert!(
+            !input.mouse_just_pressed(MouseButton::Left),
+            "update saw it last frame"
+        );
+        assert_eq!(fixed_presses, 1);
+        input.mouse_up(MouseButton::Left);
+        assert!(input.mouse_just_released(MouseButton::Left));
+        assert!(!input.mouse_pressed(MouseButton::Left));
+    }
+
+    #[test]
+    fn keys_and_mouse_buttons_do_not_share_bits() {
+        let mut input = Input::default();
+        input.key_down(A); // bit 0, like MouseButton::Left
+        assert!(!input.mouse_pressed(MouseButton::Left));
+        input.mouse_down(MouseButton::Right);
+        assert!(!input.pressed(B));
+    }
+
+    #[test]
+    fn release_all_includes_mouse_buttons() {
+        let mut input = Input::default();
+        input.mouse_down(MouseButton::Middle);
+        input.key_down(Space);
+        input.end_frame();
+        input.release_all();
+        assert!(!input.mouse_pressed(MouseButton::Middle));
+        assert!(input.mouse_just_released(MouseButton::Middle));
+        assert!(input.just_released(Space));
+    }
+
+    #[test]
+    fn cursor_is_plain_state_and_none_outside_the_window() {
+        let mut input = Input::default();
+        assert_eq!(input.cursor_position(), None);
+        input.set_cursor(Some(Vec2::new(10.5, 20.0)));
+        input.end_frame();
+        assert_eq!(
+            input.cursor_position(),
+            Some(Vec2::new(10.5, 20.0)),
+            "persists across frames"
+        );
+        input.set_cursor(None);
+        assert_eq!(input.cursor_position(), None);
+    }
+
+    #[test]
+    fn scroll_is_reported_once_to_each_callback() {
+        let mut input = Input::default();
+        input.add_scroll(Vec2::new(0.0, 1.0));
+        input.add_scroll(Vec2::new(0.0, 2.0));
+        input.add_scroll(Vec2::new(f32::NAN, 0.0)); // ignored
+        assert_eq!(
+            input.scroll(),
+            Vec2::new(0.0, 3.0),
+            "update: summed since last frame"
+        );
+        input.end_frame(); // a frame without fixed steps
+        assert_eq!(input.scroll(), Vec2::ZERO);
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            input.begin_fixed_step();
+            seen.push(input.scroll());
+            input.end_fixed_step();
+        }
+        assert_eq!(
+            seen,
+            [Vec2::new(0.0, 3.0), Vec2::ZERO],
+            "first fixed step only"
+        );
     }
 
     #[test]

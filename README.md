@@ -3,12 +3,13 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 8 (input) in progress: the keyboard works.** `cargo run` opens a window
+> **Status: Stage 8 (input) complete: keyboard and mouse.** `cargo run` opens a window
 > where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
 > sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`,
-> batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` zoom, Escape quits.** Game logic runs in a 60 Hz
+> batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` or the wheel zoom, left click
+> stamps a square at the cursor (a green marker follows it), Escape quits.** Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
-> Linux. Mouse input is next (PP-016).
+> Linux. Next: loading assets independently of the working directory (Stage 9).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)

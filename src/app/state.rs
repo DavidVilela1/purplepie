@@ -36,3 +36,62 @@ impl EngineState {
         }
     }
 }
+
+/// A usable DPI scale: `scale_factor` if finite and positive, else 1.
+pub(crate) fn sanitize_scale_factor(scale_factor: f64) -> f64 {
+    if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    }
+}
+
+/// Physical pixels (what winit reports for sizes and the cursor) → logical
+/// pixels (what games see, ADR-018/022).
+pub(crate) fn physical_to_logical(x: f64, y: f64, scale_factor: f64) -> Vec2 {
+    let scale = sanitize_scale_factor(scale_factor);
+    Vec2::new((x / scale) as f32, (y / scale) as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::Camera2D;
+
+    #[test]
+    fn physical_to_logical_divides_by_a_sane_scale() {
+        assert_eq!(
+            physical_to_logical(250.0, 100.0, 1.25),
+            Vec2::new(200.0, 80.0)
+        );
+        assert_eq!(
+            physical_to_logical(250.0, 100.0, 0.0),
+            Vec2::new(250.0, 100.0)
+        );
+        assert_eq!(
+            physical_to_logical(250.0, 100.0, f64::NAN),
+            Vec2::new(250.0, 100.0)
+        );
+    }
+
+    /// The cursor path end to end: a physical cursor position becomes logical
+    /// pixels and then a world position; the renderer must draw that world point
+    /// under the same physical pixel, at any DPI.
+    #[test]
+    fn cursor_maps_to_the_world_point_drawn_under_it_at_any_dpi() {
+        let physical_window = Vec2::new(1920.0, 1080.0);
+        let camera = Camera2D::new(Vec2::new(-30.0, 12.5), 1.5);
+        for scale in [1.0_f64, 1.25, 2.0] {
+            let viewport = physical_window / scale as f32;
+            for cursor in [(0.0, 0.0), (960.0, 540.0), (1500.25, 33.0)] {
+                let logical = physical_to_logical(cursor.0, cursor.1, scale);
+                let world = camera.screen_to_world(logical, viewport);
+                let back = camera.world_to_screen(world, viewport) * scale as f32;
+                assert!(
+                    back.abs_diff_eq(Vec2::new(cursor.0 as f32, cursor.1 as f32), 1e-2),
+                    "scale {scale}, cursor {cursor:?}: {back}"
+                );
+            }
+        }
+    }
+}

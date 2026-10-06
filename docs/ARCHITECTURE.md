@@ -21,15 +21,16 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 8 in progress, PP-010):** `purplepie` provides `Engine`,
-`EngineConfig`, `Game`, `Context` (incl. `load_texture`, `camera`/`camera_mut`, `viewport_size`, `input`), `Time`, `Error`, and the public modules `ecs`
+**Current reality (Stage 8 complete, PP-016):** `purplepie` provides `Engine`,
+`EngineConfig`, `Game`, `Context` (incl. `load_texture`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
-(`Input`, `KeyCode`) and `render`
+(`Input`, `KeyCode`, `MouseButton`) and `render`
 (`Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`). Every frame the engine clears the window and draws each entity
 that has `Transform2D` + `Quad` (solid colour, ADR-019) or `Transform2D` + `Sprite` (textured, ADR-020), sorted by
 `Layer` and batched by texture (ADR-021), as seen through the one engine-owned `Camera2D` (ADR-022; default view ADR-018). The `sandbox` game shows reference quads (one moving,
 two overlapping the sprite to show draw order) and two sprites from one PNG (one tinted and spinning); its camera can be
-set with an env var, and the arrow keys and `=` / `-` pan and zoom it. Keyboard input exists (ADR-024); mouse input does not yet.
+set with an env var, and the arrow keys, `=` / `-` and the mouse wheel pan and zoom it; a marker follows the cursor and clicks stamp squares
+(ADR-024: keyboard and mouse).
 
 ---
 
@@ -61,10 +62,10 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps` + builders + `validate` | VERIFIED |
-| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
-| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport; owned by the runner | VERIFIED |
-| `src/app/keymap.rs` | winit `PhysicalKey` → `input::KeyCode` (the only file that knows both; bijection test) (ADR-024) | VERIFIED (3 unit tests) |
-| `src/input/mod.rs` | `pub mod input`: `KeyCode` (99 physical keys), `Input` (`pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`; crate-private event and phase methods) (ADR-024) | VERIFIED (10 unit tests + doctest, Xvfb XTEST runs) |
+| `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
+| `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
+| `src/app/keymap.rs` | winit → PurplePie input: `PhysicalKey` → `KeyCode` (bijection test), mouse buttons, wheel deltas → lines (ADR-024) | VERIFIED (5 unit tests) |
+| `src/input/mod.rs` | `pub mod input`: `KeyCode` (99 physical keys), `MouseButton`, `Input` (keys: `pressed`, `just_pressed`, `just_released`, `axis`, `pressed_keys`; mouse: `mouse_pressed`, `mouse_just_pressed`, `mouse_just_released`, `cursor_position`, `scroll`); one shared `Buttons` edge implementation (ADR-024) | VERIFIED (15 unit tests + doctest, Xvfb XTEST runs) |
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
@@ -97,7 +98,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
 | `render` | `pub(crate) Renderer`, pipelines, texture store, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer` | `wgpu`, `pollster`, `image` (PNG decode), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
-| `input` | `Input` state (pressed / just_pressed / just_released), `KeyCode` (done, PP-010), `MouseButton` (PP-016) | nothing today (`math` once the cursor arrives) | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
+| `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | `Handle<T>`, `Assets` store, loaders | `render` (GPU upload), `std::fs` | `app`, `input` | hot reload, async loading | 9 |
 
 **Not present: `core`.** See ADR-003. It had no single responsibility and
@@ -143,7 +144,7 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 
 ## 5. Runtime Flow
 
-### Current (Stage 8, PP-010)
+### Current (Stage 8, PP-016)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
@@ -166,7 +167,9 @@ RedrawRequested  → FRAME (skipped once exit has begun):
 Resized / ScaleFactorChanged → viewport = size / scale (for Context) + renderer.resize(w, h, scale_factor)
                                0×0 = minimized: skip rendering. The window is never queried per frame (ADR-022).
 KeyboardInput   → Escape (logical, if exit_on_escape) → exit; else keymap::translate(physical) → input.key_down/up
-                  (repeats and X11 synthetic presses ignored). Focused(false) → input.release_all
+                  (repeats and X11 synthetic presses ignored). Focused(false) → input.release_all (keys + buttons)
+MouseInput / CursorMoved / CursorLeft / MouseWheel → input (cursor: physical ÷ tracked DPI scale → logical px;
+                  CursorLeft → None; wheel → lines). Context::cursor_world = camera.screen_to_world(cursor, viewport)
 CloseRequested / ctx.request_exit() → event_loop.exit()
 suspended        → drop Renderer (recreated in resumed; world and time are kept)
 exiting          → drop Renderer, then Window
@@ -216,7 +219,7 @@ All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMo
 |---|---|
 | `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
 | `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
-| `Time`, `Input`, `KeyCode`, `Color`, `TextureId`, `Layer`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
+| `Time`, `Input`, `KeyCode`, `MouseButton`, `Color`, `TextureId`, `Layer`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
@@ -351,11 +354,11 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, sprite, draw}`, `input`, `app::keymap` | pure unit tests + doctests | ✅ 96 unit tests + 15 doctests |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, sprite, draw}`, `input`, `app::{keymap, state}` | pure unit tests + doctests | ✅ 106 unit tests + 15 doctests |
 | GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 5 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
-| `input` state | pure unit tests, no window/GPU; Xvfb XTEST key runs | ✅ keyboard (PP-010) |
+| `input` state | pure unit tests, no window/GPU; Xvfb XTEST key, click, move and wheel runs | ✅ keyboard (PP-010) + mouse (PP-016) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
 | `app` runner, `render::Renderer` | Xvfb + lavapipe smoke runs in Cowork (xdotool XTEST keys, `WM_DELETE_WINDOW` close, `xwininfo`, CPU sampling, screenshot color histograms); Windows by the owner | ✅ Stages 1–6 on Linux; Windows pending |
 | Every change | `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build` | ✅ in use |

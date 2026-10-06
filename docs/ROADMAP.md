@@ -36,7 +36,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M5: First 2D Primitive** | ECS entity rendered as a GPU quad | 5 | PP-007 | VERIFIED (Linux; Windows look pending) |
 | **M6: Sprite Foundation** | Textured sprites, batched | 6 | PP-008, PP-015 | VERIFIED (Linux; PP-008 + PP-015; Windows look pending) |
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
-| **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | IN_PROGRESS (PP-010 keyboard ✅; PP-016 mouse next) |
+| **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | VERIFIED (Linux; PP-010 keyboard + PP-016 mouse; Windows look pending) |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | NOT_STARTED |
 | **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012 | NOT_STARTED |
 
@@ -163,7 +163,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Risks** | Cross-platform DPI behavior (R-12) |
 | **Definition of Done** | Project DoD |
 
-## Stage 8: Input System → M8
+## Stage 8: Input System → M8 ✅
 
 | | |
 |---|---|
@@ -174,6 +174,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Expected result** | Sandbox moves an entity with the arrow keys |
 | **Validation** | State-machine unit tests: press, hold, release, edges with 0, 1 and N fixed steps |
 | **As built (PP-010)** | Public `input::{Input, KeyCode}` (99 physical keys), `Context::input()`; edges latched per callback so each press reaches `fixed_update` and `update` exactly once (ADR-024). winit translation in `app/keymap.rs`. Sandbox: arrows pan, `=`/`-` zoom. |
+| **As built (PP-016)** | `MouseButton` through the same edge model, cursor in logical screen pixels + `Context::cursor_world()`, wheel in lines (ADR-024 extension). Sandbox: cursor marker, click stamps, wheel zoom. |
 | **Acceptance criteria** | PD-03 decided (✅ ADR-024). No winit types in the public input API (✅). |
 | **Risks** | Edge semantics with fixed steps (R-05) |
 | **Definition of Done** | Project DoD |
@@ -184,8 +185,8 @@ driven by real ECS data rather than a throwaway draw call.
 |---|---|
 | **Objective** | A coherent way to load and reference textures and shaders |
 | **Prerequisites** | M6 |
-| **Tasks** | PP-011 |
-| **Files** | new `src/assets/`, render integration, `assets/` folder conventions |
+| **Tasks** | PP-011 (asset root: paths independent of the working directory). Narrowed 2026-10-06: generic `Handle<T>` and unloading wait for a second asset kind. |
+| **Files** | `src/render/texture.rs` path resolution, `EngineConfig`, `assets/` folder conventions |
 | **Expected result** | Games reference every asset kind via handles (textures already do: ADR-020). Missing files give a clear `Error::Asset` (exists since PP-008). |
 | **Validation** | Unit tests for the handle store and error paths. Smoke run. |
 | **Acceptance criteria** | PD-06 decided and recorded as an ADR (generalizing or superseding ADR-020) |

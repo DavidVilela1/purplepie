@@ -16,9 +16,8 @@ use super::config::EngineConfig;
 use super::game::{Context, Game};
 use super::keymap;
 use super::pacer::{FRAME_INTERVAL, FramePacer};
-use super::state::EngineState;
+use super::state::{EngineState, physical_to_logical, sanitize_scale_factor};
 use crate::error::{Error, Result};
-use crate::math::Vec2;
 use crate::render::Renderer;
 use crate::time::FixedTimestep;
 
@@ -37,6 +36,8 @@ pub(crate) struct Runner<G: Game> {
     /// World, time, textures, camera, input and viewport: lent to the game
     /// through `Context`, read by the renderer.
     state: EngineState,
+    /// The window's DPI scale, kept up to date from window events (like the viewport).
+    scale_factor: f64,
     /// When the previous frame started; `None` before the first frame.
     last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
@@ -53,6 +54,7 @@ impl<G: Game> Runner<G> {
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
             state: EngineState::new(config.fixed_dt),
+            scale_factor: 1.0,
             last_frame: None,
             error: None,
             config,
@@ -85,12 +87,9 @@ impl<G: Game> Runner<G> {
     /// querying a window that the platform has already destroyed can panic
     /// inside winit (X11 `inner_size`), which a per-frame query hit in testing.
     fn set_viewport(&mut self, width: u32, height: u32, scale_factor: f64) {
-        let scale = if scale_factor.is_finite() && scale_factor > 0.0 {
-            scale_factor
-        } else {
-            1.0
-        };
-        self.state.viewport = Vec2::new(width as f32, height as f32) / scale as f32;
+        self.scale_factor = sanitize_scale_factor(scale_factor);
+        self.state.viewport =
+            physical_to_logical(f64::from(width), f64::from(height), self.scale_factor);
     }
 
     /// Feeds a key event to `Input`, after the optional Escape-to-exit shortcut.
@@ -252,7 +251,25 @@ impl<G: Game> ApplicationHandler for Runner<G> {
                 ..
             } => self.keyboard(event_loop, &event, is_synthetic),
             // Releases that happen while another window has focus never arrive,
-            // so treat every held key as released (ADR-024).
+            // so treat every held key and mouse button as released (ADR-024).
+            WindowEvent::MouseInput { state, button, .. } => {
+                if let Some(button) = keymap::translate_button(button) {
+                    match state {
+                        ElementState::Pressed => self.state.input.mouse_down(button),
+                        ElementState::Released => self.state.input.mouse_up(button),
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let logical = physical_to_logical(position.x, position.y, self.scale_factor);
+                self.state.input.set_cursor(Some(logical));
+            }
+            WindowEvent::CursorLeft { .. } => self.state.input.set_cursor(None),
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                let lines = keymap::scroll_lines(delta, self.scale_factor);
+                log::debug!("wheel {delta:?} ({phase:?}) → {lines} lines");
+                self.state.input.add_scroll(lines);
+            }
             WindowEvent::Focused(false) => {
                 log::debug!("focus lost: releasing all keys");
                 self.state.input.release_all();

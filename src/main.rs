@@ -3,7 +3,8 @@
 //! This binary plays the role of a *game*: it may only use the public
 //! `purplepie` API, exactly like an external game crate would.
 //!
-//! Controls: arrow keys pan the camera, `=` / `-` zoom in / out, Escape quits.
+//! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
+//! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -17,7 +18,7 @@ use std::error::Error as _;
 use std::process::ExitCode;
 
 use purplepie::ecs::{self, Entity, Velocity};
-use purplepie::input::KeyCode;
+use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite};
 use purplepie::{Context, Engine, EngineConfig, Game};
@@ -89,6 +90,9 @@ const SPRITE_TEXTURE: &str = concat!(
 const PAN_SPEED: f32 = 300.0;
 /// Zoom limits for the `=` / `-` keys (each press doubles or halves the zoom).
 const ZOOM_RANGE: (f32, f32) = (0.125, 8.0);
+/// Size of the green cursor marker and of the cyan click stamps, in world units.
+const MARKER_SIZE: f32 = 10.0;
+const STAMP_SIZE: f32 = 16.0;
 /// Turn rate of the spinning sprite, in radians per second.
 const SPIN_SPEED: f32 = 1.0;
 
@@ -101,6 +105,10 @@ struct Sandbox {
     camera: Camera2D,
     /// `=` presses seen by `fixed_update` and by `update` (each press must count once in each).
     zoom_in_presses: (u32, u32),
+    /// The quad that follows the cursor.
+    marker: Option<Entity>,
+    /// Left clicks seen by `fixed_update` (each spawns a stamp) and by `update`.
+    left_clicks: (u32, u32),
 }
 
 impl Game for Sandbox {
@@ -148,6 +156,14 @@ impl Game for Sandbox {
             Sprite::new(texture, Vec2::new(96.0, 96.0)).with_tint(Color::rgba(0.5, 1.0, 1.0, 0.6)),
         ));
         self.spinner = Some(spinner);
+        // Follows the cursor (positioned in `update`); zero scale hides it while
+        // the cursor is outside the window.
+        let marker = world.spawn((
+            Transform2D::default().with_scale(Vec2::ZERO),
+            Quad::new(Vec2::splat(MARKER_SIZE), Color::hex(0x39FF14)),
+            Layer(4),
+        ));
+        self.marker = Some(marker);
         Ok(())
     }
 
@@ -177,6 +193,9 @@ impl Game for Sandbox {
         );
         let zoom_in = input.just_pressed(KeyCode::Equal);
         let zoom_out = input.just_pressed(KeyCode::Minus);
+        let wheel = input.scroll().y;
+        let click = input.mouse_just_pressed(MouseButton::Left);
+        let cursor = ctx.cursor_world();
         self.zoom_in_presses.0 += u32::from(zoom_in);
         let camera = ctx.camera_mut();
         camera.position += pan * PAN_SPEED * dt / camera.effective_zoom();
@@ -186,10 +205,42 @@ impl Game for Sandbox {
         if zoom_out {
             camera.zoom = (camera.effective_zoom() / 2.0).max(ZOOM_RANGE.0);
         }
+        if wheel != 0.0 {
+            // One wheel notch doubles or halves the zoom, like `=` / `-`.
+            camera.zoom =
+                (camera.effective_zoom() * 2.0_f32.powf(wheel)).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        }
+        // Left click: stamp a cyan square at the cursor (world coordinates, read
+        // before this step's camera change).
+        if click {
+            self.left_clicks.0 += 1;
+            if let Some(position) = cursor {
+                ctx.world_mut().spawn((
+                    Transform2D::from_position(position),
+                    Quad::new(Vec2::splat(STAMP_SIZE), Color::hex(0x00E0FF)),
+                    Layer(3),
+                ));
+            }
+        }
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {
         self.zoom_in_presses.1 += u32::from(ctx.input().just_pressed(KeyCode::Equal));
+        self.left_clicks.1 += u32::from(ctx.input().mouse_just_pressed(MouseButton::Left));
+        // The marker follows the cursor every frame (hidden outside the window).
+        let cursor = ctx.cursor_world();
+        if let Some(mut marker) = self
+            .marker
+            .and_then(|e| ctx.world_mut().get::<&mut Transform2D>(e).ok())
+        {
+            match cursor {
+                Some(position) => {
+                    marker.position = position;
+                    marker.scale = Vec2::ONE;
+                }
+                None => marker.scale = Vec2::ZERO,
+            }
+        }
         let time = ctx.time();
         if Some(time.frame()) == self.exit_after_frames {
             println!(
@@ -218,6 +269,14 @@ impl Game for Sandbox {
             println!(
                 "sandbox: '=' presses seen: {} in fixed_update, {} in update",
                 self.zoom_in_presses.0, self.zoom_in_presses.1
+            );
+            let cursor = ctx.input().cursor_position();
+            println!(
+                "sandbox: left clicks seen: {} in fixed_update, {} in update; cursor {:?} screen, {:?} world",
+                self.left_clicks.0,
+                self.left_clicks.1,
+                cursor,
+                ctx.cursor_world()
             );
             ctx.request_exit();
         }
@@ -261,6 +320,8 @@ fn main() -> ExitCode {
         spinner: None,
         camera,
         zoom_in_presses: (0, 0),
+        marker: None,
+        left_clicks: (0, 0),
     };
     let result = Engine::new(EngineConfig::new("PurplePie Sandbox")).and_then(|e| e.run(game));
 

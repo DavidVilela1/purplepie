@@ -185,9 +185,14 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   saw (must be equal to the taps sent). Check the final frame against the per-pixel camera model at the printed camera.
   Focus loss: remove focus with python-xlib (`set_input_focus(X.NONE, …)`) while a key is held; the pan must stop then.
   The 0.5 s settle avoids a suspected focus race in WM-less Xvfb (R-11).
+- **Mouse (Stage 8+, ADR-024):** after focusing, `xdotool mousemove X Y; xdotool click 1` (left), `click 4` / `click 5` (wheel).
+  The timed exit prints clicks seen per callback and the cursor (screen + world). Model stamps (16×16) and the marker
+  (10×10, follows the cursor) in the per-pixel camera check. Note: on a new Xvfb display the pointer starts at the screen
+  centre, inside the window, so the marker is visible unless you move the pointer away. winit/X11 reports each XTEST wheel
+  click twice.
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
-- **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call):**
+- **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call; use a fresh Xvfb display, see R-22):**
   PP-009 showed that a per-frame `Window::inner_size()` panics inside winit once the X11 window is gone (R-22).
 - **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
 

@@ -150,6 +150,17 @@ impl<'a> Context<'a> {
         &self.state.input
     }
 
+    /// The world position under the mouse cursor, through the current camera
+    /// (ADR-022), or `None` while the cursor is outside the window. Screen
+    /// coordinates are in [`Input::cursor_position`].
+    pub fn cursor_world(&self) -> Option<Vec2> {
+        let state = &*self.state;
+        state
+            .input
+            .cursor_position()
+            .map(|screen| state.camera.screen_to_world(screen, state.viewport))
+    }
+
     /// Asks the engine to shut down cleanly. No further game callbacks are made.
     pub fn request_exit(&mut self) {
         self.state.exit_requested = true;
@@ -233,6 +244,22 @@ mod tests {
         let ctx = Context::new(&mut state, 0.0);
         assert!(ctx.input().pressed(crate::input::KeyCode::Space));
         assert!(ctx.input().just_pressed(crate::input::KeyCode::Space));
+    }
+
+    #[test]
+    fn cursor_world_goes_through_the_camera() {
+        let mut state = EngineState::new(0.25);
+        state.viewport = Vec2::new(800.0, 600.0);
+        state.camera = Camera2D::new(Vec2::new(100.0, 50.0), 2.0);
+        assert_eq!(
+            Context::new(&mut state, 0.0).cursor_world(),
+            None,
+            "no cursor yet"
+        );
+        state.input.set_cursor(Some(Vec2::new(420.0, 280.0)));
+        let ctx = Context::new(&mut state, 0.0);
+        // 20 px right / 20 px up of the centre at zoom 2 = 10 world units each way.
+        assert_eq!(ctx.cursor_world(), Some(Vec2::new(110.0, 60.0)));
     }
 
     #[test]
