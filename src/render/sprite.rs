@@ -1,12 +1,14 @@
 //! Textured rectangles drawn from ECS data (ADR-019, ADR-020).
 //!
 //! `Sprite` is the public component. The rest is crate-private: uploading
-//! textures and the textured pipeline. Collection, sorting and batching live
-//! in `draw.rs` (ADR-021).
+//! textures and the textured pipeline, which also draws text glyphs from the
+//! glyph atlas (ADR-027). Collection, sorting and batching live in `draw.rs`
+//! (ADR-021).
 
 use wgpu::util::DeviceExt as _;
 
 use super::Color;
+use super::atlas::GlyphAtlas;
 use super::quad::rect_pipeline;
 use super::texture::{TextureData, TextureId, Textures};
 use crate::error::{Error, Result};
@@ -64,7 +66,70 @@ struct GpuTexture {
     bind_group: wgpu::BindGroup,
 }
 
+/// The GPU copy of the glyph atlas (ADR-027).
+struct GpuGlyphAtlas {
+    texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+}
+
+impl GpuGlyphAtlas {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+        size: u32,
+    ) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("purplepie glyph atlas"),
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            // The same format as sprite textures: white RGB, coverage in
+            // alpha (alpha is never sRGB-encoded).
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // Linear filtering: pixel-aligned glyphs sample texel centres (exact),
+        // and rotated or scaled text is smoothed instead of jagged. Each glyph
+        // has a transparent border in the atlas, so neighbours never bleed in.
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("purplepie glyph sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("purplepie glyph atlas"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        Self {
+            texture,
+            bind_group,
+        }
+    }
+}
+
 /// The textured pipeline, the GPU copies of every loaded texture, and the
+/// glyph atlas texture.
 pub(crate) struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -74,10 +139,12 @@ pub(crate) struct SpritePipeline {
     texture_format: wgpu::TextureFormat,
     /// Indexed by `TextureId`. Grows as the store does (`sync_textures`).
     textures: Vec<GpuTexture>,
+    glyphs: GpuGlyphAtlas,
 }
 
 impl SpritePipeline {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    /// `atlas_size`: width and height of the glyph atlas texture.
+    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, atlas_size: u32) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("purplepie sprite shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("sprite.wgsl").into()),
@@ -130,13 +197,50 @@ impl SpritePipeline {
         } else {
             wgpu::TextureFormat::Rgba8Unorm
         };
+        let glyphs = GpuGlyphAtlas::new(device, &bind_group_layout, texture_format, atlas_size);
         Self {
             pipeline,
             bind_group_layout,
             sampler,
             texture_format,
             textures: Vec::new(),
+            glyphs,
         }
+    }
+
+    /// Copies the atlas rows that changed since the last call to the GPU.
+    pub(crate) fn upload_glyphs(&self, queue: &wgpu::Queue, atlas: &mut GlyphAtlas) {
+        let width = atlas.size();
+        if let Some((rows, bytes)) = atlas.take_dirty_rows() {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.glyphs.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: rows.start,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: None,
+                },
+                wgpu::Extent3d {
+                    width,
+                    height: rows.end - rows.start,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    /// Binds the glyph atlas for the following draws.
+    pub(crate) fn bind_glyphs(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_bind_group(0, &self.glyphs.bind_group, &[]);
     }
 
     /// Uploads every texture in `store` that is not on the GPU yet.
@@ -275,7 +379,12 @@ mod tests {
         ));
         let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let mut list = DrawList::default();
-        list.build(&world, &vp, false);
+        list.build(
+            &world,
+            &super::super::draw::View::flat(vp),
+            &super::super::font::Fonts::default(),
+            &mut super::super::atlas::GlyphAtlas::new(16),
+        );
         let instance = list.instances()[0];
         let m = glam::Mat4::from_cols_array_2d(&instance.clip_from_local);
         // Unit-square corner (0.5, 0.5) → world (70, 10) → clip (0.7, 0.2).
@@ -300,7 +409,7 @@ mod tests {
             wgpu::TextureFormat::Bgra8Unorm,
             wgpu::TextureFormat::Rgba8UnormSrgb,
         ] {
-            let mut sprites = SpritePipeline::new(&device, format);
+            let mut sprites = SpritePipeline::new(&device, format, 64);
             sprites
                 .sync_textures(&device, &queue, &textures)
                 .expect("sync");
@@ -311,7 +420,7 @@ mod tests {
             );
         }
         // Textures loaded later are picked up by the next sync, and only once.
-        let mut sprites = SpritePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
+        let mut sprites = SpritePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, 64);
         sprites
             .sync_textures(&device, &queue, &textures)
             .expect("sync");
@@ -335,7 +444,7 @@ mod tests {
         let mut textures = Textures::default();
         // One texel wider than allowed, one texel tall: small to encode.
         let id = load(&mut textures, "too-wide.png", max + 1, 1);
-        let mut sprites = SpritePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
+        let mut sprites = SpritePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, 64);
         let err = sprites
             .sync_textures(&device, &queue, &textures)
             .expect_err("oversized texture must fail");

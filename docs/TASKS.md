@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-018: Text rendering (post-portfolio; friction F1)** · P1 · TODO ← **next task**
+- [ ] **PP-018b: Text layout/alignment + Breakout HUD text (post-portfolio; friction F1)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -40,6 +40,7 @@ _None._
 - [x] **PP-011: Stage 9 · Asset root** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-012: Stage 10 · Example game (Breakout)** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-017: Stage 10 · API review** · DONE (2026-10-06; verified on Linux). Stages 0–10 (the portfolio scope) are complete.
+- [x] **PP-018a: Text rendering, part 1 (ADR-027): fonts, glyph atlas, `Text` component** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
@@ -199,14 +200,25 @@ _None._
 | Scope (as built) | `#![warn(missing_docs)]` in `lib.rs` (4 gaps fixed: `KeyCode` variants get generated docs, `MouseButton` variants). Friction decisions F1–F10 in ADR-026: **added** `render::Hidden` (marker; the draw list skips it via `hecs::Without`), `Camera2D::fit(center, size, viewport)` and `Context::set_window_title` (applied by the runner only when requested); **deferred** text (PP-018) and sampling options; **no change** for F4/F5/F6/F8/F10 with reasons. `exit_on_escape` kept (documented). Single crate kept (ADR-002 reaffirmed). Breakout uses `Hidden` for its end-screen overlay, `Camera2D::fit` and a score/lives window title. README rewritten: features, getting started (compile-checked), example. |
 | Acceptance criteria | ✅ 1. Zero `missing_docs` warnings (clippy `-D warnings` passes with the lint on). ✅ 2. Every friction item has a recorded decision (ADR-026). ✅ 3. Workspace decision recorded. ✅ 4. README matches the example and compiles. ✅ 5. Regressions unchanged; Breakout autoplay identical (`win` 7135 steps / score 220; `lose` 892 / 14) and the lose overlay has exactly the same pixels (347,496 × `(161,33,47)`) now that it is a `Hidden`-toggled entity. |
 
-### PP-018: Text rendering ← NEXT
+### PP-018: Text rendering (split on 2026-10-06 into PP-018a + PP-018b)
+Friction F1 from Breakout (ADR-026): score, lives and messages had to be faked with quads, the window title and the
+console. Split when started because the decision, the atlas and the drawing path were already a full task.
+
+### PP-018a: Text rendering, part 1: fonts, glyph atlas, `Text`
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio (after Stage 10) · Priority P1 · TODO. Friction F1 from Breakout (ADR-026). |
+| Stage | Post-portfolio · Priority P1 · **DONE** (2026-10-06) |
 | Dependencies | PP-017 (DONE) |
-| Why now | The biggest gap a real game hit: score, lives and messages had to be faked with quads, the window title and the console. Almost every game needs on-screen text. |
-| Scope (to split when started) | Decide the approach as an ADR: font rasterizer dependency (verify current crates and their dependency cost per ADR-013) vs. a bitmap font; glyph atlas texture reusing the sprite pipeline; a `Text` component (string, size, colour, anchor) drawn through the existing draw list and layers; fonts loaded through the asset root (first second asset kind → revisit PD-06). Probably split into (a) decision + glyph atlas + drawing ASCII text, (b) layout/alignment and use in Breakout. |
-| Acceptance criteria | Defined when the task is split; at minimum: pixel-checked glyph rendering under Xvfb, `Error::Asset` for missing fonts, Breakout showing score and lives as text. |
+| Scope (as built) | ADR-027. New dependency `ab_glyph` 0.2.32 (`std` only; +0 crates on Linux, +4 on Windows). `Context::load_font(path) -> Result<FontId>` (asset root, parse on load, `Error::Asset`, dedup by path); crate-private `render::Fonts` in `EngineState`. Public `render::{Text, FontId}`: `Text::new(content, font, size).with_color(..)`; origin = left end of the first baseline, `size` = em size in world units, `\n` = new line, control chars skipped, kerning from `kern`. Crate-private `render/atlas.rs` (1024² RGBA shelf-packed glyph atlas, white + coverage alpha, 1-texel border, dirty-row uploads, cleared and re-laid out once per frame when full) and `render/text.rs` (layout in whole pixels). The draw list rasterizes at the on-screen size (zoom × DPI × transform scale), snaps the origin to a physical pixel and emits one instance per glyph as a third material (`Glyphs`, drawn after sprites in each layer, one draw per run). `Instance` gains `uv_rect` (80 → 96 B); `sprite.wgsl` uses it; glyphs are drawn by the sprite pipeline with the atlas bound through a linear sampler. Font shipped: `assets/fonts/Poppins-Regular.ttf` + `OFL.txt`. Sandbox shows a help label. |
+| Acceptance criteria | ✅ 1. ADR-027 records the approach, the measured dependency cost and the alternatives. ✅ 2. Unit tests: font store (ids, dedup, `Error::Asset` for missing/garbage files, via `Context` too), atlas (white + alpha, padding, cache per size, no overlaps, full → reset, dirty rows), layout (advance, baseline, spaces, newlines, control chars), draw list (text after quads/sprites, one batch per layer, `Hidden`, zero scale / zero size / NaN / oversize skipped, glyph rectangles on whole physical pixels at zoom 0.75/1/2 and DPI 1/1.25/2, atlas overflow → one reset). ✅ 3. GPU (`--ignored`, lavapipe): offscreen render of text at fractional positions (zoom 1 and 2) matches the CPU rasterization within 1/255 on every pixel; layer order and colour checked (red text over a blue quad, hidden under a layer-1 green quad). ✅ 4. Xvfb sandbox: whole-frame model outside the label 0 mismatches at camera (0,0)×1 (only the known cursor-marker pixels at (−300,−280)×2 and (100,40)×0.5); the label matches FreeType's rendering of the same font closely (IoU 0.77/0.86/0.59 at 20/40/10 px, mean difference 5/3/14 per 255; visually identical layout, slightly bolder because of linear blending). ✅ 5. Regressions: Breakout autoplay `win` 7135 / 220 and `lose` 892 / 14 unchanged, lose overlay still 347,496 px of `(161,33,47)`; window-destroy fault test clean `Error::Render` (2/2). |
+
+### PP-018b: Text layout/alignment + Breakout HUD text ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio · Priority P1 · TODO |
+| Dependencies | PP-018a (DONE) |
+| Scope | Measure text (`Context::measure_text` or a font-metrics query returning width/line height in world units); an anchor/alignment option on `Text` (left/centre/right, baseline/top/middle) so HUD text can be centred or right-aligned without manual maths; Breakout shows score, lives and the win/lose message as `Text` (the window title can stay as a secondary display); README feature list and example updated. Consider a coverage gamma adjustment for small light-on-dark text if it looks too heavy on Windows. |
+| Acceptance criteria | Unit tests for measuring and every anchor; pixel check under Xvfb that centred/right-aligned text lands where measured; Breakout autoplay results unchanged (gameplay code untouched) with the HUD text visible in screenshots; owner look on Windows requested. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

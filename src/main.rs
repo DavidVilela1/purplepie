@@ -5,6 +5,7 @@
 //!
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
 //! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
+//! A text label at the bottom left lists these controls.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -20,7 +21,7 @@ use std::process::ExitCode;
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite};
+use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite, Text};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -83,6 +84,12 @@ const MOVER_LIMIT: f32 = 500.0;
 /// (ADR-025): `assets/` next to the executable, else `assets/` in the working
 /// directory, which is the project folder under `cargo run`.
 const SPRITE_TEXTURE: &str = "textures/sandbox_quadrants.png";
+/// The font shipped with PurplePie (SIL Open Font License, `assets/fonts/OFL.txt`).
+const FONT: &str = "fonts/Poppins-Regular.ttf";
+/// The help label: its baseline starts here (world units) and its size is the em size.
+const LABEL_POSITION: Vec2 = Vec2::new(-600.0, -300.0);
+const LABEL_SIZE: f32 = 20.0;
+const LABEL: &str = "PurplePie sandbox: arrows pan, = / - or wheel zoom, click stamps, Esc quits";
 /// Camera pan speed with the arrow keys, in logical pixels per second (so it
 /// feels the same at any zoom).
 const PAN_SPEED: f32 = 300.0;
@@ -113,7 +120,13 @@ impl Game for Sandbox {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
         *ctx.camera_mut() = self.camera;
         let texture = ctx.load_texture(SPRITE_TEXTURE)?;
+        let font = ctx.load_font(FONT)?;
         let world = ctx.world_mut();
+        // Text (ADR-027): a help label in the bottom-left corner of the default view.
+        world.spawn((
+            Transform2D::from_position(LABEL_POSITION),
+            Text::new(LABEL, font, LABEL_SIZE).with_color(Color::hex(0xF1FAEE)),
+        ));
         // Static reference shapes; their screen positions are checked by smoke tests.
         world.spawn((
             Transform2D::from_position(Vec2::new(-300.0, 200.0)),

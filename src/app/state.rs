@@ -4,7 +4,7 @@ use crate::assets::AssetRoot;
 use crate::ecs::World;
 use crate::input::Input;
 use crate::math::Vec2;
-use crate::render::{Camera2D, Textures};
+use crate::render::{Camera2D, Fonts, Textures};
 use crate::time::Time;
 
 /// Everything a game callback can see, owned by the runner for the whole run.
@@ -16,6 +16,8 @@ pub(crate) struct EngineState {
     pub(crate) world: World,
     /// Every texture the game loaded (CPU copies; ADR-020). Outlives renderers.
     pub(crate) textures: Textures,
+    /// Every font the game loaded (parsed; ADR-027). Outlives renderers.
+    pub(crate) fonts: Fonts,
     /// The single camera, read by the renderer (ADR-022).
     pub(crate) camera: Camera2D,
     /// Keyboard state, fed from window events (ADR-024).
@@ -35,6 +37,7 @@ impl EngineState {
             time: Time::new(fixed_dt),
             world: World::new(),
             textures: Textures::default(),
+            fonts: Fonts::default(),
             camera: Camera2D::default(),
             input: Input::default(),
             viewport: Vec2::ZERO,

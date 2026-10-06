@@ -212,11 +212,24 @@ driven by real ECS data rather than a throwaway draw call.
 
 ## After Stage 10
 
-Stages 0–10 (the portfolio scope) are complete. Work continues one task at a time from real needs:
+Stages 0–10 (the portfolio scope) are complete. The owner's direction (2026-10-06) is to keep growing PurplePie into a
+usable 2D engine with **both** in-game UI and an editor. Work still proceeds one verified task at a time; the phases
+below are an order of intent, not a schedule, and each item becomes a task (with its own ADR where needed) only when
+it is next.
 
-- **PP-018 Text rendering** (next): the biggest gap Breakout hit (ADR-026, F1).
+| Phase | Goal | Planned items (in order) | Status |
+|---|---|---|---|
+| **P1 Text** | Games can show text | PP-018a fonts + glyph atlas + `Text` (ADR-027) ✅; **PP-018b** measuring/alignment + Breakout HUD as text | In progress (PP-018b next) |
+| **P2 Runtime essentials** | Enough for a typical small 2D game | Sprite sheets / sub-rectangles (reusing `uv_rect`) and frame animation; per-texture sampling (F9); audio (a third asset kind → generic handles, PD-06); in-game UI basics: a screen-space layer that ignores the camera, then panels, buttons and labels driven by mouse input | Not started |
+| **P3 Editor foundations** | Data the engine and an editor can share | Scene files (serialize entities and components), a component registry/reflection, asset hot reload, and the workspace split ADR-026 anticipated (engine core vs. editor crates) | Not started |
+| **P4 Debug overlay** | Inspect a running game | An immediate-mode overlay (e.g. egui, behind a feature) showing entities, components, camera and timings | Not started |
+| **P5 Scene editor** | Build levels without code | Editor app on the engine: viewport with pan/zoom, entity list and inspector, placing sprites, saving scenes | Not started |
+| **P6 Proof** | Show it works | A bigger example game made with the editor | Not started |
+
+Risks for this plan: scope growth (R-13 API churn), dependency weight (ADR-013; an editor UI library is the largest
+candidate), and Windows verification lag (Stages 5–10 not yet seen there).
 
 ## Not scheduled
 
-Render interpolation, shape/debug renderers, audio, sprite sheets and animation, per-texture sampling options,
-scenes and serialization, hot reload, editor tooling. These become tasks only when a concrete need appears.
+Render interpolation, shape/debug renderers, MSAA, mipmaps, text shaping and font fallback, physics, networking,
+mobile/web targets. These become tasks only when a concrete need appears.

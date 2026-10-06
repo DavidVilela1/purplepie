@@ -7,7 +7,7 @@ use crate::ecs::World;
 use crate::error::Result;
 use crate::input::Input;
 use crate::math::Vec2;
-use crate::render::{Camera2D, TextureId};
+use crate::render::{Camera2D, FontId, TextureId};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -61,6 +61,7 @@ impl std::fmt::Debug for Context<'_> {
             .field("time", &self.state.time)
             .field("entities", &self.state.world.len())
             .field("textures", &self.state.textures.len())
+            .field("fonts", &self.state.fonts.len())
             .field("camera", &self.state.camera)
             .field("input", &self.state.input)
             .field("viewport", &self.state.viewport)
@@ -121,6 +122,21 @@ impl<'a> Context<'a> {
     pub fn load_texture(&mut self, path: impl AsRef<Path>) -> Result<TextureId> {
         let file = self.state.assets.locate(path.as_ref())?;
         self.state.textures.load(&file)
+    }
+
+    /// Loads a TrueType (`.ttf`) or OpenType (`.otf`) font and returns a
+    /// handle for [`Text`](crate::render::Text) components (ADR-027).
+    ///
+    /// The file is read and parsed now, so a problem is reported here as
+    /// [`Error::Asset`](crate::Error::Asset). Paths resolve like
+    /// [`load_texture`](Self::load_texture): relative to the asset root, and
+    /// loading the same file again returns the same [`FontId`]. Glyphs are
+    /// rasterized later, at the size they are drawn. PurplePie ships one font,
+    /// `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License; see
+    /// `assets/fonts/OFL.txt` before redistributing it).
+    pub fn load_font(&mut self, path: impl AsRef<Path>) -> Result<FontId> {
+        let file = self.state.assets.locate(path.as_ref())?;
+        self.state.fonts.load(&file)
     }
 
     /// The folder relative asset paths are loaded from (ADR-025), or `None` if
@@ -254,6 +270,33 @@ mod tests {
         let id = ctx.load_texture(sandbox).expect("sandbox texture");
         assert_eq!(ctx.texture_size(id), Some(Vec2::new(16.0, 16.0)));
         assert_eq!(ctx.load_texture(sandbox).expect("again"), id);
+    }
+
+    #[test]
+    fn fonts_load_relative_to_the_asset_root_with_typed_errors() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        let mut ctx = Context::new(&mut state, 0.0);
+        let err = ctx
+            .load_font("fonts/no-such-font.ttf")
+            .expect_err("missing file");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+        // A PNG is not a font.
+        let err = ctx
+            .load_font("textures/sandbox_quadrants.png")
+            .expect_err("not a font");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+        let relative = ctx.load_font("fonts/Poppins-Regular.ttf").expect("font");
+        let absolute = ctx
+            .load_font(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/assets/fonts/Poppins-Regular.ttf"
+            ))
+            .expect("absolute");
+        assert_eq!(relative, absolute, "same file, same font");
+        assert_eq!(state.fonts.len(), 1);
     }
 
     #[test]

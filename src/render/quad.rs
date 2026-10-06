@@ -189,7 +189,12 @@ pub(crate) mod tests {
         world.spawn((Transform2D::default(),));
         world.spawn((Quad::new(Vec2::ONE, Color::WHITE),));
         let mut list = super::super::draw::DrawList::default();
-        list.build(&world, &Mat4::IDENTITY, false);
+        list.build(
+            &world,
+            &super::super::draw::View::flat(Mat4::IDENTITY),
+            &super::super::font::Fonts::default(),
+            &mut super::super::atlas::GlyphAtlas::new(16),
+        );
         assert_eq!(list.instances().len(), 1);
     }
 

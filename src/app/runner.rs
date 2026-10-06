@@ -177,9 +177,15 @@ impl<G: Game> Runner<G> {
             return;
         };
         let state = &self.state;
-        if let Err(error) = renderer.render(&state.world, &state.textures, &state.camera, || {
-            window.pre_present_notify();
-        }) {
+        if let Err(error) = renderer.render(
+            &state.world,
+            &state.textures,
+            &state.fonts,
+            &state.camera,
+            || {
+                window.pre_present_notify();
+            },
+        ) {
             self.fail(event_loop, error);
         }
     }

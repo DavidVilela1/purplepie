@@ -12,15 +12,18 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 ## Current Stage
 
-**Stage 10: Engine/Game API Refinement: complete** (PP-012, PP-017). Stages 0–10 are done.
-Next: post-portfolio work, starting with **PP-018 Text rendering**.
+**Post-portfolio phase P1 (Text), in progress.** Stages 0–10 are done. PP-018 was split: **PP-018a** (fonts, glyph
+atlas, `Text`; ADR-027) is done and verified on Linux; **PP-018b** (measuring/alignment + Breakout HUD text) is next.
+The long-term plan (in-game UI and an editor) is in [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
 
 PurplePie opens a window through its own `Engine`/`Game` API and draws game
 state. Every entity with `Transform2D` + `render::Quad` is drawn as a solid-colour
 rectangle and every entity with `Transform2D` + `render::Sprite` as a textured rectangle, from one
-draw list sorted by the optional `render::Layer` component and batched by texture (ADR-021), as seen through one
+draw list sorted by the optional `render::Layer` component and batched by texture (ADR-021); entities with `Transform2D` +
+`render::Text` are drawn as glyphs from a font loaded with `Context::load_font`, rasterized by `ab_glyph` at their
+on-screen size into one glyph atlas and pixel-aligned (ADR-027), all as seen through one
 engine-owned `render::Camera2D` that games pan and zoom via `Context::camera_mut()` (ADR-022).
 Keyboard and mouse state come through `Context::input()` with engine-owned `KeyCode` / `MouseButton`; every press,
 click and wheel movement reaches `fixed_update` and `update` exactly once, and `Context::cursor_world()` maps the
@@ -48,11 +51,12 @@ executable, else `assets/` in the working directory (ADR-025).
 | `render::Color` | VERIFIED | 4 unit tests + 1 doctest (ADR-015) |
 | `render::Quad` + quad pipeline | VERIFIED (Linux) | 6 unit tests + 1 doctest + 2 ignored GPU tests. Xvfb pixel-exact (ADR-018/019). |
 | `render::Camera2D` | VERIFIED (Linux) | 7 unit tests + 1 doctest (incl. DPI 1.0/1.25/2.0). Xvfb whole-frame checks (ADR-022). |
-| `render::Layer` + draw list (`render/draw.rs`) | VERIFIED (Linux) | 7 unit tests + 1 doctest. Xvfb overlap checks, 0 mismatches (ADR-021). |
-| `render::instance` (`Instance`, `InstanceBuffer`) | VERIFIED | 1 unit test. Shared by quads and sprites (PP-008). |
+| `render::Layer` + draw list (`render/draw.rs`) | VERIFIED (Linux) | 13 unit tests + 2 doctests (incl. text ordering, pixel snapping at zoom/DPI, atlas overflow). Xvfb overlap checks, 0 mismatches (ADR-021, ADR-027). |
+| `render::instance` (`Instance`, `InstanceBuffer`) | VERIFIED | 1 unit test. Shared by quads, sprites and glyphs; 96 B with `uv_rect` since PP-018a. |
+| `render::Text` + `FontId` + font store + glyph atlas (`text.rs`, `font.rs`, `atlas.rs`) | VERIFIED (Linux) | 14 unit tests + 1 doctest (compile-only) + 2 ignored GPU tests (offscreen readback = CPU raster). Xvfb sandbox label (ADR-027). |
 | `render::TextureId` + texture store + PNG decode | VERIFIED | 9 unit tests (ADR-020) |
 | `render::Sprite` + sprite pipeline | VERIFIED (Linux) | 2 unit tests + 1 doctest (compile-only) + 2 ignored GPU tests. Xvfb pixel-exact. (The batching test moved to `draw.rs`.) |
-| `render::Renderer` (wgpu) | VERIFIED | Linux: pixel-exact quads and sprites, resize, unmap/map, fault exits, texture upload/sync. Windows: purple window confirmed (Stage 4). |
+| `render::Renderer` (wgpu) | VERIFIED | Linux: pixel-exact quads, sprites and text, resize, unmap/map, fault exits, texture upload/sync. Windows: purple window confirmed (Stage 4). |
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
 | `input` (`Input`, `KeyCode`, `MouseButton`) + `app::{keymap, state}` | VERIFIED (Linux) | 15 + 5 + 2 unit tests + 1 doctest; Xvfb XTEST key/mouse runs (ADR-024). |
@@ -79,6 +83,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-011: asset root (Stage 9).
 - PP-012: Breakout example game (Stage 10, part 1).
 - PP-017: API review (Stage 10, part 2). Portfolio scope (Stages 0–10) complete.
+- PP-018a: text rendering part 1: fonts, glyph atlas, `Text` (ADR-027).
 
 ## In Progress
 
@@ -86,7 +91,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-018: Text rendering** (post-portfolio). See [TASKS.md](TASKS.md#pp-018-text-rendering--next).
+- **PP-018b: Text layout/alignment + Breakout HUD text** (post-portfolio). See [TASKS.md](TASKS.md#pp-018b-text-layoutalignment--breakout-hud-text--next).
 
 ## Blocked
 
@@ -98,6 +103,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - The draw list is rebuilt and sorted every frame (O(n log n)), even when nothing changed: ~1.8 ms per 10,000 drawables in release (R-18).
 - Textures are never unloaded and keep a CPU copy (ADR-020, R-17). Deferred with generic handles (PD-06) until a second asset kind exists.
 - `EngineConfig::exit_on_escape` is a second way to handle Escape; kept on purpose as a prototyping convenience (ADR-026).
+- Text: the glyph atlas is a fixed 1024² RGBA texture that is cleared (and the frame's text re-laid out) when full; continuous zooming rasterizes every new size (R-25). Fonts are never unloaded.
 - The sandbox reads `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` for automated smoke runs. It is game-side test plumbing, not an engine feature.
 
 ## Known Limitations
@@ -108,7 +114,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. One texture per sprite (no atlas/UV rectangles). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
-- No text rendering yet (PP-018 next); sprites use `Nearest` sampling only (scaled-down sprites alias). Other Breakout friction points were decided in ADR-026 (some deliberately unchanged).
+- Text (PP-018a): no measuring or alignment API yet (PP-018b), no shaping (one glyph per `char`: no ligatures, complex or right-to-left scripts), no font fallback, kerning only from a `kern` table; small light-on-dark text looks a little bolder than in gamma-space renderers (linear blending, R-25); text larger than 512 physical pixels is not drawn. Sprites use `Nearest` sampling only (scaled-down sprites alias). Other Breakout friction points were decided in ADR-026 (some deliberately unchanged).
 - GPU faults are not recoverable. A lost surface or device ends the game with `Error::Render` (ADR-017).
 - The GPU fault test is `#[ignore]` (it needs a GPU), so CI does not run it. Run it with `cargo test -- --ignored`.
 - Under lavapipe (software GPU), idle CPU is about 0.75 s per 3 s (1.4 s per 5 s with sprites, PP-008). This is GPU work done on the CPU, not a busy loop.
@@ -119,6 +125,13 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-06: PP-018a Text rendering, part 1 (post-portfolio; PP-018 split into a + b).**
+  - ADR-027: `ab_glyph` 0.2.32 (+0 crates on Linux, +4 on Windows) rasterizes TrueType/OpenType glyphs into one 1024² glyph atlas drawn by the sprite pipeline.
+  - New public API: `render::Text { content, font, size, color }` (`Text::new(..).with_color(..)`), `render::FontId`, `Context::load_font`.
+  - `Instance` gains `uv_rect` (96 B); text is a third material, drawn after quads and sprites in each layer.
+  - Font shipped: `assets/fonts/Poppins-Regular.ttf` + `OFL.txt`. The sandbox shows a help label.
+  - ROADMAP: long-term plan after Stage 10 (text → runtime essentials incl. in-game UI → editor foundations → debug overlay → scene editor → bigger example game).
 
 - **2026-10-06: PP-017 Stage 10 API review (Stages 0–10 complete).**
   - ADR-026: `Game` + `Context` kept (ADR-008 reviewed), single crate kept (ADR-002 reaffirmed), `exit_on_escape` kept; decisions for Breakout's friction points F1–F10.
@@ -225,29 +238,31 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-017 change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-018a change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (with `missing_docs`) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 117 unit tests + 17 doctests, 5 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
-| `cargo doc --no-deps` | ✅ no warnings |
+| `cargo test --locked` | ✅ PASS: 137 unit tests + 18 doctests, 7 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 7/7, incl. offscreen text = CPU rasterization (≤ 1/255 per pixel, zoom 1 and 2) and text/layer order |
+| `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --example breakout` | ✅ PASS |
-| README getting-started code | ✅ compiles as an example |
-| Breakout autoplay `win` / `lose` | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose end screen | ✅ overlay pixels identical to PP-012 (347,496 px of `(161, 33, 47)`), now a `Hidden`-toggled entity |
-| Breakout window title (`xdotool getwindowname`) | ✅ `PurplePie Breakout - score 2 - lives 3` during play; `… score 14 - lives 0 - game over (Space to play again)` at the end |
-| Breakout XTEST: cursor to x = 300 | ✅ paddle centred at exactly x = 300 (`Camera2D::fit` gives the same zoom as before) |
-| Sandbox: title unchanged, timed 120 frames, keyboard + mouse script, unmap/1×1/resize, close | ✅ `PurplePie Sandbox`; 119 steps / mover 238.0; `=` 3/3, clicks 2/2; exit 0 |
-| Sandbox: camera (0,120)×2 whole-frame model | ✅ 0 mismatches |
-| Window destroyed (fresh display) / missing asset / no GPU | ✅ clean errors, exit 1 |
+| `cargo tree -e normal` unique crates | ✅ Linux 128 (unchanged), Windows target 103 (+4: `ab_glyph` and its 3 deps) |
+| README getting-started code (now with `Text`) | ✅ compiles and passes clippy as an example |
+| Sandbox: whole-frame model outside the label, camera (0,0)×1 | ✅ 0 mismatches (747,628 px) |
+| Sandbox: camera (0,120)×2 / (−300,−280)×2 / (100,40)×0.5 | ✅ only the known cursor-marker pixels (400 / 400 / 25) |
+| Sandbox label vs FreeType (same font, PIL) at 20 / 40 / 10 px | ✅ same layout; IoU 0.77 / 0.86 / 0.59, mean difference 5 / 3 / 14 per 255 (hinting + linear blending) |
+| Sandbox: timed 600 frames + XTEST `=`×3 and 2 clicks | ✅ 600 steps, 10.000 s simulated; `=` 3/3; clicks 2/2; exit 0 |
+| Sandbox: unmap/map/1×1/resize, Escape | ✅ running throughout; exit 0 |
+| Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (3/3 runs) |
+| Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
+| Breakout lose end screen | ✅ unchanged: 347,496 px of `(161, 33, 47)` |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
-Stages 5–10 on Windows have not been seen yet.
+Stages 5–10 and text (PP-018a) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-06. PP-017 done: Stages 0–10 complete. PP-018 (text rendering) is next.
+2026-10-06. PP-018a done (fonts, glyph atlas, `Text`; ADR-027). PP-018b (text alignment + Breakout HUD) is next.

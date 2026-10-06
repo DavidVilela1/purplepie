@@ -20,7 +20,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
 | ADR-007 | `glam` for math | Accepted | Yes (Stage 3, `src/math/`) |
-| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted (reviewed by ADR-026) | Yes: `init`/`fixed_update`/`update`; `Context` = world, time, dt, input, cursor, camera, viewport, textures, asset root, window title, exit |
+| ADR-008 | Engine/game API: `Game` trait + per-call `Context` | Accepted (reviewed by ADR-026) | Yes: `init`/`fixed_update`/`update`; `Context` = world, time, dt, input, cursor, camera, viewport, textures, fonts, asset root, window title, exit |
 | ADR-009 | Renderer is engine-owned, crate-private, and reads the world | Accepted | Yes: ownership/lifecycle (Stage 4); reads `&World` for quads (Stage 5) and sprites (Stage 6) |
 | ADR-010 | Fixed-timestep game loop driven by `RedrawRequested` | Accepted (pacing clause superseded by ADR-014) | Yes: Stages 1–2 |
 | ADR-011 | Error handling: one `thiserror` enum, `log` facade, no `unwrap` | Accepted | Yes: `Error` (Stages 1–4), lints; logging via ADR-016 |
@@ -39,6 +39,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-024 | Keyboard input: own `KeyCode` (physical keys), `Input` with per-callback edges latched for fixed steps | Accepted (extended to the mouse by PP-016) | Yes (Stage 8, PP-010 keyboard, PP-016 mouse) |
 | ADR-025 | Asset root: relative asset paths resolve against one folder chosen at startup (config, else next to the executable, else the working directory) | Accepted | Yes (Stage 9, PP-011) |
 | ADR-026 | API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`; `missing_docs` enforced | Accepted | Yes (Stage 10, PP-017) |
+| ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component; `FontId` handles; Poppins shipped (OFL) | Accepted | Partly (PP-018a: fonts, atlas, `Text`; alignment and Breakout HUD in PP-018b) |
 
 ---
 
@@ -835,7 +836,7 @@ code sets the pattern Stage 6 (sprites, batching) extends. Simplicity first (ARC
   buffer and no bind group**.
 - One **per-instance buffer** of `QuadInstance { clip_from_local: mat4, color: vec4 }`
   (renamed `Instance` in `src/render/instance.rs` by PP-008, which shares it with sprites; ADR-020)
-  (80 bytes, `#[repr(C)]`, `bytemuck::Pod`). The CPU computes
+  (80 bytes, `#[repr(C)]`, `bytemuck::Pod`; 96 bytes with `uv_rect` since ADR-027). The CPU computes
   `view_projection × Transform2D::to_mat4() × scale(size)` per quad. The buffer grows
   to the next power of two when needed, and the instance `Vec` is reused every frame.
 - Colours are converted per target format on the CPU (ADR-015). Blending is
@@ -1269,13 +1270,85 @@ A second example game (re-check F4–F6 with fresh evidence), text rendering (PP
 
 ---
 
+# ADR-027: Text: `ab_glyph` + one glyph atlas drawn by the sprite pipeline; `Text` component; `FontId` handles
+
+## Status
+Accepted (2026-10-06, PP-018a). Resolves friction F1 (ADR-026) in part: alignment and the Breakout HUD follow in PP-018b.
+Extends ADR-019/ADR-020 (instance data gains a UV rectangle) and ADR-021 (a third material, drawn last in each layer).
+Decides PD-06 for now: fonts get their own `FontId` like `TextureId`; generic handles stay deferred.
+
+## Context
+Breakout had to fake score and lives with sprites and the window title. Games need on-screen text that follows the camera,
+layers and DPI like everything else, without exposing GPU types (ADR-009). Options were a font-rasterizing dependency or a
+hand-made bitmap font.
+
+## Decision
+- **Rasterizer: `ab_glyph` 0.2.32** (Apache-2.0; `ab_glyph_rasterizer`, `owned_ttf_parser`, `ttf-parser`), default
+  features off (`std` only). Measured with `cargo tree -e normal` on 2026-10-06: **+0 crates on Linux** (winit's Wayland
+  decorations already depend on it) and **+4 on Windows** (99 → 103). `fontdue` 0.9.4 would add 4 on Linux and 5 on
+  Windows (its `hashbrown` 0.15 is a second copy) and needs `--no-default-features` work to trim. Used only in `src/render/`.
+- **Fonts are an asset kind like textures** (ADR-020 pattern): `Context::load_font(path) -> Result<FontId>` resolves the
+  path through the asset root (ADR-025), reads and parses the file immediately (`Error::Asset` on failure), and deduplicates
+  by path. The CPU store (`render::Fonts`) lives in `EngineState`; fonts are never unloaded.
+- **`render::Text { content, font, size, color }`** is a component drawn with `Transform2D`. The transform's position is
+  the left end of the first line's baseline; `size` is the em size in world units (like CSS `font-size`); `'\n'` starts
+  a new line (ascent − descent + line gap, rounded); other control characters are skipped; no shaping (one glyph per
+  `char`), kerning only from a `kern` table. `Hidden` and `Layer` apply. Within a layer: quads, then sprites, then text.
+- **Rasterize at the on-screen size.** Per text, the draw list computes physical pixels per local unit
+  (camera zoom × DPI × transform scale; the larger axis if uneven), rasterizes glyphs at `size` × that (cached per font,
+  glyph, and em size in 1/64 px), lays them out with pen positions rounded to whole pixels, and moves the text origin to
+  the nearest physical pixel corner. Axis-aligned text therefore maps atlas texels 1:1 onto pixels. Text larger than
+  512 physical pixels is skipped.
+- **One glyph atlas**, 1024×1024 RGBA (4 MiB), owned by the renderer: white RGB with coverage in alpha, a 1-texel
+  transparent border per glyph, shelf packing, dirty rows uploaded before drawing. When it is full mid-frame it is
+  cleared once and the frame's text is laid out again; glyphs that still don't fit are skipped. It is sampled with a
+  **linear** sampler (exact at texel centres; smooth for rotated or scaled text) through the **sprite pipeline**: the
+  shared `Instance` gains `uv_rect` (96 bytes now); sprites use the whole texture, quads ignore it. One draw call per
+  (layer, text) run.
+- **Font shipped:** `assets/fonts/Poppins-Regular.ttf` (160 KB, unmodified) with `assets/fonts/OFL.txt` (SIL Open Font
+  License 1.1; copyright line from the font's `name` table, licence text from the Rust toolchain's copy). Games may use any
+  `.ttf`/`.otf`.
+
+## Alternatives Considered
+- **Bitmap font (pre-rendered PNG):** no dependency, but one size, ASCII only, blurry or blocky when the camera zooms, and
+  a custom format to maintain.
+- **`fontdue`:** fast and popular; slightly larger dependency cost here and nothing `ab_glyph` lacks for this scope.
+- **`glyphon`/`cosmic-text` (shaping, wgpu text renderer):** proper shaping and font fallback, but a large dependency tree,
+  its own wgpu pipeline (version lock-step with wgpu), and text outside our draw list and layers.
+- **Rasterize once at a fixed size and scale on the GPU:** blurry when zoomed in, aliased when zoomed out.
+- **An `R8` atlas and a dedicated text pipeline:** a quarter of the memory, but a third pipeline and shader; the RGBA atlas
+  reuses the sprite pipeline unchanged.
+
+## Rationale
+The cheapest dependency that rasterizes real fonts, and a design that keeps text inside the existing draw list, layers,
+camera and DPI handling, so it behaves like every other drawable and is testable pixel for pixel.
+
+## Consequences
+### Positive
+- Verified: an offscreen GPU test renders text at fractional positions (zoom 1 and 2) and matches the CPU rasterization
+  within 1/255 on every pixel; the Linux sandbox shows its label with the rest of the frame unchanged (whole-frame model
+  outside the label: 0 mismatches) and close to FreeType's rendering of the same font.
+- `uv_rect` also enables sprite sheets later without another instance-format change.
+### Negative
+- No shaping (no ligatures, complex scripts, right-to-left), no font fallback, no measuring or alignment API yet (PP-018b).
+- Coverage is blended in linear space on sRGB targets (ADR-015), so light-on-dark text looks slightly bolder than
+  gamma-space renderers at small sizes.
+- Continuous zooming rasterizes every new size; a full atlas costs a re-layout (logged once at `info`).
+- Fonts and their glyph caches are never unloaded (like textures).
+
+## Revisit Conditions
+A need for shaping or non-Latin scripts (consider `cosmic-text`/`swash`), many sizes or very large text (signed distance
+fields), a third asset kind or unloading (generic handles, PD-06), or atlas resets showing up in profiles.
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02. The file-location part of PD-06 was resolved by ADR-025 on 2026-10-06.
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02. The file-location part of PD-06 was resolved by ADR-025 on 2026-10-06; fonts, the second asset kind, follow the texture pattern with their own `FontId` (ADR-027).
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-06 | Generic asset handles and unloading (textures: ADR-020; where files are found: ADR-025) | Generalize ADR-020 into a typed `Handle<T>` + store with unloading **when a second asset kind exists** (fonts, sounds) | Not scheduled: first task that adds a second asset kind |
+| PD-06 | Generic asset handles and unloading (textures: ADR-020; where files are found: ADR-025; fonts: ADR-027) | Generalize `TextureId`/`FontId` into a typed `Handle<T>` + store with unloading when a **third** asset kind (sounds) arrives or unloading is needed | Not scheduled: the audio task, or the first task that needs unloading |

@@ -195,6 +195,12 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   seeded generator); current values are in TASKS (PP-012). Change them only with an explained gameplay or engine change.
   Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
   scripts that also started Xvfb (it waits for the server forever).
+- **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
+  `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
+  rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;
+  its origin lands on `round(W/2 + (−600 − cx)·zoom), round(H/2 − (−300 − cy)·zoom)`. Exclude the label's box from the
+  whole-frame camera model (0 mismatches elsewhere) and compare the box with FreeType (PIL `ImageFont.truetype`, same font,
+  `anchor="ls"`): expect the same layout and an IoU around 0.6–0.9 (hinting and linear blending differ), not equality.
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
 - **Asset root (Stage 9+, ADR-025):** run with `PURPLEPIE_LOG=info` and check the `asset root:` line in four layouts:
@@ -232,6 +238,8 @@ driver or Mesa is needed to run from Stage 4.
 
 Every completed stage ends with `PurplePie-stage-N.zip`. A documentation
 update inside a stage re-issues that stage's archive.
+After Stage 10 there are no numbered stages: each post-portfolio task ends with
+`PurplePie-<task id>.zip` (for example `PurplePie-PP-018a.zip`).
 
 ```bash
 cd <parent of PurplePie>
@@ -254,6 +262,10 @@ give the exact commands to apply it to the owner's repo:
 ```powershell
 # ALWAYS first (owner rule): delete the copy the app may drop into the repo
 Remove-Item -Recurse -Force "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0\PurplePie\Claude outputs" -ErrorAction SilentlyContinue
+
+# The owner sometimes edits on GitHub: bring those commits in before expanding
+cd "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0\PurplePie"
+git pull --rebase origin main
 
 # ZIP root is PurplePie/, so the destination is the folder that CONTAINS the repo
 Expand-Archive -Path "$HOME\Downloads\<zip name>" -DestinationPath "C:\Users\35193\OneDrive\Ambiente de Trabalho\Programing\3-major-software-projects\PurplePie\PurplePie-stage-0" -Force

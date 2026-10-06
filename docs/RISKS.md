@@ -34,6 +34,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
 | R-23 | CI platform jobs never exercised yet | CLOSED | — | Low | all |
 | R-24 | Asset paths depend on the working directory | MITIGATED | — | Low | 6, 9 |
+| R-25 | Text quality and glyph-atlas pressure | OPEN | Medium | Low | PP-018 |
+| R-26 | Third-party asset licensing (shipped font) | MITIGATED | — | Medium | PP-018 |
 
 ## Details
 
@@ -109,6 +111,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Mitigation:** Version stays 0.x. API refinement is a planned stage. Changes are recorded in DECISIONS.
 - **Fallback:** Accept breaking changes before 1.0.
 - **PP-012/PP-017:** a complete game needed no engine changes; the review (ADR-026) added three small APIs and recorded decisions for all ten friction points. `missing_docs` is enforced. Remaining exposure: text rendering (PP-018) will add new public types.
+- **PP-018a:** added `Text`, `FontId` and `Context::load_font` (ADR-027). `Text` fields are public plain data like `Sprite`; alignment/anchors (PP-018b) will add a field, which is a breaking change for struct-literal users (constructors are the documented path).
 
 ### R-14: Windows build environment (MSVC linker)
 - **Trigger (occurred 2026-09-30):** `cargo test` failed with `linker link.exe not found` on the owner's Windows laptop. `check` and `clippy` passed because they do not link.
@@ -146,7 +149,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-20: Compile-time growth in a single crate
 - **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux (128 after `image` in PP-008). The spike took about 1m21s for a clean debug build in Cowork.
-- **Mitigation:** Incremental builds. Stage 10 review (ADR-026) kept the single crate: build cost is dominated by dependencies, not by PurplePie's ~5,800 lines. Revisit with the first heavy optional dependency (text, audio).
+- **Mitigation:** Incremental builds. Stage 10 review (ADR-026) kept the single crate: build cost is dominated by dependencies, not by PurplePie's ~5,800 lines. Revisit with the first heavy optional dependency (text, audio). PP-018a's `ab_glyph` added no crates on Linux and 4 on Windows, so no split was needed for text.
 - **Fallback:** Workspace split (ADR-002 revisit).
 
 ### R-21: ECS integration complexity
@@ -178,3 +181,22 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Mitigation (PP-008):** the error is a clear `Error::Asset` naming the path, never a panic. The sandbox builds an absolute path from `CARGO_MANIFEST_DIR` at compile time.
 - **Mitigated (PP-011, ADR-025):** relative paths resolve against an asset root: `EngineConfig::with_asset_root`, else `assets/` next to the executable, else `assets/` in the working directory. Verified for `cargo run`, a shipped layout launched from elsewhere, and the no-folder error. Remaining: `cargo run` from a project subfolder finds no root; macOS `.app` bundles are not handled.
 - **Fallback:** embed assets in the binary for distribution.
+
+### R-25: Text quality and glyph-atlas pressure
+- **Trigger:** small light-on-dark text looks heavier than in other renderers (coverage blended in linear space on sRGB
+  targets, ADR-015/027); continuous zooming or many sizes rasterize many glyph variants and can fill the 1024² atlas
+  (cleared and re-laid out once per frame, logged at `info` the first time); no shaping or font fallback.
+- **Mitigation:** glyphs are cached per 1/64 px of em size; the atlas is cleared rather than grown; text > 512 px is
+  skipped; layout is pixel-exact and GPU output matches the CPU rasterization (ignored GPU test). Linear sampling keeps
+  rotated text smooth.
+- **Fallback:** a coverage gamma/contrast adjustment (candidate for PP-018b after the owner's Windows look), a larger or
+  growing atlas, size bucketing while zooming, or signed-distance-field glyphs; `cosmic-text` for shaping (ADR-027
+  revisit conditions).
+
+### R-26: Third-party asset licensing (shipped font)
+- **Trigger:** the repository now ships a third-party font (`assets/fonts/Poppins-Regular.ttf`) under the SIL Open Font
+  License 1.1, which differs from the code's MIT OR Apache-2.0.
+- **Mitigation:** the font is unmodified (no Reserved Font Name issue), its licence and copyright line are in
+  `assets/fonts/OFL.txt`, and the README's License section says assets may carry their own licences. Games that ship it
+  must include `OFL.txt`; the OFL allows bundling with software, including commercial software.
+- **Fallback:** replace it with any other OFL/public-domain font; nothing in the engine depends on this specific font.

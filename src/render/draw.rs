@@ -1,23 +1,28 @@
-//! Draw order and batching (ADR-021).
+//! Draw order and batching (ADR-021, ADR-027).
 //!
-//! Every frame, all drawables (quads and sprites) are collected into one list,
-//! sorted by [`Layer`], then by material (quads, then sprites grouped by
-//! texture), then by entity. Consecutive items with the same layer and material
-//! become one [`Batch`], which is one draw call.
+//! Every frame, all drawables (quads, sprites and text glyphs) are collected
+//! into one list, sorted by [`Layer`], then by material (quads, then sprites
+//! grouped by texture, then text), then by entity. Consecutive items with the
+//! same layer and material become one [`Batch`], which is one draw call.
 
 use std::ops::Range;
 
+use super::atlas::GlyphAtlas;
+use super::font::Fonts;
 use super::instance::Instance;
 use super::quad::Quad;
 use super::sprite::Sprite;
+use super::text::{self, MAX_EM_PIXELS, Text};
 use super::texture::TextureId;
 use crate::ecs::{Entity, World, hecs::Without};
-use crate::math::{Mat4, Transform2D};
+use crate::math::{Mat4, Transform2D, Vec2};
+use glam::Vec3;
 
-/// Draw order for an entity's [`Quad`] or [`Sprite`]: higher layers are drawn
-/// on top of lower ones. Entities without a `Layer` are on layer 0.
+/// Draw order for an entity's [`Quad`], [`Sprite`] or [`Text`]: higher layers
+/// are drawn on top of lower ones. Entities without a `Layer` are on layer 0.
 ///
-/// Within one layer, quads are drawn first, then sprites grouped by texture.
+/// Within one layer, quads are drawn first, then sprites grouped by texture,
+/// then text.
 /// The order inside such a group is deterministic but not part of the API, so
 /// give overlapping drawables different layers when their order matters.
 ///
@@ -36,8 +41,8 @@ use crate::math::{Mat4, Transform2D};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Layer(pub i32);
 
-/// Marks an entity that is not drawn, without removing its [`Quad`] or
-/// [`Sprite`]: insert it to hide, remove it to show again.
+/// Marks an entity that is not drawn, without removing its [`Quad`],
+/// [`Sprite`] or [`Text`]: insert it to hide, remove it to show again.
 ///
 /// ```
 /// use purplepie::math::{Transform2D, Vec2};
@@ -52,23 +57,35 @@ pub struct Layer(pub i32);
 pub struct Hidden;
 
 /// What a batch is drawn with: the solid-colour quad pipeline, or the sprite
-/// pipeline with one texture bound.
+/// pipeline with one texture or the glyph atlas bound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Material {
     Color,
     Texture(TextureId),
+    Glyphs,
 }
 
 impl Material {
-    /// Sort rank within a layer: quads first, then sprites by texture.
+    /// Sort rank within a layer: quads first, then sprites by texture, then text.
     fn rank(self) -> u32 {
         match self {
             Material::Color => 0,
-            Material::Texture(id) => {
-                u32::try_from(id.index()).map_or(u32::MAX, |i| i.saturating_add(1))
-            }
+            Material::Texture(id) => u32::try_from(id.index())
+                .map_or(u32::MAX - 1, |i| i.saturating_add(1).min(u32::MAX - 1)),
+            Material::Glyphs => u32::MAX,
         }
     }
+}
+
+/// How this frame is viewed: everything the draw list needs besides the world.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct View {
+    /// World → clip transform (ADR-022).
+    pub(crate) view_projection: Mat4,
+    /// Drawing area in physical pixels, for pixel-exact text.
+    pub(crate) physical_size: Vec2,
+    /// Colours are converted to linear for sRGB targets (ADR-015).
+    pub(crate) target_is_srgb: bool,
 }
 
 /// A run of consecutive instances with the same layer and material: one draw call.
@@ -80,8 +97,9 @@ pub(crate) struct Batch {
 }
 
 /// Total order of a drawable: layer, then material, then entity index (the
-/// tie-breaker that makes the order independent of ECS query order).
-type SortKey = (i32, u32, u32);
+/// tie-breaker that makes the order independent of ECS query order), then the
+/// glyph's position in its text (0 for quads and sprites).
+type SortKey = (i32, u32, u32, u32);
 
 struct Item {
     key: SortKey,
@@ -99,18 +117,20 @@ pub(crate) struct DrawList {
 }
 
 impl DrawList {
-    /// Rebuilds the list from every `(Transform2D, Quad)` and `(Transform2D,
-    /// Sprite)` entity in `world` (read-only, ADR-009).
-    pub(crate) fn build(&mut self, world: &World, view_projection: &Mat4, target_is_srgb: bool) {
+    /// Rebuilds the list from every `(Transform2D, Quad)`, `(Transform2D,
+    /// Sprite)` and `(Transform2D, Text)` entity in `world` (read-only,
+    /// ADR-009). Glyphs missing from `atlas` are rasterized into it; if it
+    /// fills up, it is cleared and this frame's text is laid out again.
+    pub(crate) fn build(
+        &mut self,
+        world: &World,
+        view: &View,
+        fonts: &Fonts,
+        atlas: &mut GlyphAtlas,
+    ) {
         self.items.clear();
-        let mut push = |entity: Entity, layer: Option<&Layer>, material: Material, instance| {
-            let layer = layer.copied().unwrap_or_default().0;
-            self.items.push(Item {
-                key: (layer, material.rank(), entity.id()),
-                material,
-                instance,
-            });
-        };
+        let view_projection = &view.view_projection;
+        let target_is_srgb = view.target_is_srgb;
         for (entity, transform, quad, layer) in world
             .query::<Without<(Entity, &Transform2D, &Quad, Option<&Layer>), &Hidden>>()
             .iter()
@@ -122,7 +142,7 @@ impl DrawList {
                 quad.color,
                 target_is_srgb,
             );
-            push(entity, layer, Material::Color, instance);
+            self.push(entity, layer, Material::Color, 0, instance);
         }
         for (entity, transform, sprite, layer) in world
             .query::<Without<(Entity, &Transform2D, &Sprite, Option<&Layer>), &Hidden>>()
@@ -135,12 +155,32 @@ impl DrawList {
                 sprite.tint,
                 target_is_srgb,
             );
-            push(entity, layer, Material::Texture(sprite.texture), instance);
+            self.push(
+                entity,
+                layer,
+                Material::Texture(sprite.texture),
+                0,
+                instance,
+            );
+        }
+        let text_start = self.items.len();
+        if self.push_text(world, view, fonts, atlas, false).is_err() {
+            // The atlas filled up mid-frame: glyphs placed so far may be
+            // evicted by a reset, so start this frame's text over.
+            self.items.truncate(text_start);
+            atlas.reset();
+            log::debug!("glyph atlas full; cleared (reset #{})", atlas.resets());
+            if atlas.resets() == 1 {
+                log::info!(
+                    "glyph atlas was full and has been cleared; text may cost more this frame"
+                );
+            }
+            let skipped = self.push_text(world, view, fonts, atlas, true);
+            debug_assert!(skipped.is_ok());
         }
 
-        // Keys are unique (they end with the entity index, and an entity has at
-        // most one quad and one sprite, which differ in rank), so an unstable
-        // sort is still deterministic.
+        // Keys are unique (entity index, then glyph index; an entity's quad,
+        // sprite and text differ in rank), so an unstable sort is still deterministic.
         self.items.sort_unstable_by_key(|item| item.key);
 
         self.instances.clear();
@@ -162,6 +202,84 @@ impl DrawList {
         }
     }
 
+    fn push(
+        &mut self,
+        entity: Entity,
+        layer: Option<&Layer>,
+        material: Material,
+        index: u32,
+        instance: Instance,
+    ) {
+        let layer = layer.copied().unwrap_or_default().0;
+        self.items.push(Item {
+            key: (layer, material.rank(), entity.id(), index),
+            material,
+            instance,
+        });
+    }
+
+    /// Lays out every visible `Text` and pushes one item per glyph.
+    /// Returns `Err` if the atlas fills up (only when `skip_when_full` is false).
+    fn push_text(
+        &mut self,
+        world: &World,
+        view: &View,
+        fonts: &Fonts,
+        atlas: &mut GlyphAtlas,
+        skip_when_full: bool,
+    ) -> Result<(), super::atlas::AtlasFull> {
+        let atlas_size = atlas.size() as f32;
+        for (entity, transform, text, layer) in world
+            .query::<Without<(Entity, &Transform2D, &Text, Option<&Layer>), &Hidden>>()
+            .iter()
+        {
+            let Some(font) = fonts.get(text.font) else {
+                continue;
+            };
+            let Some(placement) = TextPlacement::new(view, transform, text.size) else {
+                continue;
+            };
+            let key_base = (
+                layer.copied().unwrap_or_default().0,
+                Material::Glyphs.rank(),
+                entity.id(),
+            );
+            let mut index = 0_u32;
+            let items = &mut self.items;
+            text::layout(
+                &text.content,
+                text.font,
+                font,
+                placement.em_px,
+                atlas,
+                skip_when_full,
+                |glyph| {
+                    let (w, h) = glyph.image.size;
+                    let (u, v) = glyph.image.texel;
+                    let uv_rect = [
+                        u as f32 / atlas_size,
+                        v as f32 / atlas_size,
+                        w as f32 / atlas_size,
+                        h as f32 / atlas_size,
+                    ];
+                    let clip_from_local = placement.glyph_matrix(glyph.position, (w, h));
+                    items.push(Item {
+                        key: (key_base.0, key_base.1, key_base.2, index),
+                        material: Material::Glyphs,
+                        instance: Instance::from_matrix(
+                            &clip_from_local,
+                            text.color,
+                            uv_rect,
+                            view.target_is_srgb,
+                        ),
+                    });
+                    index = index.saturating_add(1);
+                },
+            )?;
+        }
+        Ok(())
+    }
+
     /// All instances in draw order.
     pub(crate) fn instances(&self) -> &[Instance] {
         &self.instances
@@ -170,6 +288,78 @@ impl DrawList {
     /// The draw calls, in order.
     pub(crate) fn batches(&self) -> &[Batch] {
         &self.batches
+    }
+}
+
+/// Where a text's pixel layout goes: the text's local space (its transform)
+/// mapped to clip space, nudged so the origin sits on a physical pixel corner.
+struct TextPlacement {
+    clip_from_text: Mat4,
+    /// Physical pixels per local unit (the larger axis if scaled unevenly).
+    pixels_per_unit: f32,
+    /// Em size in physical pixels: what glyphs are rasterized at.
+    em_px: f32,
+}
+
+impl TextPlacement {
+    /// `None` if the text would be invisible (zero scale, empty viewport) or
+    /// too large to rasterize.
+    fn new(view: &View, transform: &Transform2D, size: f32) -> Option<Self> {
+        let half = view.physical_size * 0.5;
+        if !(half.x > 0.0 && half.y > 0.0) {
+            return None;
+        }
+        let clip_from_text = view.view_projection * transform.to_mat4();
+        // Length of each local axis in physical pixels.
+        let axis_px = |axis: glam::Vec4| Vec2::new(axis.x * half.x, axis.y * half.y).length();
+        let pixels_per_unit = axis_px(clip_from_text.x_axis).max(axis_px(clip_from_text.y_axis));
+        let em_px = size * pixels_per_unit;
+        let usable = |v: f32| v.is_finite() && v > 0.0;
+        if !usable(pixels_per_unit) || !usable(em_px) {
+            return None;
+        }
+        if em_px > MAX_EM_PIXELS {
+            log::debug!("text at {em_px} px is larger than {MAX_EM_PIXELS} px; not drawn");
+            return None;
+        }
+        // The origin in physical pixels (top-left origin, +Y down), moved to
+        // the nearest pixel corner so glyph texels land exactly on pixels.
+        let origin = clip_from_text.w_axis;
+        let p = Vec2::new((origin.x + 1.0) * half.x, (1.0 - origin.y) * half.y);
+        let nudge = p.round() - p;
+        let snap = Mat4::from_translation(Vec3::new(nudge.x / half.x, -nudge.y / half.y, 0.0));
+        Some(Self {
+            clip_from_text: snap * clip_from_text,
+            pixels_per_unit,
+            em_px,
+        })
+    }
+
+    /// The unit square → clip transform for a `size` glyph bitmap whose
+    /// top-left corner is `position` pixels from the origin (+Y down).
+    fn glyph_matrix(&self, position: (i32, i32), size: (u32, u32)) -> Mat4 {
+        let k = self.pixels_per_unit;
+        let (w, h) = (size.0 as f32, size.1 as f32);
+        let centre = Vec3::new(
+            (position.0 as f32 + w * 0.5) / k,
+            -(position.1 as f32 + h * 0.5) / k,
+            0.0,
+        );
+        self.clip_from_text
+            * Mat4::from_translation(centre)
+            * Mat4::from_scale(Vec3::new(w / k, h / k, 1.0))
+    }
+}
+
+#[cfg(test)]
+impl View {
+    /// A non-sRGB 200×100 px view through `view_projection`.
+    pub(crate) fn flat(view_projection: Mat4) -> Self {
+        Self {
+            view_projection,
+            physical_size: Vec2::new(200.0, 100.0),
+            target_is_srgb: false,
+        }
     }
 }
 
@@ -186,7 +376,12 @@ mod tests {
 
     fn built(world: &World) -> DrawList {
         let mut list = DrawList::default();
-        list.build(world, &Mat4::IDENTITY, false);
+        list.build(
+            world,
+            &View::flat(Mat4::IDENTITY),
+            &Fonts::default(),
+            &mut GlyphAtlas::new(16),
+        );
         list
     }
 
@@ -317,9 +512,10 @@ mod tests {
         let mut world = World::new();
         let e = world.spawn((Transform2D::default(), quad(0x000001)));
         let mut list = DrawList::default();
-        list.build(&world, &Mat4::IDENTITY, false);
+        let (fonts, mut atlas) = (Fonts::default(), GlyphAtlas::new(16));
+        list.build(&world, &View::flat(Mat4::IDENTITY), &fonts, &mut atlas);
         world.despawn(e).expect("entity exists");
-        list.build(&world, &Mat4::IDENTITY, false);
+        list.build(&world, &View::flat(Mat4::IDENTITY), &fonts, &mut atlas);
         assert!(list.instances().is_empty());
         assert!(list.batches().is_empty());
     }
@@ -333,7 +529,11 @@ mod tests {
         ));
         let vp = super::super::Camera2D::default().view_projection(Vec2::new(200.0, 100.0));
         let mut list = DrawList::default();
-        list.build(&world, &vp, true);
+        let view = View {
+            target_is_srgb: true,
+            ..View::flat(vp)
+        };
+        list.build(&world, &view, &Fonts::default(), &mut GlyphAtlas::new(16));
         let instance = list.instances()[0];
         let m = Mat4::from_cols_array_2d(&instance.clip_from_local);
         let corner = m * glam::Vec4::new(0.5, 0.5, 0.0, 1.0);
@@ -349,5 +549,242 @@ mod tests {
             "sRGB target: linear colour"
         );
         assert_eq!(instance.color[3], 0.5);
+    }
+
+    /// A 256×128 px view (1 logical = 1 physical pixel) through `camera`.
+    fn text_view(camera: super::super::Camera2D) -> View {
+        let size = Vec2::new(256.0, 128.0);
+        View {
+            view_projection: camera.view_projection(size),
+            physical_size: size,
+            target_is_srgb: false,
+        }
+    }
+
+    fn built_with_text(
+        world: &World,
+        view: &View,
+        fonts: &Fonts,
+        atlas: &mut GlyphAtlas,
+    ) -> DrawList {
+        let mut list = DrawList::default();
+        list.build(world, view, fonts, atlas);
+        list
+    }
+
+    /// The physical-pixel rectangle (left, top, right, bottom) an instance covers.
+    fn pixel_rect(instance: &Instance, view: &View) -> [f32; 4] {
+        let m = Mat4::from_cols_array_2d(&instance.clip_from_local);
+        let to_px = |x: f32, y: f32| {
+            let c = m * glam::Vec4::new(x, y, 0.0, 1.0);
+            Vec2::new(
+                (c.x + 1.0) * 0.5 * view.physical_size.x,
+                (1.0 - c.y) * 0.5 * view.physical_size.y,
+            )
+        };
+        let (a, b) = (to_px(-0.5, 0.5), to_px(0.5, -0.5));
+        [a.x, a.y, b.x, b.y]
+    }
+
+    #[test]
+    fn text_is_drawn_after_quads_and_sprites_in_one_batch_per_layer() {
+        let [tex] = texture_ids();
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut atlas = GlyphAtlas::new(256);
+        let mut world = World::new();
+        world.spawn((Transform2D::default(), Text::new("Hi", font, 16.0)));
+        world.spawn((Transform2D::default(), Text::new("yo", font, 16.0)));
+        world.spawn((Transform2D::default(), Sprite::new(tex, Vec2::ONE)));
+        world.spawn((Transform2D::default(), quad(0x000001)));
+        world.spawn((
+            Transform2D::default(),
+            Text::new("top", font, 16.0),
+            Layer(1),
+        ));
+        world.spawn((
+            Transform2D::default(),
+            Text::new("gone", font, 16.0),
+            Hidden,
+        ));
+        let view = text_view(super::super::Camera2D::default());
+        let list = built_with_text(&world, &view, &fonts, &mut atlas);
+        let batches: Vec<(i32, Material, u32)> = list
+            .batches()
+            .iter()
+            .map(|b| (b.layer, b.material, b.instances.end - b.instances.start))
+            .collect();
+        assert_eq!(
+            batches,
+            [
+                (0, Material::Color, 1),
+                (0, Material::Texture(tex), 1),
+                (0, Material::Glyphs, 4),
+                (1, Material::Glyphs, 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn glyph_quads_land_on_whole_pixels_at_their_bitmap_size() {
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut world = World::new();
+        // A fractional position: the origin is snapped to the nearest pixel corner.
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-100.3, 10.6)),
+            Text::new("Ag", font, 20.0),
+        ));
+        for zoom in [1.0, 2.0, 0.75] {
+            let camera = super::super::Camera2D::new(Vec2::new(3.25, -1.5), zoom);
+            let view = text_view(camera);
+            let mut atlas = GlyphAtlas::new(256);
+            let list = built_with_text(&world, &view, &fonts, &mut atlas);
+            assert_eq!(list.instances().len(), 2);
+            // The same glyphs laid out directly at the on-screen size.
+            let mut expected = Vec::new();
+            text::layout(
+                "Ag",
+                font,
+                fonts.get(font).expect("font"),
+                20.0 * zoom,
+                &mut atlas,
+                false,
+                |g| expected.push(g),
+            )
+            .expect("fits");
+            let origin = camera
+                .world_to_screen(Vec2::new(-100.3, 10.6), view.physical_size)
+                .round();
+            for (instance, glyph) in list.instances().iter().zip(&expected) {
+                let [l, t, r, b] = pixel_rect(instance, &view);
+                let (w, h) = glyph.image.size;
+                let want = [
+                    origin.x + glyph.position.0 as f32,
+                    origin.y + glyph.position.1 as f32,
+                    origin.x + (glyph.position.0 + w as i32) as f32,
+                    origin.y + (glyph.position.1 + h as i32) as f32,
+                ];
+                for (got, want) in [l, t, r, b].into_iter().zip(want) {
+                    assert!((got - want).abs() < 1e-3, "zoom {zoom}: {got} vs {want}");
+                }
+                let s = atlas.size() as f32;
+                assert_eq!(
+                    instance.uv_rect,
+                    [
+                        glyph.image.texel.0 as f32 / s,
+                        glyph.image.texel.1 as f32 / s,
+                        w as f32 / s,
+                        h as f32 / s
+                    ]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn text_is_rasterized_for_physical_pixels_at_any_dpi() {
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-50.4, 7.3)),
+            Text::new("Hx", font, 16.0),
+        ));
+        for scale in [1.0_f32, 1.25, 2.0] {
+            let logical = Vec2::new(256.0, 128.0);
+            let view = View {
+                view_projection: super::super::Camera2D::default().view_projection(logical),
+                physical_size: logical * scale,
+                target_is_srgb: false,
+            };
+            let mut atlas = GlyphAtlas::new(256);
+            let list = built_with_text(&world, &view, &fonts, &mut atlas);
+            let mut expected = Vec::new();
+            text::layout(
+                "Hx",
+                font,
+                fonts.get(font).expect("font"),
+                16.0 * scale,
+                &mut atlas,
+                false,
+                |g| expected.push(g.image.size),
+            )
+            .expect("fits");
+            assert_eq!(list.instances().len(), 2);
+            for (instance, (w, h)) in list.instances().iter().zip(expected) {
+                let [l, t, r, b] = pixel_rect(instance, &view);
+                for edge in [l, t, r, b] {
+                    assert!(
+                        (edge - edge.round()).abs() < 1e-3,
+                        "scale {scale}: edge {edge}"
+                    );
+                }
+                assert!(((r - l) - w as f32).abs() < 1e-3 && ((b - t) - h as f32).abs() < 1e-3);
+            }
+        }
+    }
+
+    #[test]
+    fn invisible_or_oversized_text_is_skipped() {
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut atlas = GlyphAtlas::new(256);
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::default().with_scale(Vec2::ZERO),
+            Text::new("A", font, 16.0),
+        ));
+        world.spawn((Transform2D::default(), Text::new("A", font, 0.0)));
+        world.spawn((Transform2D::default(), Text::new("A", font, f32::NAN)));
+        world.spawn((Transform2D::default(), Text::new("A", font, 600.0)));
+        let view = text_view(super::super::Camera2D::default());
+        assert!(
+            built_with_text(&world, &view, &fonts, &mut atlas)
+                .instances()
+                .is_empty()
+        );
+        let empty = View {
+            physical_size: Vec2::ZERO,
+            ..view
+        };
+        world.spawn((Transform2D::default(), Text::new("A", font, 16.0)));
+        assert!(
+            built_with_text(&world, &empty, &fonts, &mut atlas)
+                .instances()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_full_atlas_is_cleared_once_and_the_frame_is_laid_out_again() {
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut atlas = GlyphAtlas::new(128);
+        let mut world = World::new();
+        // Each text fits alone; together they overflow a 128×128 atlas.
+        world.spawn((
+            Transform2D::default(),
+            Text::new("ABCDEFGHIJKLM", font, 40.0),
+        ));
+        world.spawn((
+            Transform2D::default(),
+            Text::new("NOPQRSTUVWXYZ", font, 40.0),
+        ));
+        let view = text_view(super::super::Camera2D::default());
+        let list = built_with_text(&world, &view, &fonts, &mut atlas);
+        assert_eq!(atlas.resets(), 1);
+        let drawn = list.instances().len();
+        assert!(drawn > 0 && drawn < 26, "{drawn}");
+        // Every glyph drawn this frame refers to the atlas as it is now: its
+        // texels are not all transparent.
+        for instance in list.instances() {
+            let s = atlas.size() as f32;
+            let (x, y) = (
+                (instance.uv_rect[0] * s) as u32,
+                (instance.uv_rect[1] * s) as u32,
+            );
+            let (w, h) = (
+                (instance.uv_rect[2] * s) as u32,
+                (instance.uv_rect[3] * s) as u32,
+            );
+            let any = (0..h).any(|j| (0..w).any(|i| atlas.texel(x + i, y + j)[3] > 0));
+            assert!(any, "glyph at {x},{y} is in the atlas");
+        }
     }
 }

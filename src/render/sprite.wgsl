@@ -1,4 +1,4 @@
-// PurplePie: textured sprites (ADR-019, ADR-020).
+// PurplePie: textured sprites and text glyphs (ADR-019, ADR-020, ADR-027).
 //
 // Same instancing scheme as quad.wgsl: one instance per sprite, corners from
 // the vertex index, no vertex buffer. The instance colour is a tint that
@@ -11,6 +11,8 @@ struct Instance {
     @location(2) clip_from_local_2: vec4<f32>,
     @location(3) clip_from_local_3: vec4<f32>,
     @location(4) tint: vec4<f32>,
+    // Texture region: top-left (u, v) and size (ADR-027). The whole texture is (0, 0, 1, 1).
+    @location(5) uv_rect: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -44,7 +46,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, instance: Instance) -> Vert
     var out: VertexOutput;
     out.position = clip_from_local * vec4<f32>(corner, 0.0, 1.0);
     // World +Y is up but image rows run top to bottom: the top edge samples v = 0.
-    out.uv = vec2<f32>(corner.x + 0.5, 0.5 - corner.y);
+    let unit_uv = vec2<f32>(corner.x + 0.5, 0.5 - corner.y);
+    out.uv = instance.uv_rect.xy + unit_uv * instance.uv_rect.zw;
     out.tint = instance.tint;
     return out;
 }

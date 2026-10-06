@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-10-01** against the repository after Stage 5 (PP-007).
+Last reviewed: **2026-10-06** against the repository after PP-018a (text rendering, part 1).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -21,16 +21,16 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stages 0–10 complete, PP-017):** `purplepie` provides `Engine`,
-`EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
+**Current reality (Stages 0–10 complete; post-portfolio PP-018a):** `purplepie` provides `Engine`,
+`EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `load_font`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
-(`Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`, `Hidden`). Every frame the engine clears the window and draws each entity
-that has `Transform2D` + `Quad` (solid colour, ADR-019) or `Transform2D` + `Sprite` (textured, ADR-020), sorted by
-`Layer` and batched by texture (ADR-021), as seen through the one engine-owned `Camera2D` (ADR-022; default view ADR-018). The `sandbox` game shows reference quads (one moving,
+(`Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden`). Every frame the engine clears the window and draws each entity
+that has `Transform2D` + `Quad` (solid colour, ADR-019), `Transform2D` + `Sprite` (textured, ADR-020) or `Transform2D` +
+`Text` (glyphs from a font atlas, ADR-027), sorted by `Layer` and batched by texture (ADR-021), as seen through the one engine-owned `Camera2D` (ADR-022; default view ADR-018). The `sandbox` game shows reference quads (one moving,
 two overlapping the sprite to show draw order) and two sprites from one PNG (one tinted and spinning); its camera can be
 set with an env var, and the arrow keys, `=` / `-` and the mouse wheel pan and zoom it; a marker follows the cursor and clicks stamp squares
-(ADR-024: keyboard and mouse).
+(ADR-024: keyboard and mouse); a text label lists the controls (ADR-027).
 
 ---
 
@@ -71,24 +71,28 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
-| `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer`; crate-private `Renderer`, `Textures` | VERIFIED |
+| `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden`; crate-private `Renderer`, `Textures`, `Fonts` | VERIFIED |
 | `src/render/camera.rs` | Public `Camera2D { position, zoom }`: `IDENTITY`, `fit`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection` (ADR-018, ADR-022) | VERIFIED (7 unit tests + doctest, Xvfb whole-frame checks) |
-| `src/render/draw.rs` | Public `Layer(i32)` and `Hidden` components (hidden entities are skipped). Crate-private `DrawList` (collect quads + sprites, sort by (layer, material, entity), build `Batch` runs) and `Material` (ADR-021) | VERIFIED (7 unit tests + doctest, Xvfb overlap checks) |
+| `src/render/draw.rs` | Public `Layer(i32)` and `Hidden` components (hidden entities are skipped). Crate-private `View`, `DrawList` (collect quads + sprites + text glyphs, sort by (layer, material, entity, glyph), build `Batch` runs; atlas full → one reset and re-layout), `TextPlacement` (on-screen glyph size, pixel-snapped origin) and `Material` (`Color`, `Texture`, `Glyphs`; ADR-021, ADR-027) | VERIFIED (13 unit tests + doctests, Xvfb checks) |
 | `src/render/quad.rs` | Public `Quad { size, color }` component. Crate-private `QuadPipeline` (`bind`), `rect_pipeline` (pipeline builder shared with sprites; ADR-019) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
-| `src/render/instance.rs` | `Instance` (80 B Pod: clip matrix + colour/tint) and `InstanceBuffer` (growable vertex buffer), shared by quads and sprites | VERIFIED |
+| `src/render/instance.rs` | `Instance` (96 B Pod: clip matrix + colour/tint + `uv_rect`) and `InstanceBuffer` (growable vertex buffer), shared by quads, sprites and glyphs | VERIFIED |
+| `src/render/font.rs` | Public `FontId`. Crate-private `Fonts` store (parsed `ab_glyph::FontArc` in load order, path → id cache; owned by the runner) and `decode_font` (ADR-027) | VERIFIED (unit tests) |
+| `src/render/text.rs` | Public `Text { content, font, size, color }` component. Crate-private `layout` (glyphs at whole-pixel pen positions, newlines, kerning) and `MAX_EM_PIXELS` (ADR-027) | VERIFIED (unit tests, GPU readback test, Xvfb) |
+| `src/render/atlas.rs` | Crate-private `GlyphAtlas`: 1024² RGBA shelf-packed glyph cache (white + coverage alpha, 1-texel border, per-size cache, dirty rows, reset when full) and `px_scale` (em → ab_glyph scale) (ADR-027) | VERIFIED (unit tests) |
 | `src/render/texture.rs` | Public `TextureId`. Crate-private `Textures` store (decoded RGBA8 in load order, path → id cache; owned by the runner) and `decode_png` (ADR-020) | VERIFIED (unit tests) |
-| `src/render/sprite.rs` | Public `Sprite { texture, size, tint }`. Crate-private `SpritePipeline` (bind group per texture, `Nearest` sampler, `sync_textures` uploads new store entries, `bind`/`bind_texture`; ADR-020) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
-| `src/render/sprite.wgsl` | Sprite shader: the quad scheme plus UVs (top row = v 0) and `textureSample × tint` | VERIFIED |
+| `src/render/sprite.rs` | Public `Sprite { texture, size, tint }`. Crate-private `SpritePipeline` (bind group per texture, `Nearest` sampler, `sync_textures` uploads new store entries, `bind`/`bind_texture`; ADR-020) plus the GPU glyph atlas (linear sampler, `upload_glyphs` writes dirty rows, `bind_glyphs`; ADR-027) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
+| `src/render/sprite.wgsl` | Sprite + glyph shader: the quad scheme plus UVs from the instance's `uv_rect` (top row = v 0) and `textureSample × tint` | VERIFIED |
 | `src/render/quad.wgsl` | Quad shader (corners from `vertex_index`, per-instance clip matrix + colour), embedded with `include_str!` | VERIFIED |
 | `src/render/color.rs` | `Color` (sRGB, straight alpha): constructors, `PURPLEPIE` `#6A0DAD`, `to_linear`, `to_wgpu(target_is_srgb)` (ADR-015) | VERIFIED |
-| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(&World, &Textures, &Camera2D, before_present)`; texture sync; one shared instance buffer; `record_batches`; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe; purple window confirmed on Windows by the owner) |
+| `src/render/renderer.rs` | `Renderer` (`pub(crate)`): wgpu surface/device/queue/config; `new`, `resize`, `render(&World, &Textures, &Fonts, &Camera2D, before_present)`; texture sync; owns the CPU `GlyphAtlas`; one shared instance buffer; `record_batches`; acquire-result policy; `AutoVsync` (ADR-014); fault checks (ADR-017) | VERIFIED (Linux/lavapipe incl. 2 ignored offscreen text tests; purple window confirmed on Windows by the owner) |
 | `src/render/faults.rs` | `FaultSlot` (first-fault-wins `Arc<Mutex<Option<GpuFault>>>`) + `GpuFault`; installs wgpu's uncaptured-error and device-lost callbacks (ADR-017) | VERIFIED (unit tests + ignored GPU test under lavapipe) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events. Owns world, textures, camera and the event-driven logical viewport. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `examples/breakout.rs` | Breakout, a complete game on the public API only (`cargo run --example breakout`); deterministic autoplay test modes. The engine needed no changes for it (PP-012) | VERIFIED (Xvfb autoplay + XTEST runs) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
-| `assets/{fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |
+| `assets/fonts/Poppins-Regular.ttf`, `assets/fonts/OFL.txt` | The shipped font (unmodified, 160 KB) and its SIL Open Font License 1.1 (ADR-027); used by the sandbox and unit tests | VERIFIED |
+| `assets/shaders/` | Runtime data folder (empty, `.gitkeep`) | Placeholder |
 
 ### Planned (ADR-003)
 
@@ -99,9 +103,9 @@ compilability → clear architecture → maintainability → extensibility → p
 | `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
-| `render` | `pub(crate) Renderer`, pipelines, texture store, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureId`, `Layer` | `wgpu`, `pollster`, `image` (PNG decode), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `SpriteRenderer`, `ShapeRenderer`, `TextRenderer`, `DebugRenderer` | 4–7 |
+| `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, sprite sheets, text alignment (PP-018b) | 4–7, PP-018 |
 | `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
-| `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app`. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
+| `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app` for textures and fonts. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
 
 **Not present: `core`.** See ADR-003. It had no single responsibility and
 shadows Rust's built-in `core` crate.
@@ -151,9 +155,9 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 main → Engine::new(config)?          validate config, EventLoop::new()
      → engine.run(game)              EventLoop::run_app(&mut Runner)
 resumed          → create Arc<Window> (once) → Renderer::new (if none; error → exit)
-                   → game.init(ctx) (once; error → exit). ctx.load_texture: AssetRoot::locate (relative → root,
-                     chosen once in Runner::new, ADR-025) → decode now → Textures
-                     (CPU, owned by the runner; outlives renderers: a new one re-uploads all)
+                   → game.init(ctx) (once; error → exit). ctx.load_texture / ctx.load_font: AssetRoot::locate
+                     (relative → root, chosen once in Runner::new, ADR-025) → decode/parse now → Textures / Fonts
+                     (CPU, owned by the runner; outlive renderers: a new one re-uploads textures, re-rasterizes glyphs)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
 RedrawRequested  → FRAME (skipped once exit has begun):
                      raw = now − last_frame (0 on the first frame)
@@ -165,9 +169,10 @@ RedrawRequested  → FRAME (skipped once exit has begun):
                      game.update(ctx, dt = delta)                      unless exit requested
                      apply a requested window title (set_window_title; also after init)
                      input.end_frame                                   frame edges consumed
-                     renderer.render(&world, &textures, &camera, pre_present_notify)   unless exit requested; Err → exit
-                       (upload new textures → DrawList: collect quads + sprites, sort by
-                        (Layer, material, entity) → upload one instance buffer → clear + one draw per batch)
+                     renderer.render(&world, &textures, &fonts, &camera, pre_present_notify)   unless exit requested; Err → exit
+                       (upload new textures → DrawList: collect quads + sprites + text glyphs (rasterizing new glyphs
+                        into the atlas), sort by (Layer, material, entity, glyph) → upload dirty atlas rows + one
+                        instance buffer → clear + one draw per batch)
 Resized / ScaleFactorChanged → viewport = size / scale (for Context) + renderer.resize(w, h, scale_factor)
                                0×0 = minimized: skip rendering. The window is never queried per frame (ADR-022).
 KeyboardInput   → Escape (logical, if exit_on_escape) → exit; else keymap::translate(physical) → input.key_down/up
@@ -222,8 +227,8 @@ All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMo
 | Game code **may** use | Game code **may not** see |
 |---|---|
 | `Engine`, `EngineConfig`, `Game`, `Context`, `Result`/`Error`/`BoxError` | `wgpu::{Device, Queue, Surface, RenderPipeline, …}` |
-| `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, …) | `winit::window::Window`, raw winit events |
-| `Time`, `Input`, `KeyCode`, `MouseButton`, `Color`, `TextureId`, `Layer`, `Hidden`, `Camera2D`, `Handle<T>` | `Renderer`, `Runner`, `Textures` (`pub(crate)`), `image` types |
+| `World`, `Entity`, components (`Transform2D`, `Velocity`, `Sprite`, `Text`, …) | `winit::window::Window`, raw winit events |
+| `Time`, `Input`, `KeyCode`, `MouseButton`, `Color`, `TextureId`, `FontId`, `Text`, `Layer`, `Hidden`, `Camera2D`, `Handle<T>` (planned) | `Renderer`, `Runner`, `Textures`, `Fonts`, `GlyphAtlas` (`pub(crate)`), `image` and `ab_glyph` types |
 | built-in system functions (`ecs::integrate_velocity`) | engine-internal state outside `Context` |
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
@@ -283,28 +288,45 @@ game:  id = ctx.load_texture(path)?        relative → asset root (ADR-025); re
 store: Textures (runner-owned, CPU): RGBA8 sRGB straight alpha, load order = TextureId, never unloaded
 frame: sprites.sync_textures(store)        upload entries ≥ uploaded count; > max_texture_dimension_2d → Error::Asset
        texture format = Rgba8UnormSrgb if surface is sRGB else Rgba8Unorm   (same blend space as quads, ADR-015)
-       per sprite: Instance { clip_from_local, tint }  (same 80 B layout as quads)
+       per sprite: Instance { clip_from_local, tint, uv_rect = whole texture }  (same 96 B layout as quads)
        consecutive sprites with the same texture → one draw(0..6, range) with that texture's bind group
        sampler: Nearest, ClampToEdge, no mipmaps.   UV: v = 0 at the top edge (image row 0)
 order: see "Draw order and batching" (ADR-021)
 ```
 
+### Text (post-portfolio, ADR-027)
+
+```text
+game:  font = ctx.load_font("fonts/Poppins-Regular.ttf")?   asset root; read + parse now (ab_glyph) → Error::Asset on failure
+       spawn((Transform2D at the left end of the baseline, Text::new("Score: 0", font, 32.0).with_color(c)))
+store: Fonts (runner-owned, CPU): FontArc per FontId, never unloaded
+frame: per Text (Without<Hidden>): M = view_projection × transform
+         k = physical px per local unit (larger axis of M × viewport/2);  em_px = size × k  (skip if ≤ 0, NaN, > 512)
+         origin → nearest physical pixel corner (clip-space nudge)
+         layout: pen x rounded per glyph, '\n' → next line (round(ascent − descent + gap)), kern table
+         glyph bitmap from GlyphAtlas (1024² RGBA, key = font, glyph, em in 1/64 px; rasterized on first use)
+         Instance { M × translate(centre/k) × scale(size/k), colour, uv_rect = atlas texels / 1024 }
+       atlas full mid-frame → reset once, lay out this frame's text again (skip what still doesn't fit)
+       dirty atlas rows → queue.write_texture; drawn by the sprite pipeline with the atlas bind group (Linear sampler)
+order: material rank Glyphs = u32::MAX → after quads and sprites in each layer
+```
+
 ### Draw order and batching (Stage 6, ADR-021)
 
 ```text
-key per drawable = (Layer (default 0), material rank (quad = 0, sprite = 1 + TextureId), entity index)
-DrawList::build: query (Entity, Transform2D, Quad, Option<Layer>) + (Entity, Transform2D, Sprite, Option<Layer>), both Without<Hidden>
+key per drawable = (Layer (default 0), material rank (quad = 0, sprite = 1 + TextureId, text = u32::MAX), entity index, glyph index)
+DrawList::build: query (Entity, Transform2D, Quad | Sprite | Text, Option<Layer>), each Without<Hidden>
                  → sort_unstable_by_key (keys are unique → deterministic) → instances in draw order
                  → batches = runs of equal (layer, material)
 record_batches:  one shared instance buffer bound once; pipeline switched only when the material kind changes;
-                 texture bind group per sprite batch; draw(0..6, batch range) per batch
+                 texture (or glyph atlas) bind group per batch; draw(0..6, batch range) per batch
 draw calls     = number of (layer, material) runs; painter's order, no depth buffer
 ```
 The entity-index tie-breaker keeps the order independent of hecs query/archetype order. It is deterministic
 but not part of the API: overlapping drawables whose order matters should use different layers.
 
 Evolution, each part added only when a stage needs it:
-`Renderer { quads (Stage 5 ✅), sprites + textures (Stage 6 ✅ PP-008), layers + batching (Stage 6 ✅ PP-015), camera (Stage 7 ✅ PP-009), text/debug (later) }`.
+`Renderer { quads (Stage 5 ✅), sprites + textures (Stage 6 ✅ PP-008), layers + batching (Stage 6 ✅ PP-015), camera (Stage 7 ✅ PP-009), text (PP-018a ✅), debug (later) }`.
 
 ---
 
@@ -315,7 +337,7 @@ Evolution, each part added only when a stage needs it:
 - **World ownership:** exactly one `hecs::World`, owned by the runner and lent to
   the game in every callback through `ctx.world()` / `ctx.world_mut()`. Because
   `world_mut()` borrows the context exclusively, read `ctx.dt()` into a local first.
-- **Components so far:** `math::Transform2D`, `ecs::Velocity`, `render::Quad`, `render::Sprite` and `render::Layer` (read by the renderer). `Sprite` holds a plain `TextureId`, never a GPU object.
+- **Components so far:** `math::Transform2D`, `ecs::Velocity`, `render::Quad`, `render::Sprite`, `render::Text`, `render::Layer` and `render::Hidden` (read by the renderer). `Sprite` holds a plain `TextureId` and `Text` a plain `FontId`, never a GPU object.
 - **Systems so far:** `ecs::integrate_velocity(world, dt)`, called by the sandbox from `fixed_update`.
 - **Components:** plain data structs. The first set is `Transform2D`, `Velocity`, then `Sprite`.
   No wgpu handles in components.
@@ -358,8 +380,8 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, sprite, draw}`, `input`, `app::{keymap, state}` | pure unit tests + doctests | ✅ 106 unit tests + 15 doctests |
-| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 5 ignored tests pass under lavapipe |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets` | pure unit tests + doctests | ✅ 137 unit tests + 18 doctests (PP-018a) |
+| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text rendering read back and compared with the CPU rasterization) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 7 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
 | `input` state | pure unit tests, no window/GPU; Xvfb XTEST key, click, move and wheel runs | ✅ keyboard (PP-010) + mouse (PP-016) |

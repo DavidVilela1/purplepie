@@ -35,6 +35,10 @@ thiserror = "2.0.21" # Stage 1: `Error` enum (ADR-011)
 wgpu = "30.0.1"      # Stage 4: GPU, used only in `render` (ADR-005)
 winit = "0.30.13"    # Stage 1: window + event loop, used only in `app` (ADR-004)
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+# PP-018a: font parsing + glyph rasterization, used only in `render` (ADR-027).
+# Already in the Linux tree via winit's Wayland decorations; +4 crates on Windows.
+# Variable-font support (default features) is not needed.
+ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
 
 [lints.rust]
 unsafe_code = "forbid"

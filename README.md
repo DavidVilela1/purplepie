@@ -3,7 +3,8 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete.** The engine runs a complete game: `cargo run --example breakout`.
+> **Status: Stages 0–10 complete; now growing past the portfolio scope (text rendering: part 1 done).**
+> The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
@@ -12,13 +13,16 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 - **App and loop:** `Engine` owns the window (winit) and the GPU (wgpu); your `Game` gets `init`, a fixed-rate
   `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
 - **ECS:** one `hecs::World` for your entities and components; you call your own systems.
-- **2D rendering:** solid `Quad`s and textured `Sprite`s (PNG, tint), ordered by `Layer`, hidden with `Hidden`, batched by
-  texture into instanced draw calls, seen through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
+- **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint) and `Text` (TrueType/OpenType fonts, rasterized
+  sharp at the on-screen size), ordered by `Layer`, hidden with `Hidden`, batched into instanced draw calls, seen
+  through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
   once per callback regardless of frame rate.
-- **Assets:** paths relative to an `assets/` folder found next to the executable or in the project folder.
+- **Assets:** textures and fonts loaded by paths relative to an `assets/` folder found next to the executable or in the
+  project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): text rendering, audio, sprite sheets/animation, physics, scenes. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Not included (yet): text alignment/measuring and shaping, audio, sprite sheets/animation, in-game UI widgets, physics,
+  scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -31,7 +35,7 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 use purplepie::ecs::{self, Velocity};
 use purplepie::input::KeyCode;
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Color, Layer, Quad, Sprite};
+use purplepie::render::{Color, Layer, Quad, Sprite, Text};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 struct MyGame;
@@ -51,6 +55,12 @@ impl Game for MyGame {
             Transform2D::from_position(Vec2::new(0.0, -100.0)),
             Quad::new(Vec2::new(200.0, 20.0), Color::WHITE),
             Layer(1), // drawn over layer-0 sprites (no Layer = layer 0)
+        ));
+        // Text: the position is the left end of the baseline; 24 = font size in world units.
+        let font = ctx.load_font("fonts/Poppins-Regular.ttf")?;
+        ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(-300.0, 250.0)),
+            Text::new("Hello, PurplePie!", font, 24.0).with_color(Color::hex(0xF1FAEE)),
         ));
         Ok(())
     }
@@ -82,7 +92,7 @@ fn main() -> purplepie::Result<()> {
 ```
 
 The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
-square at the cursor, Escape quits.
+square at the cursor, Escape quits; a text label at the bottom left lists these controls.
 
 ## Build
 
@@ -114,7 +124,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API
-├── assets/           textures/ (sandbox_quadrants.png, breakout/), fonts/, shaders/
+├── assets/           textures/ (sandbox_quadrants.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
@@ -144,6 +154,7 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | bytemuck | 1.25 | 5 |
 | log | 0.4 | 4 |
 | image (PNG only) | 0.25.10 | 6 |
+| ab_glyph | 0.2.32 | PP-018a |
 
 ## License
 
@@ -153,6 +164,9 @@ Licensed under either of
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
+
+Assets keep their own licences: `assets/fonts/Poppins-Regular.ttf` is under the SIL Open Font License 1.1
+([assets/fonts/OFL.txt](assets/fonts/OFL.txt)); include that file if you ship the font with a game.
 
 ### Contribution
 
