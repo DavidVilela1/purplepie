@@ -190,6 +190,11 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   (10×10, follows the cursor) in the per-pixel camera check. Note: on a new Xvfb display the pointer starts at the screen
   centre, inside the window, so the marker is visible unless you move the pointer away. winit/X11 reports each XTEST wheel
   click twice.
+- **Breakout example (Stage 10+):** `PURPLEPIE_BREAKOUT_AUTOPLAY=win` (≈2 min under lavapipe) and `=lose` (≈15 s) must print
+  the same `autoplay finished: …` line on every run (it is deterministic: the simulation runs only in `fixed_update` with a
+  seeded generator); current values are in TASKS (PP-012). Change them only with an explained gameplay or engine change.
+  Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
+  scripts that also started Xvfb (it waits for the server forever).
 - **Asset errors end to end:** temporarily move or overwrite `assets/textures/sandbox_quadrants.png` (restore it after!).
   Expect `error: failed to load asset `…`` plus `caused by:` lines, exit 1, and no panic.
 - **Asset root (Stage 9+, ADR-025):** run with `PURPLEPIE_LOG=info` and check the `asset root:` line in four layouts:

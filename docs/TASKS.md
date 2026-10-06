@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-012: Stage 10 · Example game (Breakout) using only the public API** · P1 · TODO ← **next task**
+- [ ] **PP-017: Stage 10 · API review: docs, ADR-008 review against the Breakout friction list, workspace-split decision** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -38,10 +38,10 @@ _None._
 - [x] **PP-010: Stage 8 · Keyboard input** · DONE (2026-10-02; verified on Linux)
 - [x] **PP-016: Stage 8 · Mouse input** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-011: Stage 9 · Asset root** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-012: Stage 10 · Example game (Breakout)** · DONE (2026-10-06; verified on Linux)
 
 ## Future
 
-- [ ] **PP-017: Stage 10 · API review: docs, ADR-008 review, workspace-split decision** · P2 · TODO
 
 ---
 
@@ -181,19 +181,23 @@ _None._
 | Acceptance criteria | ✅ 1. ADR-025 (file location decided; generic handles + unloading deferred in PD-06). ✅ 2. Unit tests: exe-folder-first order with working-directory fallback, a file named `assets` is not a folder, explicit root (relative → absolute, kept if missing), relative/absolute locate, no-root error lists the searched folders, relative and absolute spellings share a `TextureId`, config builder. ✅ 3. End to end: project folder, `cargo run`, shipped copy launched from another folder, moved binary from the project folder; no `assets/` anywhere → exit 1 with both searched folders named; missing file inside the root → full path in the error. ✅ 4. Stage 1–8 regressions unchanged. |
 | Notes | Release builds must ship `assets/` next to the executable (README). |
 
-### PP-012: Example game (Breakout) ← NEXT
+### PP-012: Example game (Breakout)
 | Field | Value |
 |---|---|
-| Stage | 10 → Milestone M10 · Priority P1 · TODO. Stage 10 was split into PP-012 (game) + PP-017 (API review) on 2026-10-06. |
+| Stage | 10 → Milestone M10 · Priority P1 · **DONE** (2026-10-06). Stage 10 was split into PP-012 (game) + PP-017 (API review) on 2026-10-06. |
 | Dependencies | PP-011, PP-016 (DONE) |
-| Why now | Stages 1–9 are done. A real game is the test the roadmap set for the public API: what's awkward, missing or wrong shows up only when something complete is built on it. |
-| Scope | `examples/breakout.rs` (`cargo run --example breakout`): paddle (keyboard and mouse), ball, a grid of bricks, walls, lives, win/lose and restart, all in game code with only the public API (simple AABB collisions in the example, not an engine physics system). Small PNG assets under `assets/`. No text rendering exists, so score/lives are shown with quads and printed to the console. A list of API friction points found while writing it, as input for PP-017. Engine changes only if a blocker is found (each documented). |
-| Acceptance criteria | 1. `cargo run --example breakout` plays a full game. 2. The example uses no crate-private items and no winit/wgpu. 3. Xvfb: scripted input (mouse/keys) moves the paddle, the ball breaks bricks, and losing all lives / clearing the board are reached by a deterministic test mode (seeded serve, fixed steps) whose final state is printed and checked. 4. CI builds the example (`cargo check --all-targets` already covers it). 5. Friction list recorded in TASKS/PP-017. |
+| Scope (as built) | `examples/breakout.rs` (531 lines, `cargo run --example breakout`): paddle (←/→, A/D or mouse), sprite ball, 10×6 tinted sprite bricks with row points, walls, 3 lives, speed-up per brick, win/lose overlays (translucent quads), restart with Space/↑/click, HUD (lives as ball sprites, a progress bar), camera zoom fitted to the window every frame. All collisions are AABB in game code. Seeded LCG + simulation only in `fixed_update` → deterministic `PURPLEPIE_BREAKOUT_AUTOPLAY=win|lose` test modes (bot / parked paddle) that print a summary and exit. New assets `assets/textures/breakout/{ball,brick}.png` (generated). **No engine changes were needed** (`src/` identical to Stage 9). |
+| Acceptance criteria | ✅ 1. Full game playable; restart flow verified (3 balls lost via XTEST → `0` lives → Space → `new game`). ✅ 2. Example compiles as an external crate (only public items), no winit/wgpu/hecs paths. ✅ 3. Xvfb: cursor at x = 300 → paddle centre exactly 300 px; click launches; holding → moves the paddle 293 px in ~0.5 s; autoplay **win** = `Won after 7135 fixed steps; bricks 60/60; lives 3; score 220` (3 runs identical), **lose** = `Lost after 892 fixed steps; bricks 8/60; lives 0; score 14` (4 runs identical); lose end screen: overlay pixels exactly the linear-space blend `(161, 33, 47)`. ✅ 4. CI: `cargo check/clippy --all-targets` include the example. ✅ 5. Friction list below. |
+| API friction found (input for PP-017) | **F1** No text rendering: score/lives drawn with sprites, events printed to the console (biggest gap for games). **F2** Window title can't change at runtime. **F3** No way to hide a drawable without despawning it (overlay respawned; the sandbox uses scale 0). **F4** Reading `ctx.input()` / `cursor_world()` while mutating the world needs values copied out first (one `&mut Context`); fine but noisy. **F5** Per-entity component access is verbose (`world.get::<&mut T>(e).ok()` helpers written by hand). **F6** "Cursor moved this frame?" needs manual tracking (no `cursor_delta`). **F7** Fitting a world rectangle to the window is manual math (`Camera2D` has no `fit`). **F8** `request_exit` can't carry an exit code; test modes rely on stdout. **F9** Small sprites from larger textures alias with `Nearest` sampling (ball). **F10** No randomness helper (an LCG in the example; probably right to keep out of the engine). Working well: fixed-step determinism, `Layer`, tinted shared texture batching, asset root, input edges. |
 
-### PP-017: API review
-| Stage 10 → M10 · P2 · TODO | Depends on PP-012 |
+### PP-017: API review ← NEXT
+| Field | Value |
 |---|---|
-| Acceptance criteria | `#![warn(missing_docs)]` clean. ADR-008 (Game/Context) reviewed against the example's friction list, with changes or reasons recorded. `exit_on_escape` decided. Workspace-split decision (ADR-002 revisit) recorded. README "getting started" matches the example. |
+| Stage | 10 → Milestone M10 · Priority P1 · TODO |
+| Dependencies | PP-012 (DONE) |
+| Why now | Closes the portfolio scope (M10): the API has now been used by a real game, and its friction list (PP-012) says where it hurts. |
+| Scope | `#![warn(missing_docs)]` clean. Review ADR-008 against F1–F10: decide each (fix now if small and clearly right, e.g. F3 visibility or F7 camera fit; defer with a reason otherwise, e.g. F1 text rendering as a post-portfolio feature). Decide `exit_on_escape`. Workspace-split decision (ADR-002 revisit). README "getting started" based on the example. Record the outcome as an ADR. |
+| Acceptance criteria | 1. Zero `missing_docs` warnings. 2. Every friction item has a recorded decision. 3. Workspace decision recorded. 4. README matches the example. 5. Stage 1–10 regressions unchanged, autoplay results identical (or the change explained). |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

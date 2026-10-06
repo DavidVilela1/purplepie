@@ -6,14 +6,13 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M9: Resource/Asset Foundation: VERIFIED (Linux).** Asset files are found independently of the working directory
-(ADR-025). Next: **M10: Engine API Stabilization: NOT_STARTED** (example game, then API review).
-M8, M7, M6, M5: VERIFIED (Linux; Windows look pending). M4: VERIFIED (Linux + Windows purple window).
-M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows, owner-confirmed). M0: VERIFIED.
+**M10: Engine API Stabilization: IN_PROGRESS.** A complete Breakout game (PP-012) runs on the public API with no engine
+changes; the API review (PP-017) finishes M10. M9, M8, M7, M6, M5: VERIFIED (Linux; Windows look pending).
+M4: VERIFIED (Linux + Windows purple window). M3, M2: VERIFIED (Linux). M1: VERIFIED (Linux + Windows). M0: VERIFIED.
 
 ## Current Stage
 
-**Stage 9: Assets: complete** (PP-011). Next: **Stage 10: Engine/Game API Refinement** (PP-012 Breakout example, then PP-017 API review).
+**Stage 10: Engine/Game API Refinement: in progress.** PP-012 done 2026-10-06. Next: **PP-017** (API review), which completes Stage 10.
 
 ## Overall State
 
@@ -56,6 +55,7 @@ executable, else `assets/` in the working directory (ADR-025).
 | `render::faults` (`FaultSlot`, `GpuFault`) | VERIFIED | 4 unit tests + 1 ignored GPU test |
 | CI workflow | VERIFIED (owner-reported) | fmt + clippy (Linux); check + test on Linux/Windows/macOS: first run all green, 2026-10-01 |
 | `input` (`Input`, `KeyCode`, `MouseButton`) + `app::{keymap, state}` | VERIFIED (Linux) | 15 + 5 + 2 unit tests + 1 doctest; Xvfb XTEST key/mouse runs (ADR-024). |
+| `examples/breakout.rs` | VERIFIED (Linux) | Complete game on the public API; deterministic autoplay (win: 7135 steps, score 220; lose: 892 steps) and XTEST paddle/launch/restart checks (PP-012). |
 | `assets` (`AssetRoot`) | VERIFIED (Linux) | 5 unit tests + end-to-end launch layouts (ADR-025). Generic handles/unloading deferred (PD-06). |
 
 ## Completed
@@ -76,6 +76,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-010: keyboard input (Stage 8, part 1).
 - PP-016: mouse input (Stage 8, part 2).
 - PP-011: asset root (Stage 9).
+- PP-012: Breakout example game (Stage 10, part 1).
 
 ## In Progress
 
@@ -83,7 +84,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-012: Stage 10 · Example game (Breakout).** See [TASKS.md](TASKS.md#pp-012-example-game-breakout--next).
+- **PP-017: Stage 10 · API review.** See [TASKS.md](TASKS.md#pp-017-api-review--next).
 
 ## Blocked
 
@@ -105,6 +106,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. One texture per sprite (no atlas/UV rectangles). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
+- API gaps found by the Breakout example (friction list F1–F10 in TASKS, PP-012): no text rendering, no runtime window title, no visibility toggle, no exit code from `request_exit`, no camera fit helper, no cursor delta. PP-017 decides each.
 - GPU faults are not recoverable. A lost surface or device ends the game with `Error::Render` (ADR-017).
 - The GPU fault test is `#[ignore]` (it needs a GPU), so CI does not run it. Run it with `cargo test -- --ignored`.
 - Under lavapipe (software GPU), idle CPU is about 0.75 s per 3 s (1.4 s per 5 s with sprites, PP-008). This is GPU work done on the CPU, not a busy loop.
@@ -116,6 +118,11 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Recent Changes
 
+- **2026-10-06: PP-012 Stage 10 Breakout example.**
+  - New `examples/breakout.rs` (`cargo run --example breakout`): a complete game (paddle, ball, 60 bricks, lives, score, win/lose/restart, HUD, camera fitted to the window) using only the public API. No engine changes were needed.
+  - New assets `assets/textures/breakout/{ball,brick}.png`.
+  - Deterministic test modes `PURPLEPIE_BREAKOUT_AUTOPLAY=win|lose`.
+  - Friction list F1–F10 recorded in TASKS for PP-017.
 - **2026-10-06: PP-011 Stage 9 asset root (Stage 9 complete).**
   - New crate-private `src/assets/` (`AssetRoot`): relative asset paths resolve against `EngineConfig::with_asset_root`, else `assets/` next to the executable, else `assets/` in the working directory; chosen once at startup and logged (ADR-025, R-24 mitigated).
   - `Context::load_texture` takes paths relative to that root (absolute paths unchanged); new `Context::asset_root()`; `EngineConfig::asset_root` / `with_asset_root`.
@@ -210,32 +217,30 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-011 code change:
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-012 change:
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
-| `cargo check --locked --all-targets --all-features` | ✅ PASS |
+| `cargo check --locked --all-targets --all-features` (includes the example) | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` | ✅ PASS |
 | `cargo test --locked` | ✅ PASS: 114 unit tests + 15 doctests, 5 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 5/5 |
 | `cargo doc --no-deps` | ✅ no warnings |
-| `cargo build --locked` | ✅ PASS |
-| Run from the project folder / via `cargo run` | ✅ `asset root: /home/claude/PurplePie/assets` (working-directory fallback), sprite drawn, exit 0 |
-| "Shipped" copy (binary + `assets/`) started from an unrelated folder | ✅ asset root = the folder next to the executable, exit 0 |
-| Moved binary (no `assets/` beside it) run from the project folder | ✅ working-directory fallback, exit 0 |
-| No `assets/` next to the binary nor in the working directory | ✅ `warn` + `error: failed to load asset `textures/sandbox_quadrants.png`` / `caused by: no asset folder found (looked for …/ship/assets and …/elsewhere/assets); create one or set EngineConfig::with_asset_root`, exit 1, no panic |
-| Texture missing inside the root | ✅ error names the full resolved path, exit 1 |
-| Xvfb whole-frame models, cameras (0,0)×1 and (0,120)×2 (cursor marker at the default pointer modelled) | ✅ 0 mismatches |
-| Xvfb keyboard + mouse script | ✅ `=` seen 3/3, clicks 2/2, camera/cursor as expected |
-| Xvfb: timed 120 frames; unmap/map, 1×1 → 800×600; close; Escape | ✅ exit 0; 119 steps, mover at 238.0 |
-| Xvfb: window destroyed (fresh display) | ✅ `error: GPU rendering failed` / surface lost, exit 1 |
-| No GPU backend | ✅ clean error, exit 1 |
-| Idle CPU (lavapipe) | ✅ 1.56 s per 5 s |
+| `cargo build --locked`, `cargo build --example breakout` | ✅ PASS |
+| `src/` vs the Stage 9 archive | ✅ identical (no engine changes) |
+| Breakout autoplay `win` | ✅ `Won after 7135 fixed steps; bricks 60/60; lives 3; score 220`, identical in 3 runs (one with 3 games sharing the CPU) |
+| Breakout autoplay `lose` | ✅ `Lost after 892 fixed steps; bricks 8/60; lives 0; score 14`, identical in 4 runs |
+| Breakout lose end screen | ✅ overlay pixels exactly `(161, 33, 47)` = linear-space blend of 45% red over the background; lives HUD empty; progress bar at 8/60 |
+| Breakout XTEST: cursor to x = 300 | ✅ paddle (1,824 px, 114 px wide = 120 × zoom 0.946) centred at exactly x = 300 |
+| Breakout XTEST: click, then hold → 0.5 s | ✅ `launch` printed; paddle moved 293 px |
+| Breakout XTEST: lose 3 balls, press Space | ✅ `lives left: 0` … `new game` |
+| Breakout: Escape | ✅ exit 0 |
+| Sandbox regressions (timed run, camera (0,120)×2 whole-frame model) | ✅ 119 steps / mover 238.0; 0 mismatches |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
-Stages 5–9 on Windows have not been seen yet.
+Stages 5–10 on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-06. PP-011 done, Stage 9 complete. PP-012 is next.
+2026-10-06. PP-012 done (Stage 10, part 1). PP-017 is next.

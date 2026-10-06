@@ -3,14 +3,14 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stage 8 (input) complete: keyboard and mouse.** `cargo run` opens a window
+> **Status: Stage 10 in progress: a complete Breakout game runs on the engine (`cargo run --example breakout`).** `cargo run` opens a window
 > where the engine draws ECS entities with wgpu: coloured quads (one moving) and two
 > sprites from a PNG (one tinted and spinning) on PurplePie purple, ordered by `Layer`,
 > batched by texture, and seen through a `Camera2D`. **Arrow keys pan, `=` / `-` or the wheel zoom, left click
 > stamps a square at the cursor (a green marker follows it), Escape quits.** Game logic runs in a 60 Hz
 > fixed-timestep `fixed_update`. Missing files and GPU failures end the game with a clean error. It is verified on
 > Linux. Assets load from an `assets/` folder next to the executable (or in the project folder for `cargo run`).
-> Next: a complete example game, Breakout (Stage 10).
+> Next: the final API review (Stage 10).
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## Design in one paragraph (target; see PROJECT_STATUS for what exists)
@@ -79,6 +79,8 @@ Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95).
 
 ```bash
 cargo run            # opens the sandbox window (Escape or close to quit)
+cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/click launch, Escape quits
+# PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
@@ -100,7 +102,8 @@ PurplePie/
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
-├── assets/           textures/ (sandbox_quadrants.png), fonts/, shaders/
+├── examples/         breakout.rs: a complete game on the public API
+├── assets/           textures/ (sandbox_quadrants.png, breakout/), fonts/, shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here

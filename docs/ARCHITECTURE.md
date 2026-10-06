@@ -21,7 +21,7 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - a web or mobile engine (not a goal for now);
 - an editor (possible much later).
 
-**Current reality (Stage 9 complete, PP-011):** `purplepie` provides `Engine`,
+**Current reality (Stage 9 complete; Stage 10 in progress, PP-012):** `purplepie` provides `Engine`,
 `EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
@@ -85,6 +85,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/render/faults.rs` | `FaultSlot` (first-fault-wins `Arc<Mutex<Option<GpuFault>>>`) + `GpuFault`; installs wgpu's uncaptured-error and device-lost callbacks (ADR-017) | VERIFIED (unit tests + ignored GPU test under lavapipe) |
 | `src/app/pacer.rs` | `FramePacer`: 60 Hz `WaitUntil` deadlines, no catch-up bursts. Interim until Stage 4 vsync. | VERIFIED |
 | `src/app/runner.rs` | `Runner<G>`: winit `ApplicationHandler`; the only code handling winit events. Owns world, textures, camera and the event-driven logical viewport. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
+| `examples/breakout.rs` | Breakout, a complete game on the public API only (`cargo run --example breakout`); deterministic autoplay test modes. The engine needed no changes for it (PP-012) | VERIFIED (Xvfb autoplay + XTEST runs) |
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
 | `assets/{fonts,shaders}/` | Runtime data folders (empty, `.gitkeep`) | Placeholder |

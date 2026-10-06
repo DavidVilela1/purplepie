@@ -38,7 +38,7 @@ Slice D (Stages 8–10): Input → Assets → API refinement with a real example
 | **M7: Camera** | World ↔ screen coordinates, resize-aware | 7 | PP-009 | VERIFIED (Linux; Windows look pending) |
 | **M8: Input** | Game-facing input abstraction | 8 | PP-010, PP-016 | VERIFIED (Linux; PP-010 keyboard + PP-016 mouse; Windows look pending) |
 | **M9: Resource/Asset Foundation** | Coherent asset handles and loading | 9 | PP-011 | VERIFIED (Linux; asset root, ADR-025) |
-| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012, PP-017 | NOT_STARTED |
+| **M10: Engine API Stabilization** | Boundaries reviewed with a real example game | 10 | PP-012, PP-017 | IN_PROGRESS (PP-012 Breakout ✅; PP-017 API review next) |
 
 Each stage is one milestone. The sequence above is kept deliberately. Stage 3
 (ECS) comes before Stage 4 (GPU) so the first primitive (Stage 5) can be
@@ -203,6 +203,7 @@ driven by real ECS data rather than a throwaway draw call.
 | **Tasks** | PP-012 (Breakout example, friction list), then PP-017 (API review, docs, workspace decision). Split on 2026-10-06. |
 | **Files** | `examples/breakout.rs`, `assets/`, public API docs, `#![warn(missing_docs)]` |
 | **Expected result** | A complete small game using only the public API |
+| **As built (PP-012)** | `examples/breakout.rs`: complete Breakout on the public API only, no engine changes needed; deterministic autoplay test modes; friction list F1–F10 in TASKS (PP-012) feeds PP-017. |
 | **Validation** | Example builds and runs. API docs build without warnings. |
 | **Acceptance criteria** | ADR-008 reviewed. Workspace split decision (ADR-002 revisit) recorded. |
 | **Risks** | API instability (R-13) |
