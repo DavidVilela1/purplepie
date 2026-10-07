@@ -104,8 +104,8 @@ const SHEET_CELLS: [(u32, f32, bool); 4] = [
 ];
 /// Played when a click stamps a square (ADR-030).
 const CLICK_SOUND: &str = "sounds/blip.wav";
-/// Looped while music is on (`M`, ADR-032).
-const MUSIC_LOOP: &str = "sounds/loop.wav";
+/// Looped while music is on (`M`, ADR-032): OGG Vorbis (ADR-033).
+const MUSIC_LOOP: &str = "sounds/loop.ogg";
 /// The reset button (ADR-031): idle, hovered and pressed colours.
 const BUTTON_COLORS: [u32; 3] = [0x3A86FF, 0x6FA8FF, 0x1D5FCC];
 /// The animated cell (ADR-028): all 8 sheet frames in a loop, at (580, −250).

@@ -1,4 +1,8 @@
 //! Sound handles and the CPU-side sound store (ADR-030).
+//!
+//! Files are decoded completely when they load (WAV with `hound`, OGG Vorbis
+//! with `lewton`, ADR-033); the format is chosen by the file's first bytes,
+//! not its extension.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -38,20 +42,37 @@ impl SoundData {
     }
 }
 
+/// Decodes a sound file in any supported format, chosen by its first bytes:
+/// `RIFF` → WAV, `OggS` → OGG Vorbis.
+pub(crate) fn decode(bytes: Vec<u8>) -> std::result::Result<SoundData, BoxError> {
+    if bytes.starts_with(b"OggS") {
+        decode_ogg(bytes)
+    } else if bytes.starts_with(b"RIFF") {
+        decode_wav(bytes)
+    } else {
+        Err("not a WAV or OGG Vorbis file".into())
+    }
+}
+
+/// Checks the format limits shared by every decoder.
+fn check_format(channels: usize, sample_rate: u32) -> std::result::Result<u16, BoxError> {
+    if !(1..=2).contains(&channels) {
+        return Err(format!(
+            "the sound has {channels} channels; only mono and stereo are supported"
+        )
+        .into());
+    }
+    if sample_rate == 0 {
+        return Err("the sound has a sample rate of 0".into());
+    }
+    Ok(channels as u16)
+}
+
 /// Decodes a WAV file (PCM 8/16/24/32-bit integer or 32-bit float, mono or stereo).
 pub(crate) fn decode_wav(bytes: Vec<u8>) -> std::result::Result<SoundData, BoxError> {
     let mut reader = hound::WavReader::new(Cursor::new(bytes))?;
     let spec = reader.spec();
-    if !(1..=2).contains(&spec.channels) {
-        return Err(format!(
-            "the sound has {} channels; only mono and stereo are supported",
-            spec.channels
-        )
-        .into());
-    }
-    if spec.sample_rate == 0 {
-        return Err("the sound has a sample rate of 0".into());
-    }
+    check_format(usize::from(spec.channels), spec.sample_rate)?;
     let samples = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
@@ -76,6 +97,38 @@ pub(crate) fn decode_wav(bytes: Vec<u8>) -> std::result::Result<SoundData, BoxEr
     })
 }
 
+/// Decodes an OGG Vorbis file (mono or stereo, any sample rate) to `f32`
+/// samples. Chained streams are joined if they all share the first stream's
+/// channel count and sample rate.
+pub(crate) fn decode_ogg(bytes: Vec<u8>) -> std::result::Result<SoundData, BoxError> {
+    let mut reader = lewton::inside_ogg::OggStreamReader::new(Cursor::new(bytes))?;
+    let format = |r: &lewton::inside_ogg::OggStreamReader<_>| {
+        (
+            usize::from(r.ident_hdr.audio_channels),
+            r.ident_hdr.audio_sample_rate,
+        )
+    };
+    let (channels, sample_rate) = format(&reader);
+    let channel_count = check_format(channels, sample_rate)?;
+    let mut samples = Vec::new();
+    while let Some(packet) =
+        reader.read_dec_packet_generic::<lewton::samples::InterleavedSamples<f32>>()?
+    {
+        if format(&reader) != (channels, sample_rate) || packet.channel_count != channels {
+            return Err("a chained stream changes the channel count or sample rate".into());
+        }
+        samples.extend(packet.samples.iter().map(|s| s.clamp(-1.0, 1.0)));
+    }
+    if samples.is_empty() {
+        return Err("the OGG stream has no audio".into());
+    }
+    Ok(SoundData {
+        channels: channel_count,
+        sample_rate,
+        samples,
+    })
+}
+
 /// Every sound loaded during this run, in load order. Owned by the engine's
 /// runner. Entries are shared (`Arc`) with the audio thread while they play.
 #[derive(Debug, Default)]
@@ -86,7 +139,7 @@ pub(crate) struct Sounds {
 }
 
 impl Sounds {
-    /// Loads and decodes the WAV file at `path` (a full path from the asset
+    /// Loads and decodes the WAV or OGG Vorbis file at `path` (a full path from the asset
     /// root; `Context::load_sound` resolves it). A path that is already loaded
     /// returns the existing id without reading the file.
     pub(crate) fn load(&mut self, path: &Path) -> Result<SoundId> {
@@ -98,7 +151,7 @@ impl Sounds {
             source,
         };
         let bytes = std::fs::read(path).map_err(|e| asset_error(Box::new(e)))?;
-        let data = decode_wav(bytes).map_err(asset_error)?;
+        let data = decode(bytes).map_err(asset_error)?;
         let id = self.push(data);
         self.by_path.insert(path.to_path_buf(), id);
         log::debug!("loaded sound {} as {id:?}", path.display());
@@ -193,14 +246,83 @@ pub(crate) mod tests {
     #[test]
     fn the_shipped_sounds_decode() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/sounds");
-        for name in ["blip.wav", "hit.wav", "lose.wav", "loop.wav"] {
-            let data = decode_wav(std::fs::read(dir.join(name)).expect("read")).expect(name);
+        for name in ["blip.wav", "hit.wav", "lose.wav", "loop.wav", "loop.ogg"] {
+            let data = decode(std::fs::read(dir.join(name)).expect("read")).expect(name);
             assert_eq!((data.channels, data.sample_rate), (1, 22_050), "{name}");
             assert!(
                 data.frames() > 0 && data.samples.iter().all(|s| s.abs() <= 1.0),
                 "{name}"
             );
         }
+    }
+
+    fn shipped(name: &str) -> Vec<u8> {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/sounds");
+        std::fs::read(dir.join(name)).expect(name)
+    }
+
+    #[test]
+    fn the_shipped_ogg_loop_matches_its_wav_source() {
+        let ogg = decode(shipped("loop.ogg")).expect("loop.ogg");
+        let wav = decode(shipped("loop.wav")).expect("loop.wav");
+        assert_eq!(
+            (ogg.channels, ogg.sample_rate, ogg.frames()),
+            (wav.channels, wav.sample_rate, wav.frames()),
+            "same format and exactly the same length, so it still loops seamlessly"
+        );
+        let squared: f64 = ogg
+            .samples
+            .iter()
+            .zip(&wav.samples)
+            .map(|(a, b)| f64::from(a - b).powi(2))
+            .sum();
+        let rms_error = (squared / wav.samples.len() as f64).sqrt();
+        // Measured 0.0019 against a source peak of 0.32 (Vorbis quality 4).
+        assert!(rms_error < 0.005, "lossy, but close: rms error {rms_error}");
+        assert!(ogg.samples.iter().all(|s| s.abs() <= 1.0));
+    }
+
+    #[test]
+    fn the_format_comes_from_the_content_not_the_name() {
+        assert!(decode(shipped("loop.ogg")).is_ok());
+        assert!(decode(shipped("blip.wav")).is_ok());
+        let err = decode(b"ID3 an mp3, say".to_vec()).expect_err("unknown");
+        assert!(
+            err.to_string().contains("not a WAV or OGG Vorbis file"),
+            "{err}"
+        );
+        assert!(decode(Vec::new()).is_err());
+        // An OGG file named .wav still loads, as OGG.
+        let path = temp_path("actually-ogg.wav");
+        std::fs::write(&path, shipped("loop.ogg")).expect("write");
+        let mut sounds = Sounds::default();
+        let id = sounds.load(&path).expect("load");
+        assert_eq!(sounds.get(id).expect("entry").frames(), 22_050);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn broken_ogg_files_are_rejected() {
+        let good = shipped("loop.ogg");
+        assert!(decode(b"OggS".to_vec()).is_err(), "only the magic");
+        assert!(decode(b"OggS and then garbage".to_vec()).is_err());
+        // Cut inside the headers.
+        assert!(decode(good[..good.len().min(120)].to_vec()).is_err());
+        // Damage the audio: the page checksum no longer matches.
+        let mut damaged = good.clone();
+        let middle = damaged.len() / 2;
+        for byte in &mut damaged[middle..middle + 16] {
+            *byte ^= 0xA5;
+        }
+        assert!(decode(damaged).is_err());
+        let path = temp_path("broken.ogg");
+        std::fs::write(&path, b"OggS garbage").expect("write");
+        let err = Sounds::default().load(&path).expect_err("broken");
+        assert!(
+            matches!(&err, Error::Asset { path: p, .. } if *p == path),
+            "{err}"
+        );
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

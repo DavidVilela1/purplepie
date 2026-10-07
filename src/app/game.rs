@@ -142,11 +142,16 @@ impl<'a> Context<'a> {
         self.state.fonts.load(&file)
     }
 
-    /// Loads a WAV sound (PCM 8/16/24/32-bit or 32-bit float, mono or
-    /// stereo, any sample rate) and returns a handle for
-    /// [`play_sound`](Self::play_sound) (ADR-030).
+    /// Loads a sound and returns a handle for [`play_sound`](Self::play_sound)
+    /// and [`loop_sound`](Self::loop_sound) (ADR-030). Formats: **WAV** (PCM
+    /// 8/16/24/32-bit or 32-bit float) and **OGG Vorbis** (ADR-033), mono or
+    /// stereo, any sample rate. The format is recognised from the file's
+    /// content, not its extension.
     ///
-    /// The file is read and decoded now, so a problem is reported here as
+    /// The whole file is read and decoded now (OGG too: about 10 MB of memory
+    /// per minute of 44.1 kHz mono, twice that for stereo, and a long track
+    /// takes a noticeable moment, so load music at startup), and a problem is
+    /// reported here as
     /// [`Error::Asset`](crate::Error::Asset). Paths resolve like
     /// [`load_texture`](Self::load_texture); loading the same file again
     /// returns the same [`SoundId`]. Works without an audio device.
@@ -434,7 +439,7 @@ mod tests {
         assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
         let err = ctx
             .load_sound("textures/sandbox_quadrants.png")
-            .expect_err("a PNG is not a WAV");
+            .expect_err("a PNG is not a sound");
         assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
         let blip = ctx.load_sound("sounds/blip.wav").expect("blip");
         assert_eq!(ctx.load_sound("sounds/blip.wav").expect("again"), blip);
@@ -452,7 +457,13 @@ mod tests {
         // blip.wav: 1323 frames at 22,050 Hz = 60 ms.
         let duration = ctx.sound_duration(blip).expect("loaded");
         assert!((duration - 0.06).abs() < 1e-6, "{duration}");
-        assert_eq!(state.sounds.len(), 1);
+        // OGG Vorbis loads the same way (ADR-033): loop.ogg is 22,050 frames = 1 s.
+        let music = ctx.load_sound("sounds/loop.ogg").expect("loop.ogg");
+        assert_ne!(music, blip);
+        let duration = ctx.sound_duration(music).expect("loaded");
+        assert!((duration - 1.0).abs() < 1e-6, "{duration}");
+        let _ = ctx.loop_sound(music, 0.5);
+        assert_eq!(state.sounds.len(), 2);
     }
 
     #[test]

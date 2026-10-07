@@ -5,7 +5,8 @@
 //! [`Context::play_sound`](crate::Context::play_sound) or
 //! [`Context::loop_sound`](crate::Context::loop_sound), which return a
 //! [`PlaybackId`] to stop or adjust that playback (ADR-032). Crate-private: the
-//! sound store (WAV decoding, `hound`), the mixer (pure code, unit-tested)
+//! sound store (WAV decoding with `hound`, OGG Vorbis with `lewton`, ADR-033;
+//! both only in `sound.rs`), the mixer (pure code, unit-tested)
 //! and the device output (`cpal`, only in `output.rs`). Game code never sees
 //! an audio-device type, and a missing or failing device means silence, not
 //! an error.

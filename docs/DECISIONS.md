@@ -45,6 +45,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-030 | Audio: `cpal` output + `hound` WAV decoding + PurplePie's own mixer; `SoundId`; `Context::load_sound` / `play_sound`; silent fallback without a device; generic handles (PD-06) deferred again | Accepted | Yes (PP-022: one-shot sound effects) |
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
+| ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
 
 ---
 
@@ -1488,7 +1489,8 @@ Minimaps or split screen (several cameras), world-anchored UI (labels following 
 # ADR-030: Audio: `cpal` + `hound` + an own mixer; sound effects through `Context`; silence when there is no device
 
 ## Status
-Accepted (2026-10-07, PP-022, part 1: one-shot sound effects). Defers PD-06 (generic handles) again.
+Accepted (2026-10-07, PP-022, part 1: one-shot sound effects). Defers PD-06 (generic handles) again. Extended by
+ADR-032 (playback control, PP-024a) and ADR-033 (OGG Vorbis, PP-024b).
 
 ## Context
 PurplePie had no sound. Games need at least short sound effects (hits, clicks, jingles), loaded like other assets and
@@ -1515,7 +1517,7 @@ audio device (CI, servers, Cowork's container).
   `with_audio(bool)` (default `true`). The runner opens the default output device at startup; **any failure is logged
   and leaves a silent output** — loading still works, playing does nothing, the game never errors or panics for audio.
 - **Formats:** WAV only (PCM 8/16/24/32-bit, 32-bit float; mono/stereo; any rate). Music/streaming, OGG and spatial audio
-  are later tasks.
+  are later tasks. *(OGG Vorbis since PP-024b, ADR-033.)*
 - **PD-06 (generic handles):** sounds get their own `SoundId` like `TextureId`/`FontId`. Three handle types with the same
   shape are still simple; a generic `Handle<T>` is deferred until unloading or hot reload needs a shared store.
 
@@ -1599,7 +1601,7 @@ Menus with keyboard/gamepad navigation, many widgets needing layout, or the edit
 # ADR-032: Audio playback control: playback ids, looping and volume as mixer commands
 
 ## Status
-Accepted (2026-10-07, PP-024a). Extends ADR-030. OGG Vorbis decoding (music files) follows in PP-024b.
+Accepted (2026-10-07, PP-024a). Extends ADR-030. OGG Vorbis decoding (music files) followed in PP-024b (ADR-033).
 
 ## Context
 PP-022 could only fire sounds. Music and ambience need a sound that loops seamlessly, can be stopped, and can change
@@ -1638,10 +1640,72 @@ logic exactly testable.
   (73.4 loops) and was exactly silent after the second `M`.
 ### Negative
 - Abrupt volume changes and stops can click (no fades yet).
-- WAV only until PP-024b, so music files are large (the 1 s test loop is 44 KB).
+- WAV only until PP-024b, so music files were large (the 1 s test loop is 44 KB as WAV, 4.9 KB as OGG; ADR-033).
 
 ## Revisit Conditions
 Fades/cross-fades, "finished" events or queries, or many simultaneous long sounds (streaming instead of decoding fully).
+
+---
+
+# ADR-033: OGG Vorbis decoding with `lewton`, decoded fully on load
+
+## Status
+Accepted (2026-10-07, PP-024b). Extends ADR-030 (formats) and ADR-032 (music).
+
+## Context
+Uncompressed music is about 10 MB per minute (44.1 kHz mono 16-bit; twice that in stereo). Games ship music and long
+ambience as OGG Vorbis. ADR-030 left OGG out to keep PP-022 small; ADR-032 made music possible but WAV-only.
+
+## Decision
+- **Decoder: `lewton` 0.10.2** (pure Rust, MIT OR Apache-2.0) with its default `ogg` feature. Measured with
+  `cargo tree -e normal --target …`: **+4 crates on every platform** (`lewton`, `ogg` 0.8.0 BSD-3-Clause,
+  `tinyvec` 1.13.3 Zlib/Apache-2.0/MIT, `byteorder` 1.5.0 Unlicense/MIT): Linux 133 → 137, Windows 106 → 110,
+  macOS 108 → 112. Used only in `src/audio/sound.rs`, like `hound`.
+- **The format comes from the content:** `load_sound` reads the file and looks at its first four bytes: `RIFF` → WAV
+  (`hound`), `OggS` → OGG Vorbis (`lewton`), anything else → `Error::Asset` "not a WAV or OGG Vorbis file". A file's
+  extension is never consulted, so a misnamed file still loads.
+- **Decoded completely on load** into the same `SoundData` (interleaved `f32`, clamped to −1..1) that WAV uses, so the
+  mixer, looping, volumes and the voice limit are unchanged. Mono and stereo, any sample rate; more channels are
+  rejected like WAV. Chained OGG streams are joined only if every stream keeps the first one's channel count and
+  sample rate (otherwise `Error::Asset`); an OGG with no audio is an error.
+- **New asset `assets/sounds/loop.ogg`:** `loop.wav` encoded by ffmpeg/libvorbis at quality 4 (bit-exact flags, no
+  metadata), 4.9 KB instead of 44 KB. It decodes to exactly the source's 22,050 frames, so it still loops seamlessly;
+  the sandbox's `M` loop now plays it. `loop.wav` stays as the reference the unit test compares against.
+
+## Alternatives Considered
+- **`symphonia`** (many formats incl. MP3/FLAC): MPL-2.0 and a larger tree; more than one format needs today.
+- **`rodio` / `kira`** decoders: bring their whole playback stacks (ADR-030 rejected them for size).
+- **Streaming decode** (decode while playing): keeps memory flat for long tracks, but adds a decoder per voice on the
+  audio thread or a feeder thread plus buffering. Not needed until a game has several minutes of music loaded at once.
+- **Choosing by extension:** simpler, but fails on misnamed files and says nothing useful about broken ones.
+
+## Rationale
+The smallest pure-Rust, permissively licensed Vorbis decoder; decoding up front reuses the whole verified mixer path
+and keeps the audio thread free of decoding work.
+
+## Consequences
+### Positive
+- Verified: unit tests decode the shipped OGG (format and exact length equal to `loop.wav`, RMS difference 0.0019
+  against a 0.32 peak), detect formats by content (an OGG named `.wav` loads), and reject broken OGG files (magic only,
+  garbage, cut headers, damaged pages) as `Error::Asset`; `Context::load_sound("sounds/loop.ogg")` reports 1.0 s. End to
+  end through ALSA's `file` plugin, the sandbox's `M` loop matched the mixer model applied to `lewton`'s output sample
+  for sample (max diff 0) for 6,290,400 frames (131 loops), both channels equal, silent after the stop. A scratch check
+  (not shipped) decoded a stereo file (left 440 Hz, right silent: right channel exactly 0), rejected a 3-channel file,
+  joined a chained file and rejected a chain that changes the sample rate.
+### Negative
+- Memory: a decoded sound takes about 10 MB per minute of 44.1 kHz mono (`f32`), twice that in stereo, and decoding
+  happens on the calling thread during `load_sound`. Measured for `loop.ogg` (1 s, 22.05 kHz mono): 9.9 ms in a
+  debug build, 1.7 ms in release, so roughly 4× that per second of 44.1 kHz stereo (a 3-minute track: ~7 s debug,
+  ~1.2 s release). Load music during startup or a loading screen.
+- `lewton` does not drop a stream's leading samples when its first granule position asks for it (ffmpeg does), so
+  some files decode a few milliseconds longer than other players play them. Files encoded like `loop.ogg` are exact.
+  At the join of a chained file, `lewton` drops the first packet of the next stream.
+- `lewton`'s last release is from 2021 (stable, but slow-moving); `ogg` is BSD-3-Clause (permissive; keep its notice
+  when redistributing binaries, like the other dependencies' licences).
+
+## Revisit Conditions
+Long music tracks or many loaded at once (stream instead), MP3/FLAC requests (consider `symphonia`), or a `lewton`
+bug or security advisory.
 
 ---
 

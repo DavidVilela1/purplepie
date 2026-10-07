@@ -219,6 +219,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Loops (PP-024a): press `m`, wait, press `m` again; model the mixer (f64 position += 22050/48000, wrap by subtracting
   the length, interpolate with the first frame after the last, × 0.5) and expect an exact match up to the last
   non-zero frame and only zeros after it. Align on the first non-zero frame minus one (the loop starts with a 0 sample).
+  OGG (PP-024b+, ADR-033): the sandbox loop is `loop.ogg`, so model `lewton`'s decoded samples, not `loop.wav` (dump
+  them from a temporary unit test that writes `decode(…).samples` to a scratch file; remove it after). Align on the
+  first non-zero frame itself and expect max diff 0. ffmpeg (`libvorbis`) is available in Cowork for making test files;
+  encode shipped assets with `-map_metadata -1 -fflags +bitexact -flags:a +bitexact` so they are reproducible.
 - **UI buttons (PP-023+, ADR-031):** the sandbox's "Reset camera" button covers window x W−180..W−21, y 20..59. With
   XTEST (`mousemove`, `mousedown 1`, `mouseup 1`) and screenshots, a pixel inside it away from the text (e.g. W−170, 25)
   is `#3A86FF` idle, `#6FA8FF` hovered, `#1D5FCC` held. Start with `PURPLEPIE_SANDBOX_CAMERA=0,120,2`: after one click

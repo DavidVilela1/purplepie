@@ -43,6 +43,7 @@ ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
 # Linux builds need the ALSA headers (`libasound2-dev`); +5 crates on Linux, +3 Windows, +9 macOS (with hound).
 cpal = "0.18.2"
 hound = "3.5.1"      # PP-022: WAV decoding, used only in `audio` (ADR-030)
+lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.rs` (ADR-033); +4 crates
 
 [lints.rust]
 unsafe_code = "forbid"

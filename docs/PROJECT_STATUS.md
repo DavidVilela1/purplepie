@@ -14,7 +14,7 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 **Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
 Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects, PP-023 UI buttons and PP-024a playback control done; **PP-024b OGG Vorbis decoding** is next. The long-term plan (in-game UI and an editor) is in
+progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects, PP-023 UI buttons, PP-024a playback control and PP-024b OGG Vorbis decoding done; **PP-025 per-texture sampling** (the last planned P2 item) is next. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -93,6 +93,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-022: audio part 1, sound effects: `cpal` + `hound` + own mixer, `Context::load_sound` / `play_sound` (ADR-030).
 - PP-023: UI buttons: `ui::Button`, `ui::Pointer`, `ui::update_buttons` (ADR-031).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
+- PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 
 ## In Progress
 
@@ -100,7 +101,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-024b: OGG Vorbis decoding** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-024b-ogg-vorbis-decoding--next).
+- **PP-025: Per-texture sampling** (post-portfolio phase P2, friction point F9). See [TASKS.md](TASKS.md#pp-025-per-texture-sampling--next).
 
 ## Blocked
 
@@ -130,11 +131,16 @@ executable, else `assets/` in the working directory (ADR-025).
 - Render interpolation is not implemented. `Time::alpha()` is exposed for it, but nothing uses it yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
-- Audio (PP-022/024a): WAV only (OGG is PP-024b), no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
+- Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-024b OGG Vorbis decoding.**
+  - New dependency `lewton` 0.10.2 (ADR-033; +4 crates on every platform: `lewton`, `ogg`, `tinyvec`, `byteorder`).
+  - `Context::load_sound` decodes WAV or OGG Vorbis, chosen from the file's first bytes (not its extension); OGG is decoded completely on load into the same samples the mixer already plays.
+  - New asset `assets/sounds/loop.ogg` (`loop.wav` encoded with ffmpeg/libvorbis, 4.9 KB instead of 44 KB, same 22,050 frames); the sandbox's `M` loop plays it.
 
 - **2026-10-07: PP-024a Audio playback control and looping (PP-024 split into a + b).**
   - `Context::play_sound` returns an `audio::PlaybackId`; new `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `master_volume`, `sound_duration` (ADR-032).
@@ -286,21 +292,22 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-024a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-024b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 191 unit tests + 26 doctests, 10 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 194 unit tests + 26 doctests, 10 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10 |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox music loop via ALSA `file` plugin (`M` … `M`) | ✅ matches the mixer model exactly (max diff 0) over 3,522,960 frames = 73.4 loops; L = R; exactly silent after the stop |
-| Sandbox whole-frame model + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
-| Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-023 | ✅ pixel-identical |
+| Sandbox OGG music loop via ALSA `file` plugin (`M` … `M`) | ✅ matches the mixer model applied to `lewton`'s decoded `loop.ogg` exactly (max diff 0) over 6,290,400 frames = 131 loops; L = R; exactly silent after the stop |
+| Scratch OGG files (not shipped) | ✅ stereo decodes with channels in order (right channel exactly 0); 3 channels rejected; chained file joined; chain changing the rate rejected |
+| Sandbox whole-frame model + HUD + animated cell (cameras (0,0)×1, (120,−40)×1.5, (−200,60)×2) | ✅ 0 mismatches apart from the cursor marker (400 px at zoom 2); HUD panel, corner square and button crops identical at all three; one animation frame |
+| Breakout autoplay `win` / `lose` (debug, ALSA null device) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
+| Breakout lose screen vs PP-024a | ✅ pixel-identical (overlay colour still 339,277 px) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -308,4 +315,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-024a done (playback control and looping; ADR-032). PP-024b (OGG Vorbis decoding) is next.
+2026-10-07. PP-024b done (OGG Vorbis decoding; ADR-033). PP-025 (per-texture sampling) is next.

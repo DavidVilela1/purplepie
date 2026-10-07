@@ -37,6 +37,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-25 | Text quality and glyph-atlas pressure | OPEN | Medium | Low | PP-018 |
 | R-26 | Third-party asset licensing (shipped font) | MITIGATED | — | Medium | PP-018 |
 | R-27 | Audio: platform builds, devices and the audio thread | OPEN | Medium | Medium | PP-022 |
+| R-28 | OGG Vorbis decoding: memory, load time and a slow-moving decoder | OPEN | Medium | Low | PP-024b |
 
 ## Details
 
@@ -217,4 +218,16 @@ Likelihood and impact are qualitative: Low, Medium or High.
   through ALSA's `file` plugin compares the device output sample for sample (DEVELOPMENT §8).
 - **Fallback:** owner checks on Windows; if a platform misbehaves, `EngineConfig::with_audio(false)` keeps games
   running; consider `rodio`/`kira` if device handling needs more than `cpal` gives.
+
+### R-28: OGG Vorbis decoding: memory, load time and a slow-moving decoder
+- **Trigger:** sounds are decoded completely when loaded (ADR-033): ~10 MB per minute of 44.1 kHz mono (`f32`), twice
+  that in stereo, and a 3-minute stereo track takes ~7 s to decode in a debug build (~1.2 s in release, extrapolated from
+  `loop.ogg`). `lewton` (last release 2021) ignores a stream's leading-sample trim and drops one packet at chain joins.
+  `ogg` is BSD-3-Clause, a licence already in the tree (`tiny-skia` on Linux; other non-MIT/Apache-only licences:
+  `arrayref` BSD-2-Clause, `libloading` ISC, `foldhash` Zlib; checked with `cargo metadata` on 2026-10-07).
+- **Mitigation:** decoding failures are `Error::Asset`, never panics (unit tests with damaged files); the shipped loop
+  decodes to its exact source length; docs tell games to load music at startup; BSD-3-Clause is permissive (keep the
+  notice when redistributing binaries).
+- **Fallback:** stream long tracks instead of decoding them up front; switch to `symphonia` if `lewton` shows a bug or
+  advisory, or if MP3/FLAC are needed.
 

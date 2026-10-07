@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets, animation, screen-space HUD, sound, music loops and UI buttons done; OGG next).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets, animation, screen-space HUD, sound, OGG music loops and UI buttons done).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -18,12 +18,12 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
   once per callback regardless of frame rate.
-- **Audio:** WAV sounds with `Context::load_sound`, `play_sound` / `loop_sound` (seamless loops), `stop_sound`, per-sound and
+- **Audio:** WAV and OGG Vorbis sounds with `Context::load_sound`, `play_sound` / `loop_sound` (seamless loops), `stop_sound`, per-sound and
   master volume (mixed in software, any sample rate); games keep running silently without an audio device.
 - **Assets:** textures, fonts and sounds loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): OGG/compressed audio and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
+- Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
@@ -129,7 +129,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API
-├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav), shaders/
+├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav; loop.ogg), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
@@ -162,6 +162,7 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | ab_glyph | 0.2.32 | PP-018a |
 | cpal | 0.18.2 | PP-022 |
 | hound | 3.5.1 | PP-022 |
+| lewton | 0.10.2 | PP-024b |
 
 ## License
 

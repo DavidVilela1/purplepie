@@ -45,7 +45,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | Rust-first | Stable Rust, edition 2024, `unsafe_code = "forbid"` (ADR-001). |
 | Modularity | One responsibility per module. A module exists only once it has a user (ADR-003). |
 | Composition | Behavior comes from ECS components + plain-function systems, not inheritance-like trait hierarchies. |
-| Low coupling | `winit` only in `app`, `wgpu` only in `render`, `cpal`/`hound` only in `audio`. ECS and math never depend on rendering. |
+| Low coupling | `winit` only in `app`, `wgpu` only in `render`, `cpal`/`hound`/`lewton` only in `audio`. ECS and math never depend on rendering. |
 | Explicit APIs | No implicit systems, no global state, no hidden schedulers. Game code calls systems itself. |
 | Incremental development | One verified stage at a time, each a runnable vertical slice ([ROADMAP.md](ROADMAP.md)). |
 | No premature overengineering | No traits, generics, `Arc`/`Mutex`/`RefCell` or dependencies without a present need. |
@@ -63,7 +63,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps`, `clear_color`, `asset_root` + builders + `validate` | VERIFIED |
 | `src/audio/mod.rs` | `pub mod audio`: public `SoundId`, `PlaybackId`; crate-private `Sounds`, `AudioOutput` (ADR-030, ADR-032) | VERIFIED |
-| `src/audio/sound.rs` | `SoundId`, crate-private `SoundData` (interleaved f32), `decode_wav` (`hound`; PCM 8–32-bit, float; mono/stereo), `Sounds` store (path → id, `Arc` entries) | VERIFIED (5 unit tests) |
+| `src/audio/sound.rs` | `SoundId`, crate-private `SoundData` (interleaved f32), `decode` (format from the first bytes: `RIFF` → `decode_wav`, `OggS` → `decode_ogg`), `decode_wav` (`hound`; PCM 8–32-bit, float; mono/stereo), `decode_ogg` (`lewton`; mono/stereo; consistent chained streams; ADR-033), `Sounds` store (path → id, `Arc` entries) | VERIFIED (8 unit tests) |
 | `src/audio/mixer.rs` | Crate-private `Mixer` + `Command` (`Play`/`Stop`/`SetVolume`/`SetMaster`/`StopAll`, `apply`): ≤ 32 voices (one-shots dropped before loops), volume 0..4, master volume, seamless loops, linear resampling, mono/stereo channel mapping, clamping; pure, runs on the audio thread | VERIFIED (12 unit tests) |
 | `src/audio/output.rs` | Public `PlaybackId`; crate-private `AudioOutput`: the only `cpal` code; default output device, stream callback owns the mixer and drains an `mpsc` command channel; playback ids from a game-side counter; f32/i16/u16/i32 devices; any failure → silent output | VERIFIED (Linux: ALSA `file`-plugin capture, no-device fallback) |
 | `src/ui/mod.rs` | `pub mod ui`: `Button` component (screen-space hit rectangle; hovered / pressed / clicked), `Pointer` (cursor + left button snapshot), `update_buttons(world, pointer, viewport)` (topmost button wins) (ADR-031) | VERIFIED (9 unit tests + 2 doctests, Xvfb XTEST) |
@@ -101,6 +101,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `assets/textures/sandbox_sheet.png` | 32×16 sprite sheet for the sandbox and tests: 4×2 cells of 8×8, each with its own border and inner colour and a white texel at its inner top-left (shows mirroring) | VERIFIED |
 | `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
 | `assets/sounds/{blip,hit,lose,loop}.wav` | Generated 22,050 Hz mono 16-bit sounds (60 ms 880 Hz blip, 90 ms hit, 400 ms falling tone, 1 s periodic chord loop) for the sandbox, Breakout and tests | VERIFIED |
+| `assets/sounds/loop.ogg` | `loop.wav` encoded as OGG Vorbis (ffmpeg/libvorbis, quality 4, 4.9 KB; same 22,050 frames); the sandbox's `M` music loop (ADR-033) | VERIFIED |
 | `assets/fonts/Poppins-Regular.ttf`, `assets/fonts/OFL.txt` | The shipped font (unmodified, 160 KB) and its SIL Open Font License 1.1 (ADR-027); used by the sandbox and unit tests | VERIFIED |
 | `assets/shaders/` | Runtime data folder (empty, `.gitkeep`) | Placeholder |
 
@@ -115,7 +116,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
 | `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, UI widgets, several cameras, text wrapping | 4–7, P2 |
 | `ui` | `Button`, `Pointer`, `update_buttons` (ADR-031) | `ecs`, `math`, `input`, `render` (`ScreenSpace`, `Layer`, `Hidden`) | `app`, `winit`, `wgpu`, `audio` | keyboard focus, layout, text input | PP-023 |
-| `audio` | `SoundId`; sound store, mixer, device output (ADR-030) | `cpal`, `hound`, `error` | `render`, `ecs`, `input`, `winit`, `wgpu` | OGG (PP-024b), fades, streaming | PP-022, PP-024a |
+| `audio` | `SoundId`, `PlaybackId`; sound store (WAV + OGG Vorbis), mixer, device output (ADR-030, ADR-032, ADR-033) | `cpal`, `hound`, `lewton`, `error` | `render`, `ecs`, `input`, `winit`, `wgpu` | fades, streaming, more formats | PP-022, PP-024a, PP-024b |
 | `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app` for textures and fonts. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
 

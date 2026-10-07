@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music** · P1 · TODO ← **next task**
+- [ ] **PP-025: Per-texture sampling (Nearest or Linear, friction point F9)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -48,6 +48,7 @@ _None._
 - [x] **PP-022: Audio, part 1: sound effects (ADR-030)** · DONE (2026-10-07; verified on Linux; Windows/macOS compiled by CI only)
 - [x] **PP-023: UI buttons (ADR-031)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-024a: Audio, part 2a: playback control and looping (ADR-032)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music (ADR-033)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -280,14 +281,23 @@ verifiable on its own.
 | Scope (as built) | ADR-032. `audio::PlaybackId`; `Context::play_sound` returns it; new `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `master_volume`, `sound_duration`. Mixer: commands `Play`/`Stop`/`SetVolume`/`SetMaster`/`StopAll` via `Mixer::apply`, seamless looping with interpolation across the seam, master volume, voice limit drops one-shots before loops. New asset `assets/sounds/loop.wav` (generated 1 s periodic chord). Sandbox: `M` toggles the loop at volume 0.5; the exit line prints `music playing`. No new dependencies. |
 | Acceptance criteria | ✅ 1. Unit tests: loop across buffers, seam interpolation, stop, set volume, master, stop-all, unknown ids, voice-limit priority, silent voices, `Context` API without a device (ids distinct, master clamps, duration 0.06 s for blip). ✅ 2. ALSA `file`-plugin capture: `M`…`M` → the loop matches the model exactly (max diff 0) for 3,522,960 frames (73.4 loops), both channels equal, all zero after the stop. ✅ 3. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-023; sandbox model/HUD/animation unchanged; GPU tests 10/10; fault test clean. |
 
-### PP-024b: OGG Vorbis decoding ← NEXT
+### PP-024b: OGG Vorbis decoding
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 · Priority P1 · **DONE** (2026-10-07; verified on Linux) |
+| Dependencies | PP-024a (DONE) |
+| Why now | Music as WAV is ~10 MB per minute; games ship music as OGG Vorbis. |
+| Scope (as built) | ADR-033. New dependency `lewton` 0.10.2 (+4 crates on every platform). `audio/sound.rs`: `decode` picks the decoder from the first bytes (`RIFF` → `hound`, `OggS` → `lewton`, else `Error::Asset` "not a WAV or OGG Vorbis file"); `decode_ogg` decodes fully on load to interleaved `f32` (mono/stereo, consistent chained streams). New asset `assets/sounds/loop.ogg` (`loop.wav` via ffmpeg/libvorbis q4, 4.9 KB, exactly 22,050 frames); the sandbox's `M` loop plays it. `load_sound` docs list both formats and the memory/load-time cost. |
+| Acceptance criteria | ✅ 1. Unit tests (+3, and `loop.ogg` added to the shipped-sounds test): the shipped OGG has the source's channels, rate and exact length, RMS difference 0.0019 (limit 0.005); format by content (an OGG named `.wav` loads; unknown magic rejected); broken OGG (magic only, garbage, cut headers, damaged page) → error / `Error::Asset`; `Context::load_sound("sounds/loop.ogg")` = 1.0 s. ✅ 2. ALSA `file`-plugin capture: `M`…`M` plays `loop.ogg` exactly as the mixer model predicts from `lewton`'s output (max diff 0) for 6,290,400 frames (131 loops), L = R, silent after the stop. ✅ 3. Scratch files: stereo channel order, 3 channels rejected, chained file joined, rate-changing chain rejected. ✅ 4. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-024a; sandbox model 0 mismatches (cursor marker aside), HUD/button crops identical at 3 cameras; fault test clean. |
+
+### PP-025: Per-texture sampling ← NEXT
 | Field | Value |
 |---|---|
 | Stage | Post-portfolio phase P2 · Priority P1 · TODO |
-| Dependencies | PP-024a (DONE) |
-| Why now | Music as WAV is ~10 MB per minute; games ship music as OGG Vorbis. |
-| Scope | Choose a decoder (e.g. `lewton`, MIT/Apache; measure crates per ADR-013) and decode `.ogg` fully on load (streaming only if a measured need appears); `load_sound` picks the decoder by content; add a small OGG asset produced in Cowork (e.g. with a Python/ffmpeg encoder if available) and use it as the sandbox loop. |
-| Acceptance criteria | Unit tests decoding the shipped OGG (channels, rate, length, sample values close to the source WAV); corrupt OGG → `Error::Asset`; capture shows the OGG loop playing; CI green. |
+| Dependencies | PP-019 (DONE) |
+| Why now | The last planned P2 item. Friction point F9: scaled-down or rotated sprites alias because every texture is sampled with `Nearest` (Breakout's ball). Pixel art wants `Nearest`, smooth art wants `Linear`. |
+| Scope | Decide the API (ADR): a sampling choice per texture chosen at load (e.g. `Context::load_texture_with(path, TextureOptions { filter })`, default `Nearest` so existing games are unchanged); one sampler per filter mode, chosen when the texture's bind group is built (no extra draw-list state beyond the texture batch). Document that sprite-sheet cells with `Linear` bleed into neighbours unless the sheet has spacing (ADR-020 extension). Use `Linear` where F9 was seen (Breakout's ball) only if it does not change the deterministic gameplay output. |
+| Acceptance criteria | Unit tests for the options and their defaults; an ignored GPU test where a 2×2 texture drawn at 4× shows blended pixels with `Linear` and exact texels with `Nearest`; existing GPU tests unchanged; sandbox and Breakout regressions (lose screen identical unless the ball deliberately changes, explained); CI green. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
