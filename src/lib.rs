@@ -33,6 +33,7 @@
 
 mod app;
 mod assets;
+pub mod audio;
 pub mod ecs;
 mod error;
 pub mod input;

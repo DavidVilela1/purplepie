@@ -39,6 +39,10 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 # Already in the Linux tree via winit's Wayland decorations; +4 crates on Windows.
 # Variable-font support (default features) is not needed.
 ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
+# PP-022: audio output, used only in `audio` (ADR-030). Default features only (no JACK/PulseAudio/PipeWire).
+# Linux builds need the ALSA headers (`libasound2-dev`); +5 crates on Linux, +3 Windows, +9 macOS (with hound).
+cpal = "0.18.2"
+hound = "3.5.1"      # PP-022: WAV decoding, used only in `audio` (ADR-030)
 
 [lints.rust]
 unsafe_code = "forbid"

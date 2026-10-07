@@ -47,6 +47,10 @@ pub struct EngineConfig {
     /// against. `None` (the default) means: the `assets` folder next to the
     /// executable if it exists, else `assets` in the working directory (ADR-025).
     pub asset_root: Option<PathBuf>,
+    /// Open the default audio output device at startup (default `true`;
+    /// ADR-030). With `false`, or when no device is available, sounds load
+    /// normally but [`Context::play_sound`](crate::Context::play_sound) plays nothing.
+    pub audio: bool,
 }
 
 impl EngineConfig {
@@ -74,6 +78,7 @@ impl EngineConfig {
             max_fixed_steps: Self::DEFAULT_MAX_FIXED_STEPS,
             clear_color: Color::PURPLEPIE,
             asset_root: None,
+            audio: true,
         }
     }
 
@@ -133,6 +138,13 @@ impl EngineConfig {
     #[must_use]
     pub fn with_asset_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.asset_root = Some(root.into());
+        self
+    }
+
+    /// Turns audio output on (the default) or off, e.g. for automated runs.
+    #[must_use]
+    pub fn with_audio(mut self, audio: bool) -> Self {
+        self.audio = audio;
         self
     }
 

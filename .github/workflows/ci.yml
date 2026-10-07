@@ -51,6 +51,10 @@ jobs:
           rustup default stable
           rustc --version
 
+      # cpal (audio, ADR-030) links ALSA on Linux and needs its headers to build.
+      - name: Install ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+
       - name: Formatting
         run: cargo fmt --all -- --check
 
@@ -73,6 +77,10 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustc --version
+
+      - name: Install ALSA headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
 
       - name: Check
         run: cargo check --locked --all-targets --all-features

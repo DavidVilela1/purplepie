@@ -18,6 +18,7 @@ use super::keymap;
 use super::pacer::{FRAME_INTERVAL, FramePacer};
 use super::state::{EngineState, physical_to_logical, sanitize_scale_factor};
 use crate::assets::AssetRoot;
+use crate::audio::AudioOutput;
 use crate::error::{Error, Result};
 use crate::render::Renderer;
 use crate::time::FixedTimestep;
@@ -61,7 +62,13 @@ impl<G: Game> Runner<G> {
             initialized: false,
             pacer: FramePacer::new(FRAME_INTERVAL, Instant::now()),
             fixed: FixedTimestep::new(config.fixed_dt, config.max_fixed_steps),
-            state: EngineState::new(config.fixed_dt, assets),
+            state: {
+                let mut state = EngineState::new(config.fixed_dt, assets);
+                if config.audio {
+                    state.audio = AudioOutput::open();
+                }
+                state
+            },
             scale_factor: 1.0,
             last_frame: None,
             error: None,

@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use super::state::EngineState;
+use crate::audio::SoundId;
 use crate::ecs::World;
 use crate::error::Result;
 use crate::input::Input;
@@ -62,6 +63,8 @@ impl std::fmt::Debug for Context<'_> {
             .field("entities", &self.state.world.len())
             .field("textures", &self.state.textures.len())
             .field("fonts", &self.state.fonts.len())
+            .field("sounds", &self.state.sounds.len())
+            .field("audio", &self.state.audio)
             .field("camera", &self.state.camera)
             .field("input", &self.state.input)
             .field("viewport", &self.state.viewport)
@@ -137,6 +140,35 @@ impl<'a> Context<'a> {
     pub fn load_font(&mut self, path: impl AsRef<Path>) -> Result<FontId> {
         let file = self.state.assets.locate(path.as_ref())?;
         self.state.fonts.load(&file)
+    }
+
+    /// Loads a WAV sound (PCM 8/16/24/32-bit or 32-bit float, mono or
+    /// stereo, any sample rate) and returns a handle for
+    /// [`play_sound`](Self::play_sound) (ADR-030).
+    ///
+    /// The file is read and decoded now, so a problem is reported here as
+    /// [`Error::Asset`](crate::Error::Asset). Paths resolve like
+    /// [`load_texture`](Self::load_texture); loading the same file again
+    /// returns the same [`SoundId`]. Works without an audio device.
+    pub fn load_sound(&mut self, path: impl AsRef<Path>) -> Result<SoundId> {
+        let file = self.state.assets.locate(path.as_ref())?;
+        self.state.sounds.load(&file)
+    }
+
+    /// Starts playing `sound` from the beginning at `volume` (1.0 = as
+    /// recorded, 0 = silent; at most 4.0; invalid values are silent).
+    /// Sounds overlap freely, up to 32 at once (the oldest stops first).
+    /// Returns immediately; without an audio device it does nothing.
+    pub fn play_sound(&mut self, sound: SoundId, volume: f32) {
+        if let Some(data) = self.state.sounds.get(sound) {
+            self.state.audio.play(std::sync::Arc::clone(data), volume);
+        }
+    }
+
+    /// `true` if sounds reach an audio device: `false` when audio is turned
+    /// off in [`EngineConfig`](crate::EngineConfig) or no device could be opened.
+    pub fn audio_available(&self) -> bool {
+        self.state.audio.is_active()
     }
 
     /// The size of `text` in world units: its widest line, its height and the
@@ -334,6 +366,27 @@ mod tests {
         assert_eq!(two.lines, 2);
         assert!((two.width - one.width).abs() < 1e-3, "the widest line");
         assert!((two.height - 290.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn sounds_load_relative_to_the_asset_root_and_play_silently_without_a_device() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        let mut ctx = Context::new(&mut state, 0.0);
+        let err = ctx.load_sound("sounds/no-such.wav").expect_err("missing");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+        let err = ctx
+            .load_sound("textures/sandbox_quadrants.png")
+            .expect_err("a PNG is not a WAV");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+        let blip = ctx.load_sound("sounds/blip.wav").expect("blip");
+        assert_eq!(ctx.load_sound("sounds/blip.wav").expect("again"), blip);
+        assert!(!ctx.audio_available(), "tests never open a device");
+        ctx.play_sound(blip, 1.0); // silent, must not panic
+        ctx.play_sound(blip, f32::NAN);
+        assert_eq!(state.sounds.len(), 1);
     }
 
     #[test]

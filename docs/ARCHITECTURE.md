@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-10-07** against the repository after PP-021 (screen-space drawing).
+Last reviewed: **2026-10-07** against the repository after PP-022 (audio, part 1).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -22,8 +22,8 @@ window, event loop, time, ECS world, input state and GPU renderer.
 - an editor (possible much later).
 
 **Current reality (Stages 0–10 complete; post-portfolio text phase P1, PP-018a/b):** `purplepie` provides `Engine`,
-`EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `load_font`, `measure_text`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
-(`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
+`EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `load_font`, `measure_text`, `load_sound`, `play_sound`, `audio_available`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
+(`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `audio` (`SoundId`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
 (`Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextAnchor`, `TextMetrics`, `TextureId`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `ScreenSpace`, `FontId`, `Layer`, `Hidden`; the `advance_animations` system). Every frame the engine clears the window and draws each entity
 that has `Transform2D` + `Quad` (solid colour, ADR-019), `Transform2D` + `Sprite` (textured, ADR-020) or `Transform2D` +
@@ -45,7 +45,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | Rust-first | Stable Rust, edition 2024, `unsafe_code = "forbid"` (ADR-001). |
 | Modularity | One responsibility per module. A module exists only once it has a user (ADR-003). |
 | Composition | Behavior comes from ECS components + plain-function systems, not inheritance-like trait hierarchies. |
-| Low coupling | `winit` only in `app`, `wgpu` only in `render`. ECS and math never depend on rendering. |
+| Low coupling | `winit` only in `app`, `wgpu` only in `render`, `cpal`/`hound` only in `audio`. ECS and math never depend on rendering. |
 | Explicit APIs | No implicit systems, no global state, no hidden schedulers. Game code calls systems itself. |
 | Incremental development | One verified stage at a time, each a runnable vertical slice ([ROADMAP.md](ROADMAP.md)). |
 | No premature overengineering | No traits, generics, `Arc`/`Mutex`/`RefCell` or dependencies without a present need. |
@@ -62,6 +62,10 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `src/app/config.rs` | `EngineConfig`: title, size, resizable, `exit_on_escape`, `fixed_dt`, `max_frame_dt`, `max_fixed_steps`, `clear_color`, `asset_root` + builders + `validate` | VERIFIED |
+| `src/audio/mod.rs` | `pub mod audio`: public `SoundId`; crate-private `Sounds`, `AudioOutput` (ADR-030) | VERIFIED |
+| `src/audio/sound.rs` | `SoundId`, crate-private `SoundData` (interleaved f32), `decode_wav` (`hound`; PCM 8–32-bit, float; mono/stereo), `Sounds` store (path → id, `Arc` entries) | VERIFIED (5 unit tests) |
+| `src/audio/mixer.rs` | Crate-private `Mixer`: ≤ 32 voices, volume 0..4, linear resampling, mono/stereo channel mapping, clamping; pure, runs on the audio thread | VERIFIED (7 unit tests) |
+| `src/audio/output.rs` | Crate-private `AudioOutput`: the only `cpal` code; default output device, stream callback owns the mixer and drains an `mpsc` command channel; f32/i16/u16/i32 devices; any failure → silent output | VERIFIED (Linux: ALSA `file`-plugin capture, no-device fallback) |
 | `src/assets/mod.rs` | Crate-private `AssetRoot` (`resolve`, `for_process`, `path`, `locate`): the asset root chosen once at startup (ADR-025) | VERIFIED (5 unit tests + end-to-end layouts) |
 | `src/app/game.rs` | `Game` trait (`init`, `fixed_update`, `update`, all with defaults); `Context` (`world()`, `world_mut()`, `time()`, `dt()`, `load_texture(path)`, `texture_size(id)`, `camera()`, `camera_mut()`, `viewport_size()`, `input()`, `cursor_world()`, `asset_root()`, `set_window_title()`, `request_exit()`, `exit_requested()`), borrowing one `EngineState` | VERIFIED |
 | `src/app/state.rs` | `EngineState` (`pub(crate)`): exit flag, `Time`, `World`, `Textures`, `Camera2D`, `Input`, viewport, `AssetRoot`, pending window title; owned by the runner. `physical_to_logical`, `sanitize_scale_factor` | VERIFIED (2 unit tests incl. cursor DPI path) |
@@ -95,6 +99,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/main.rs` | `sandbox` binary: a `Game` using only the public API. Optional timed exit via env var. | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |
 | `assets/textures/sandbox_sheet.png` | 32×16 sprite sheet for the sandbox and tests: 4×2 cells of 8×8, each with its own border and inner colour and a white texel at its inner top-left (shows mirroring) | VERIFIED |
 | `assets/textures/sandbox_quadrants.png` | 16×16 test image for the sandbox and unit tests (four colour quadrants, transparent border, one 50% alpha quadrant) | VERIFIED |
+| `assets/sounds/{blip,hit,lose}.wav` | Generated 22,050 Hz mono 16-bit sound effects (60 ms 880 Hz blip, 90 ms hit, 400 ms falling tone) for the sandbox, Breakout and tests | VERIFIED |
 | `assets/fonts/Poppins-Regular.ttf`, `assets/fonts/OFL.txt` | The shipped font (unmodified, 160 KB) and its SIL Open Font License 1.1 (ADR-027); used by the sandbox and unit tests | VERIFIED |
 | `assets/shaders/` | Runtime data folder (empty, `.gitkeep`) | Placeholder |
 
@@ -108,6 +113,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
 | `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, UI widgets, several cameras, text wrapping | 4–7, P2 |
+| `audio` | `SoundId`; sound store, mixer, device output (ADR-030) | `cpal`, `hound`, `error` | `render`, `ecs`, `input`, `winit`, `wgpu` | music streaming, looping/stop, OGG | PP-022 |
 | `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app` for textures and fonts. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
 
@@ -157,11 +163,13 @@ Currently enforced by the compiler: `main.rs` can reach only `pub` items of `pur
 ### Current (Stage 10, PP-017)
 ```text
 main → Engine::new(config)?          validate config, EventLoop::new()
+     (Runner::new: asset root chosen; config.audio → AudioOutput::open() = cpal default device or silence)
      → engine.run(game)              EventLoop::run_app(&mut Runner)
 resumed          → create Arc<Window> (once) → Renderer::new (if none; error → exit)
                    → game.init(ctx) (once; error → exit). ctx.load_texture / ctx.load_font: AssetRoot::locate
                      (relative → root, chosen once in Runner::new, ADR-025) → decode/parse now → Textures / Fonts
                      (CPU, owned by the runner; outlive renderers: a new one re-uploads textures, re-rasterizes glyphs)
+                     ctx.load_sound → Sounds (decoded WAV, Arc); ctx.play_sound → mpsc → audio thread (ADR-030)
 about_to_wait    → FramePacer: if a frame is due, request_redraw; ControlFlow::WaitUntil(next deadline)
 RedrawRequested  → FRAME (skipped once exit has begun):
                      raw = now − last_frame (0 on the first frame)
@@ -393,7 +401,7 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets` | pure unit tests + doctests | ✅ 165 unit tests + 24 doctests (PP-021) |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}` | pure unit tests + doctests | ✅ 178 unit tests + 24 doctests (PP-022) |
 | GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text and sprite-sheet rendering read back and compared with the CPU rasterization / texels) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 10 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |

@@ -209,6 +209,13 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   around its text) and the corner square x W−50..W−11, y H−50..H−11 (`#FF006E`). Screenshot at several cameras: both
   crops must be pixel-identical; after `xdotool windowsize` the square follows the bottom-right corner. Exclude these
   rectangles from the world model. The exact check is the ignored GPU test `screen_space_draws_on_top_at_fixed_window_pixels`.
+- **Audio (PP-022+, ADR-030):** Cowork has no sound card. Without one the sandbox logs `audio disabled` and prints
+  `audio output available: false`. To check the real output path, give ALSA a capture device in a scratch `HOME`:
+  `.asoundrc` = `pcm.!default { type file; slave.pcm "null"; file "<dir>/out.raw"; format "raw" }`, run the sandbox
+  with `PURPLEPIE_LOG=info` (logs the device format, e.g. `2 channels at 48000 Hz (f32)`), click once, and compare
+  `out.raw` (interleaved samples) with `blip.wav` resampled linearly × 0.8: expect exactly one copy, identical channels.
+  The null device runs faster than real time and the file grows by ~140 MB/s, so keep runs short and delete it after.
+  For determinism with an active device use `pcm.!default { type null }`.
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
   `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
   rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;
@@ -246,7 +253,8 @@ Keep local commands consistent with CI: use `--locked` and keep `Cargo.lock` com
   move it to `C:\Users\<you>\dev\PurplePie`, or run `setx CARGO_TARGET_DIR C:\Users\<you>\cargo-target`.
 
 **Linux:** development packages for X11/Wayland are loaded at runtime. A Vulkan
-driver or Mesa is needed to run from Stage 4.
+driver or Mesa is needed to run from Stage 4. Since PP-022 the ALSA headers are
+needed to build: `sudo apt-get install -y libasound2-dev` (CI does the same).
 
 ## 10. Stage archives
 

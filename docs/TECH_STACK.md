@@ -16,10 +16,12 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | `log` | **0.4** ✅ added (0.4.34; already in the tree via wgpu, so no new crate) | 4 | diagnostics facade (ADR-016). Note that winit 0.30 itself logs through `tracing`. | — |
 | `image` | **0.25.10** ✅ added (`default-features = false, features = ["png"]`; +12 crates: `png`, `moxcms`, `pxfm`, `flate2`, `fdeflate`, `miniz_oxide` ×2, …; 116 → 128 unique normal dependencies) | 6 | PNG decoding for textures (ADR-020) | 1.88 |
 | `ab_glyph` | **0.2.32** ✅ added (`default-features = false, features = ["std"]`; pulls `ab_glyph_rasterizer` 0.1.10, `owned_ttf_parser` 0.25.1, `ttf-parser` 0.25.1; Apache-2.0 / MIT OR Apache-2.0). **+0 crates on Linux** (already in the tree via winit's Wayland decorations, still 128) and **+4 on Windows** (99 → 103), measured with `cargo tree -e normal --target …` on 2026-10-06 | PP-018a | font parsing + glyph rasterization (ADR-027) | 1.63 (`ttf-parser`; the others declare none) |
+| `cpal` | **0.18.2** ✅ added (default features; Linux: `alsa` 0.11.0 + `alsa-sys` 0.4.0, needs `libasound2-dev` at build time; macOS: CoreAudio crates; Windows: WASAPI via the `windows` crate already in the tree). With `hound`: **+5 crates Linux (128 → 133), +3 Windows (103 → 106), +9 macOS (99 → 108)**, measured 2026-10-07 | PP-022 | audio output device (ADR-030) | 1.85 |
+| `hound` | **3.5.1** ✅ added (Apache-2.0, no dependencies) | PP-022 | WAV decoding (ADR-030) | — |
 
 **Declared `rust-version = "1.90"`.** This is the highest `rust-version` found
 in the resolved Stage 1–4 dependency graph (`ordered-float 5.5.0` via
-`wgpu-hal`). Still the highest after PP-008 (`image` declares 1.88, `moxcms`/`pxfm` 1.85) and PP-018a (`ttf-parser` 1.63). Only 1.95.0 has actually been exercised: the sandbox could not
+`wgpu-hal`). Still the highest after PP-008 (`image` declares 1.88, `moxcms`/`pxfm` 1.85) and PP-018a (`ttf-parser` 1.63) and PP-022 (`cpal` 1.85). Only 1.95.0 has actually been exercised: the sandbox could not
 download other toolchains. Raise the value if a lower toolchain fails.
 
 ## Versions deliberately not chosen
@@ -31,6 +33,8 @@ download other toolchains. Raise the value if a lower toolchain fails.
 | `tokio` / `async-std` | No async I/O requirement (ADR-012 in [DECISIONS.md](DECISIONS.md)). |
 | `anyhow` in the engine | The engine exposes typed errors. Games may use anyhow themselves. |
 | `fontdue 0.9.4` | Fine rasterizer, but +4 crates on Linux and +5 on Windows (a second `hashbrown`) where `ab_glyph` costs +0/+4 (ADR-027). |
+| `rodio 0.22.2` | Convenient playback API, but +20/+18/+22 crates (Linux/Windows/macOS) even with only `playback` + `wav`, and its decoders come from `symphonia` (MPL-2.0) (ADR-030). |
+| `kira 0.12.5` | Game-oriented audio (tweens, clocks, tracks), but +28/+25/+29 crates; revisit for music features (ADR-030). |
 | `glyphon` / `cosmic-text` | Shaping and font fallback, but a large tree, its own wgpu pipeline locked to wgpu versions, and text outside the draw list (ADR-027). Revisit for non-Latin scripts. |
 
 ## Compatibility evidence

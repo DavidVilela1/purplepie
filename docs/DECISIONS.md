@@ -15,7 +15,7 @@ directory on 2026-09-30, with no decision content changed.
 |---|---|---|---|
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
 | ADR-002 | Single package: engine library + `sandbox` binary | Accepted (reaffirmed by ADR-026) | Yes (Stage 0); `examples/` added in Stage 10 |
-| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9 |
+| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9; `audio` in PP-022 |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
@@ -42,6 +42,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component (with `TextAnchor`); `FontId` handles; `Context::measure_text`; Poppins shipped (OFL) | Accepted (extended by PP-018b) | Yes (PP-018a: fonts, atlas, `Text`; PP-018b: anchors, measuring, Breakout HUD) |
 | ADR-028 | Sprite animation: `SpriteAnimation` component (grid + frame range + fps + loop/once) advanced by the game-called `render::advance_animations`; the draw list shows its current frame | Accepted | Yes (PP-020) |
 | ADR-029 | Screen space: a `ScreenSpace { anchor }` component draws quads, sprites and text in logical window pixels from a window anchor, ignoring the camera, after all world content | Accepted | Yes (PP-021) |
+| ADR-030 | Audio: `cpal` output + `hound` WAV decoding + PurplePie's own mixer; `SoundId`; `Context::load_sound` / `play_sound`; silent fallback without a device; generic handles (PD-06) deferred again | Accepted | Yes (PP-022: one-shot sound effects) |
 
 ---
 
@@ -1482,13 +1483,77 @@ Minimaps or split screen (several cameras), world-anchored UI (labels following 
 
 ---
 
+# ADR-030: Audio: `cpal` + `hound` + an own mixer; sound effects through `Context`; silence when there is no device
+
+## Status
+Accepted (2026-10-07, PP-022, part 1: one-shot sound effects). Defers PD-06 (generic handles) again.
+
+## Context
+PurplePie had no sound. Games need at least short sound effects (hits, clicks, jingles), loaded like other assets and
+played from game code without blocking, on Windows, macOS and Linux, and a game must keep running when a machine has no
+audio device (CI, servers, Cowork's container).
+
+## Decision
+- **Crates (measured 2026-10-07 with `cargo tree -e normal --target …`):** `cpal` 0.18.2 (device output; Apache-2.0;
+  default features) + `hound` 3.5.1 (WAV decoding; Apache-2.0): **+5 crates on Linux (128 → 133), +3 on Windows
+  (103 → 106), +9 on macOS (99 → 108)**. Compared: `rodio` 0.22.2 with only `playback` + `wav` +20/+18/+22 (and its
+  decoders come from `symphonia`, MPL-2.0); `kira` 0.12.5 +28/+25/+29. `cpal` is used only in `src/audio/output.rs`,
+  `hound` only in `src/audio/sound.rs`.
+- **Linux builds need the ALSA headers** (`libasound2-dev`, through `alsa-sys`): CI installs them in both Linux jobs;
+  developers on Linux install them once (DEVELOPMENT §9). Windows (WASAPI) and macOS (CoreAudio) need nothing extra.
+- **Own mixer** (`audio/mixer.rs`, pure code): up to 32 voices (the oldest stops first), per-voice volume 0..4,
+  linear-interpolation resampling to the device rate, mono → every channel, stereo → left/right (averaged for mono
+  outputs), output clamped to −1..1. Unit-tested without a device.
+- **Threading:** the game sends `Play` commands over an `mpsc` channel; the `cpal` callback owns the mixer, drains the
+  channel with `try_recv`, mixes into a reused `f32` buffer and converts to the device format (f32/i16/u16/i32). No locks
+  on the audio thread; sound data is shared as `Arc<SoundData>` (the store keeps a reference, so the audio thread never
+  frees memory).
+- **API:** `audio::SoundId`; `Context::load_sound(path) -> Result<SoundId>` (asset root, decode now, `Error::Asset`,
+  dedup by path); `Context::play_sound(id, volume)`; `Context::audio_available()`; `EngineConfig::audio` /
+  `with_audio(bool)` (default `true`). The runner opens the default output device at startup; **any failure is logged
+  and leaves a silent output** — loading still works, playing does nothing, the game never errors or panics for audio.
+- **Formats:** WAV only (PCM 8/16/24/32-bit, 32-bit float; mono/stereo; any rate). Music/streaming, OGG and spatial audio
+  are later tasks.
+- **PD-06 (generic handles):** sounds get their own `SoundId` like `TextureId`/`FontId`. Three handle types with the same
+  shape are still simple; a generic `Handle<T>` is deferred until unloading or hot reload needs a shared store.
+
+## Alternatives Considered
+- **`rodio`:** convenient (sinks, many decoders), but 4× the dependencies for the same feature here, MPL-2.0 decoders,
+  and its mixer is harder to verify sample-for-sample.
+- **`kira`:** excellent for games (tweens, clocks, tracks), but the largest tree; worth revisiting for music features.
+- **Opening the device lazily on first `play_sound`:** hides startup cost but makes the first sound late and the
+  failure surface unpredictable.
+- **Failing `Engine::run` when no device exists:** would break CI and headless use for a non-essential feature.
+
+## Rationale
+The smallest stack that plays sound on all three platforms, keeps the audio thread lock-free, and makes the part that
+matters (mixing) exactly testable.
+
+## Consequences
+### Positive
+- Verified in Cowork: unit tests (decoding, store, mixer: channels, resampling, clamping, voice limit, invalid
+  volumes; `Context` without a device); end to end through ALSA's `file` plugin (2 ch, 48 kHz, f32): one click in the
+  sandbox produced exactly the expected resampled blip at volume 0.8 in both channels (max difference 0.0 over 2,880
+  frames). Without a device the sandbox logs `audio disabled` and runs normally; Breakout's autoplay results are
+  identical with an (ALSA null) device and without one.
+### Negative
+- Linux developers and CI need `libasound2-dev`; libasound prints its own errors to stderr when no device exists.
+- Windows and macOS audio are compiled only by CI and not heard by anyone yet (owner check requested).
+- No music streaming, no looping, no stopping individual sounds yet.
+
+## Revisit Conditions
+Music/looping/stop control (consider `kira`), compressed formats (OGG via `lewton`), latency complaints, or a fourth
+asset kind (generic handles, PD-06).
+
+---
+
 # Pending Decisions
 
-PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02. The file-location part of PD-06 was resolved by ADR-025 on 2026-10-06; fonts, the second asset kind, follow the texture pattern with their own `FontId` (ADR-027).
+PD-01 (color space) was resolved by ADR-015 and PD-04 (logging) by ADR-016, both on 2026-09-30. The core of PD-02 (coordinates) was resolved by ADR-018 on 2026-10-01. PD-05 (batching) and PD-08 (draw order) were resolved by ADR-021, PD-02 (camera) by ADR-022 and PD-07 (license) by ADR-023, all on 2026-10-01. PD-03 (input) was resolved by ADR-024 on 2026-10-02. The file-location part of PD-06 was resolved by ADR-025 on 2026-10-06; fonts, the second asset kind, follow the texture pattern with their own `FontId` (ADR-027), and sounds, the third, with `SoundId` (ADR-030).
 
 These questions have a proposed direction but have **not** been decided. Each
 one is resolved (and becomes an ADR) inside the task listed.
 
 | ID | Question | Proposed direction | Decide in |
 |---|---|---|---|
-| PD-06 | Generic asset handles and unloading (textures: ADR-020; where files are found: ADR-025; fonts: ADR-027) | Generalize `TextureId`/`FontId` into a typed `Handle<T>` + store with unloading when a **third** asset kind (sounds) arrives or unloading is needed | Not scheduled: the audio task, or the first task that needs unloading |
+| PD-06 | Generic asset handles and unloading (textures: ADR-020; where files are found: ADR-025; fonts: ADR-027; sounds: ADR-030) | Generalize `TextureId`/`FontId`/`SoundId` into a typed `Handle<T>` + store when unloading or hot reload needs a shared store (deferred again by ADR-030) | Not scheduled: the first task that needs unloading or hot reload |

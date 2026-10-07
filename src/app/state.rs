@@ -1,6 +1,7 @@
 //! Engine-owned state lent to the game through [`Context`](super::Context).
 
 use crate::assets::AssetRoot;
+use crate::audio::{AudioOutput, Sounds};
 use crate::ecs::World;
 use crate::input::Input;
 use crate::math::Vec2;
@@ -18,6 +19,10 @@ pub(crate) struct EngineState {
     pub(crate) textures: Textures,
     /// Every font the game loaded (parsed; ADR-027). Outlives renderers.
     pub(crate) fonts: Fonts,
+    /// Every sound the game loaded (decoded; ADR-030).
+    pub(crate) sounds: Sounds,
+    /// The audio device, or silence (ADR-030). Silent until the runner opens it.
+    pub(crate) audio: AudioOutput,
     /// The single camera, read by the renderer (ADR-022).
     pub(crate) camera: Camera2D,
     /// Keyboard state, fed from window events (ADR-024).
@@ -38,6 +43,8 @@ impl EngineState {
             world: World::new(),
             textures: Textures::default(),
             fonts: Fonts::default(),
+            sounds: Sounds::default(),
+            audio: AudioOutput::silent(),
             camera: Camera2D::default(),
             input: Input::default(),
             viewport: Vec2::ZERO,

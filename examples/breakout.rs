@@ -1,7 +1,8 @@
 //! Breakout, built only on PurplePie's public API (PP-012).
 //!
 //! Run with `cargo run --example breakout` from the project folder (textures
-//! are loaded from `assets/textures/breakout/`, the font from `assets/fonts/`).
+//! are loaded from `assets/textures/breakout/`, the font from `assets/fonts/`,
+//! sounds from `assets/sounds/`).
 //!
 //! Controls: ←/→ or A/D move the paddle, or move the mouse; Space, ↑ or a left
 //! click launches the ball and restarts after a win or loss; Escape quits.
@@ -10,14 +11,16 @@
 //! (axis-aligned boxes), bricks, lives, score, and the win/lose screens. The
 //! HUD shows the score as text (PP-018b), lives as small balls and cleared
 //! bricks as a progress bar; centred text announces the win/lose screens and
-//! how to launch. The window title repeats score and lives, and events are
-//! printed to the console.
+//! how to launch. Bounces, broken bricks and lost balls play sounds (PP-022).
+//! The window title repeats score and lives, and events are printed to the
+//! console.
 //!
 //! `PURPLEPIE_BREAKOUT_AUTOPLAY=win` lets a simple bot play until the board is
 //! cleared; `=lose` parks the paddle until all lives are gone. Both print a
 //! summary, keep the end screen up for two seconds and exit. The simulation runs only in `fixed_update` with a seeded
 //! random generator, so an autoplay game is identical on every run.
 
+use purplepie::audio::SoundId;
 use purplepie::ecs::{self, Entity, Velocity, World};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
@@ -114,6 +117,16 @@ struct Textures {
     font: FontId,
 }
 
+/// Sound effects (ADR-030).
+struct Sounds {
+    /// Ball bounces off the paddle or a wall.
+    bounce: SoundId,
+    /// A brick breaks.
+    brick: SoundId,
+    /// A ball is lost.
+    lost: SoundId,
+}
+
 /// The HUD's text entities.
 struct Labels {
     score: Entity,
@@ -144,6 +157,9 @@ struct Breakout {
     progress: Option<Entity>,
     overlay: Option<Entity>,
     labels: Option<Labels>,
+    sounds: Option<Sounds>,
+    /// Sounds requested by the simulation this step, played after it.
+    pending_sounds: Vec<SoundId>,
     /// Autoplay: the fixed step at which the game ended.
     finished_at: Option<u64>,
     /// The last window title set, to update it only when it changes.
@@ -169,6 +185,8 @@ impl Breakout {
             progress: None,
             overlay: None,
             labels: None,
+            sounds: None,
+            pending_sounds: Vec::new(),
             finished_at: None,
             title: None,
         }
@@ -298,6 +316,14 @@ impl Breakout {
         );
     }
 
+    /// Asks for a sound to be played after this fixed step (the simulation
+    /// only touches the world; `fixed_update` plays what it queued).
+    fn queue_sound(&mut self, pick: impl Fn(&Sounds) -> SoundId) {
+        if let Some(sounds) = &self.sounds {
+            self.pending_sounds.push(pick(sounds));
+        }
+    }
+
     /// Bounces the ball off walls, paddle and bricks after it has moved.
     fn collide(&mut self, world: &mut World) {
         let Some(ball) = self.ball else { return };
@@ -317,13 +343,16 @@ impl Breakout {
         if position.x < left {
             position.x = left;
             velocity.x = velocity.x.abs();
+            self.queue_sound(|s| s.bounce);
         } else if position.x > right {
             position.x = right;
             velocity.x = -velocity.x.abs();
+            self.queue_sound(|s| s.bounce);
         }
         if position.y > top {
             position.y = top;
             velocity.y = -velocity.y.abs();
+            self.queue_sound(|s| s.bounce);
         }
 
         // Paddle: the bounce angle depends on where the ball hits it.
@@ -333,6 +362,7 @@ impl Breakout {
         {
             let offset = ((position.x - paddle.x) / (PADDLE_SIZE.x / 2.0)).clamp(-1.0, 1.0);
             velocity = self.velocity_at(offset * MAX_BOUNCE_ANGLE);
+            self.queue_sound(|s| s.bounce);
             position.y = PADDLE_Y + (PADDLE_SIZE.y + BALL_SIZE) / 2.0;
             self.bot_aim = self.rng.next_signed();
         }
@@ -352,6 +382,7 @@ impl Breakout {
                 velocity.y = -velocity.y;
             }
             let _ = world.despawn(brick);
+            self.queue_sound(|s| s.brick);
             self.score += points;
             self.bricks_left -= 1;
             self.ball_speed = (self.ball_speed + BALL_SPEED_UP).min(BALL_MAX_SPEED);
@@ -369,6 +400,7 @@ impl Breakout {
         // Fell past the paddle.
         if position.y < -FIELD.y / 2.0 - BALL_SIZE {
             self.lives -= 1;
+            self.queue_sound(|s| s.lost);
             println!("breakout: ball lost, lives left: {}", self.lives);
             if self.lives == 0 {
                 self.state = State::Lost;
@@ -515,6 +547,11 @@ impl Game for Breakout {
             brick: ctx.load_texture("textures/breakout/brick.png")?,
             font: ctx.load_font("fonts/Poppins-Regular.ttf")?,
         });
+        self.sounds = Some(Sounds {
+            bounce: ctx.load_sound("sounds/blip.wav")?,
+            brick: ctx.load_sound("sounds/hit.wav")?,
+            lost: ctx.load_sound("sounds/lose.wav")?,
+        });
         let world = ctx.world_mut();
         // Walls: left, right, top.
         let wall = Color::hex(0x5A189A);
@@ -567,6 +604,9 @@ impl Game for Breakout {
             }
         }
         self.update_hud(ctx.world_mut());
+        for sound in std::mem::take(&mut self.pending_sounds) {
+            ctx.play_sound(sound, 0.6);
+        }
 
         if self.autoplay != Autoplay::Off {
             let finished = matches!(self.state, State::Won | State::Lost);

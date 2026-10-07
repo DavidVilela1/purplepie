@@ -36,6 +36,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-24 | Asset paths depend on the working directory | MITIGATED | — | Low | 6, 9 |
 | R-25 | Text quality and glyph-atlas pressure | OPEN | Medium | Low | PP-018 |
 | R-26 | Third-party asset licensing (shipped font) | MITIGATED | — | Medium | PP-018 |
+| R-27 | Audio: platform builds, devices and the audio thread | OPEN | Medium | Medium | PP-022 |
 
 ## Details
 
@@ -206,3 +207,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
   `assets/fonts/OFL.txt`, and the README's License section says assets may carry their own licences. Games that ship it
   must include `OFL.txt`; the OFL allows bundling with software, including commercial software.
 - **Fallback:** replace it with any other OFL/public-domain font; nothing in the engine depends on this specific font.
+
+### R-27: Audio: platform builds, devices and the audio thread
+- **Trigger:** `cpal` needs the ALSA headers to build on Linux (CI and Linux developers); Windows/macOS audio code is
+  compiled only by CI and has not been heard; device formats other than f32/i16/u16/i32 are rejected (silence); a device
+  that disappears mid-game stops sound; libasound prints errors to stderr when no device exists.
+- **Mitigation:** CI installs `libasound2-dev`; every audio failure degrades to silence, never to an error or panic
+  (verified without a device); the mixer is pure and unit-tested; the audio thread takes no locks; an end-to-end check
+  through ALSA's `file` plugin compares the device output sample for sample (DEVELOPMENT §8).
+- **Fallback:** owner checks on Windows; if a platform misbehaves, `EngineConfig::with_audio(false)` keeps games
+  running; consider `rodio`/`kira` if device handling needs more than `cpal` gives.
+

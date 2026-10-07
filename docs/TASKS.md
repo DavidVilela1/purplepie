@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-022: Audio, part 1: decision + play sound effects** · P1 · TODO ← **next task**
+- [ ] **PP-023: UI buttons: screen-space hit testing, hover/pressed/clicked** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -45,6 +45,7 @@ _None._
 - [x] **PP-019: Sprite sheets: `Sprite` regions + `SpriteGrid`** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-020: Sprite frame animation (ADR-028)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-021: Screen-space drawing for HUD/UI (ADR-029)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-022: Audio, part 1: sound effects (ADR-030)** · DONE (2026-10-07; verified on Linux; Windows/macOS compiled by CI only)
 
 ## Future
 
@@ -248,14 +249,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-029. New `src/render/screen.rs`: public `ScreenSpace { anchor }` (9 constants, default `CENTER`; `anchor_point`, `from_window`, `to_window`) and `ScreenAnchor`. `View` gains `logical_size`; quads, sprites and text with `ScreenSpace` use an anchor-origin orthographic projection in logical pixels (+Y up); `TextPlacement` takes the projection, so screen text stays pixel-aligned. Sort key `(space, layer, material, entity, glyph)`: screen space after all world content. Sandbox: a top-left HUD panel with text and a bottom-right square. Breakout unchanged (its world-space HUD still works; moving it is optional future polish). No new dependencies. |
 | Acceptance criteria | ✅ 1. Unit tests: 9 anchors (projection, `to_window`, `from_window`), resize, DPI 1/1.25/2, `CENTER` = default camera, order (screen above world layer 100), camera independence, pixel-aligned screen text. ✅ 2. GPU (`--ignored`): a `BOTTOM_RIGHT` square covers exactly x 236..252, y 116..124 over a layer-100 world quad with two cameras (all 32,768 pixels checked); all three screen-space tests fail when the projection is ignored (mutation check). ✅ 3. Xvfb: HUD crops pixel-identical at cameras (0,0)×1, (450,−250)×2, (−600,300)×0.5; panel border and corner square exact; after resizing to 900×500 the square is at exactly (850..889, 450..489); world model unchanged (0 mismatches apart from the cursor marker). ✅ 4. Breakout autoplay unchanged, lose screen pixel-identical to PP-020; window-destroy fault test clean. |
 
-### PP-022: Audio, part 1 ← NEXT
+### PP-022: Audio, part 1: sound effects
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
-| Dependencies | none (independent of rendering) |
-| Why now | The largest remaining gap for a typical small game: PurplePie has no sound at all. It is also the third asset kind, which ROADMAP and PD-06 tie to generic asset handles. |
-| Scope | Split first if needed. Part 1: an ADR choosing the audio stack (verify current crates and their cost per ADR-013, e.g. `rodio`/`cpal`, `kira`; Linux needs ALSA at build time — check CI impact), load sound files through the asset root (`Error::Asset` on failure), play one-shot sound effects with volume through `Context`, a silent/no-device fallback that never crashes the game. Music, streaming and spatial audio later. Decide PD-06 (generic handles) or explicitly defer it again. |
-| Acceptance criteria | Unit tests for loading/decoding and the no-device path; a headless check that playback is requested/mixed (Cowork has no speakers); CI still green on Linux/Windows/macOS; Breakout plays sounds on hits (verified by the owner on Windows). |
+| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · **DONE** (2026-10-07) |
+| Dependencies | none |
+| Scope (as built) | ADR-030. Dependencies `cpal` 0.18.2 + `hound` 3.5.1 (+5 Linux / +3 Windows / +9 macOS crates). New public module `audio` (`SoundId`); crate-private `audio/sound.rs` (`Sounds` store, `decode_wav`: PCM 8–32-bit + float, mono/stereo), `audio/mixer.rs` (32 voices, volume 0..4, linear resampling, channel mapping, clamping), `audio/output.rs` (default device via `cpal`, lock-free `mpsc` commands, f32/i16/u16/i32 devices, silent fallback). `Context::load_sound`, `play_sound(id, volume)`, `audio_available`; `EngineConfig::audio` + `with_audio`. CI installs `libasound2-dev` on Linux. Generated assets `assets/sounds/{blip,hit,lose}.wav` (22,050 Hz mono). Sandbox: blip on every click stamp, exit line prints audio availability. Breakout: bounce/brick/lost sounds queued by the simulation and played after each fixed step. PD-06 deferred again. |
+| Acceptance criteria | ✅ 1. Unit tests: WAV decoding (16-bit mono, 24-bit stereo, float, garbage, 3 channels), store (dedup, `Error::Asset`, failed loads not cached), shipped sounds decode, mixer (volume, buffer continuity, sum + clamp, stereo/mono/surround mapping, 2× up- and down-resampling, invalid volume, empty sound, voice limit), `Context` load/play without a device. ✅ 2. End to end via ALSA `file` plugin (2 ch, 48 kHz, f32): one sandbox click → exactly the expected resampled blip × 0.8 in both channels (max difference 0.0, 2,880 frames), nothing else. ✅ 3. No device: `audio disabled` warning, sandbox runs and exits 0, `audio output available: false`. ✅ 4. Breakout autoplay identical with an ALSA null device and without a device (`win` 7135 / 220, `lose` 892 / 14); lose screen pixel-identical to PP-021. ⏳ 5. Windows/macOS: compiled by CI only; the owner should hear the Breakout sounds on Windows. |
+
+### PP-023: UI buttons ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · TODO |
+| Dependencies | PP-021 (screen space), PP-018b (anchored text) |
+| Why now | The next step of the owner's in-game UI goal: screen-space drawing exists, but every game would re-implement hit testing and hover/press state for menus. |
+| Scope | A small, data-only button component in screen space (rectangle size + anchor) and a system the game calls (like `advance_animations`) that reads the cursor and mouse buttons and sets hovered / pressed / clicked state; visuals stay the game's choice (quad colours, text). No layout engine, no focus/keyboard navigation yet. Sandbox or Breakout uses one (e.g. a restart button). |
+| Acceptance criteria | Unit tests for hit testing at every anchor, DPI, edges, press-inside-release-outside; an Xvfb XTEST click on a button triggers exactly one click; existing input semantics unchanged. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

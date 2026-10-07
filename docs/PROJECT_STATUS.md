@@ -14,7 +14,7 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 **Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
 Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets, PP-020 sprite animation and PP-021 screen-space drawing done; **PP-022 audio (part 1)** is next. The long-term plan (in-game UI and an editor) is in
+progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects done; **PP-023 UI buttons** is next. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -90,6 +90,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-019: sprite sheets: `Sprite` regions (`TextureRegion`) + `SpriteGrid`.
 - PP-020: sprite frame animation: `SpriteAnimation` + `render::advance_animations` (ADR-028).
 - PP-021: screen-space drawing for HUD/UI: `ScreenSpace` (ADR-029).
+- PP-022: audio part 1, sound effects: `cpal` + `hound` + own mixer, `Context::load_sound` / `play_sound` (ADR-030).
 
 ## In Progress
 
@@ -97,7 +98,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-022: Audio, part 1** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-022-audio-part-1--next).
+- **PP-023: UI buttons** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-023-ui-buttons--next).
 
 ## Blocked
 
@@ -127,10 +128,16 @@ executable, else `assets/` in the working directory (ADR-025).
 - Render interpolation is not implemented. `Time::alpha()` is exposed for it, but nothing uses it yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
+- Audio (PP-022): WAV sound effects only (no music streaming, looping, stopping or OGG yet); Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-022 Audio, part 1 (sound effects).**
+  - New dependencies `cpal` 0.18.2 + `hound` 3.5.1 (ADR-030; +5 Linux / +3 Windows / +9 macOS crates). Linux builds need `libasound2-dev`; CI installs it.
+  - New public module `audio` (`SoundId`), `Context::load_sound`, `Context::play_sound(id, volume)`, `Context::audio_available`, `EngineConfig::with_audio`. Own lock-free mixer (32 voices, resampling); silent fallback without a device.
+  - Assets `assets/sounds/{blip,hit,lose}.wav` (generated). Sandbox clicks and Breakout bounces/bricks/lost balls play sounds; gameplay unchanged.
 
 - **2026-10-07: PP-021 Screen-space drawing for HUD/UI.**
   - New public API: `render::{ScreenSpace, ScreenAnchor}` (ADR-029). Entities with `ScreenSpace` are drawn in logical window pixels from a window anchor (+Y up), ignoring the camera, after all world content; `from_window` / `to_window` convert cursor positions for hit tests.
@@ -267,22 +274,24 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-07, after the final PP-021 change
-(CI additionally runs the latest stable clippy, which Cowork cannot install; R-19):
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
+after the final PP-022 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 165 unit tests + 24 doctests, 10 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10, incl. screen-space square exact over a layer-100 world quad with two cameras (mutation-checked) |
+| `cargo test --locked` | ✅ PASS: 178 unit tests + 24 doctests, 10 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10 |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox HUD at cameras (0,0)×1, (450,−250)×2, (−600,300)×0.5 | ✅ HUD crops pixel-identical; panel border and corner square exact; world model 0 mismatches (cursor marker aside); animated cell = one frame |
-| Sandbox resized to 900×500 | ✅ corner square exactly at (850..889, 450..489); panel unchanged |
-| Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-020 | ✅ pixel-identical |
+| `cargo tree -e normal` unique crates | ✅ Linux 133, Windows target 106, macOS target 108 (resolution only; not compiled for Windows/macOS here) |
+| Sandbox audio end to end (ALSA `file` plugin, 2 ch 48 kHz f32) | ✅ one click → exactly the expected resampled blip × 0.8 in both channels (max diff 0.0 over 2,880 frames) |
+| Sandbox without an audio device | ✅ `audio disabled` warning; runs and exits 0; `audio output available: false` |
+| Breakout autoplay with ALSA null device / without device | ✅ identical: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
+| Breakout lose screen vs PP-021 | ✅ pixel-identical |
+| Sandbox whole-frame model + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -290,4 +299,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-021 done (screen-space drawing; ADR-029). PP-022 (audio, part 1) is next.
+2026-10-07. PP-022 done (sound effects; ADR-030). PP-023 (UI buttons) is next.

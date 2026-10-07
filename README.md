@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets, animation and screen-space HUD done; audio next).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets, animation, screen-space HUD and sound effects done; UI buttons next).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -18,10 +18,12 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
   once per callback regardless of frame rate.
-- **Assets:** textures and fonts loaded by paths relative to an `assets/` folder found next to the executable or in the
+- **Audio:** WAV sound effects with `Context::load_sound` / `play_sound` (mixed in software, any sample rate); games keep
+  running silently without an audio device.
+- **Assets:** textures, fonts and sounds loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): audio, text wrapping and shaping, in-game UI widgets, physics,
+- Not included (yet): music streaming and looping audio, text wrapping and shaping, in-game UI widgets, physics,
   scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
@@ -98,7 +100,8 @@ square at the cursor, Escape quits; a text label at the bottom left lists these 
 
 ## Build
 
-Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95).
+Requires Rust stable (edition 2024; `rust-version = 1.90`, developed with 1.95). On Linux, audio needs the ALSA headers
+to build: `sudo apt install libasound2-dev` (Debian/Ubuntu).
 
 ```bash
 cargo run            # opens the sandbox window (Escape or close to quit)
@@ -126,7 +129,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API
-├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), shaders/
+├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose .wav), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
@@ -157,6 +160,8 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | log | 0.4 | 4 |
 | image (PNG only) | 0.25.10 | 6 |
 | ab_glyph | 0.2.32 | PP-018a |
+| cpal | 0.18.2 | PP-022 |
+| hound | 3.5.1 | PP-022 |
 
 ## License
 

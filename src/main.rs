@@ -4,7 +4,7 @@
 //! `purplepie` API, exactly like an external game crate would.
 //!
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
-//! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
+//! left click stamps a square at the cursor (with a blip sound), Escape quits. A green marker follows the cursor.
 //! A text label at the bottom left lists these controls; four sprite-sheet cells
 //! (one mirrored) and one animated cell sit at the bottom right. A screen-space
 //! HUD panel (top-left) and square (bottom-right corner) ignore the camera.
@@ -99,6 +99,8 @@ const SHEET_CELLS: [(u32, f32, bool); 4] = [
     (6, 480.0, true),
     (3, 520.0, false),
 ];
+/// Played when a click stamps a square (ADR-030).
+const CLICK_SOUND: &str = "sounds/blip.wav";
 /// The animated cell (ADR-028): all 8 sheet frames in a loop, at (580, −250).
 const ANIMATED_FPS: f32 = 4.0;
 /// The font shipped with PurplePie (SIL Open Font License, `assets/fonts/OFL.txt`).
@@ -126,6 +128,8 @@ struct Sandbox {
     spinner: Option<Entity>,
     /// The animated sprite-sheet cell.
     animated: Option<Entity>,
+    /// Played on every stamp.
+    click_sound: Option<purplepie::audio::SoundId>,
     camera: Camera2D,
     /// `=` presses seen by `fixed_update` and by `update` (each press must count once in each).
     zoom_in_presses: (u32, u32),
@@ -141,6 +145,7 @@ impl Game for Sandbox {
         let texture = ctx.load_texture(SPRITE_TEXTURE)?;
         let font = ctx.load_font(FONT)?;
         let sheet = ctx.load_texture(SHEET_TEXTURE)?;
+        self.click_sound = Some(ctx.load_sound(CLICK_SOUND)?);
         let world = ctx.world_mut();
         // Sprite sheet cells (regions of one texture, one draw call); one mirrored by a negative scale.
         let grid = SpriteGrid::new(8, 8, 4, 2);
@@ -287,6 +292,9 @@ impl Game for Sandbox {
                     Quad::new(Vec2::splat(STAMP_SIZE), Color::hex(0x00E0FF)),
                     Layer(3),
                 ));
+                if let Some(sound) = self.click_sound {
+                    ctx.play_sound(sound, 0.8);
+                }
             }
         }
     }
@@ -344,6 +352,7 @@ impl Game for Sandbox {
                     .map(|a| a.frame())
             });
             println!("sandbox: animated cell shows frame {frame:?}");
+            println!("sandbox: audio output available: {}", ctx.audio_available());
             let cursor = ctx.input().cursor_position();
             println!(
                 "sandbox: left clicks seen: {} in fixed_update, {} in update; cursor {:?} screen, {:?} world",
@@ -393,6 +402,7 @@ fn main() -> ExitCode {
         mover: None,
         spinner: None,
         animated: None,
+        click_sound: None,
         camera,
         zoom_in_presses: (0, 0),
         marker: None,
