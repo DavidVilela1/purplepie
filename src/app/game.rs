@@ -8,7 +8,7 @@ use crate::ecs::World;
 use crate::error::Result;
 use crate::input::Input;
 use crate::math::Vec2;
-use crate::render::{Camera2D, FontId, Text, TextMetrics, TextureId};
+use crate::render::{Camera2D, FontId, Text, TextMetrics, TextureId, TextureOptions};
 use crate::time::Time;
 
 /// Implemented by a game. The engine owns the game value and calls these
@@ -122,9 +122,40 @@ impl<'a> Context<'a> {
     /// A texture larger than the GPU supports (at least 2048×2048 everywhere)
     /// is reported as `Error::Asset` when the next frame is drawn, which stops
     /// the engine.
+    ///
+    /// The texture is sampled with [`TextureFilter::Nearest`](crate::render::TextureFilter::Nearest)
+    /// (crisp pixel art); use [`load_texture_with`](Self::load_texture_with)
+    /// for smooth, linear sampling.
     pub fn load_texture(&mut self, path: impl AsRef<Path>) -> Result<TextureId> {
+        self.load_texture_with(path, TextureOptions::NEAREST)
+    }
+
+    /// Like [`load_texture`](Self::load_texture), with `options` choosing how
+    /// the texture is sampled (ADR-034): [`TextureOptions::LINEAR`] for smooth
+    /// sprites that are scaled, rotated or moved by fractions of a pixel,
+    /// [`TextureOptions::NEAREST`] for pixel art.
+    ///
+    /// Loading the same file again with the same options returns the same
+    /// [`TextureId`]; with other options it is a separate texture. Sprite-sheet
+    /// cells sampled with `Linear` blend with the texels around them, so leave
+    /// [`spacing`](crate::render::SpriteGrid::spacing) between cells (or repeat
+    /// each cell's edge texels) when a sheet uses it.
+    ///
+    /// ```no_run
+    /// use purplepie::render::TextureOptions;
+    /// # fn init(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
+    /// let ball = ctx.load_texture_with("textures/ball.png", TextureOptions::LINEAR)?;
+    /// # let _ = ball;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn load_texture_with(
+        &mut self,
+        path: impl AsRef<Path>,
+        options: TextureOptions,
+    ) -> Result<TextureId> {
         let file = self.state.assets.locate(path.as_ref())?;
-        self.state.textures.load(&file)
+        self.state.textures.load(&file, options)
     }
 
     /// Loads a TrueType (`.ttf`) or OpenType (`.otf`) font and returns a
@@ -375,6 +406,29 @@ mod tests {
         let id = ctx.load_texture(sandbox).expect("sandbox texture");
         assert_eq!(ctx.texture_size(id), Some(Vec2::new(16.0, 16.0)));
         assert_eq!(ctx.load_texture(sandbox).expect("again"), id);
+        // Options are part of the identity (ADR-034): Nearest is the default.
+        assert_eq!(
+            ctx.load_texture_with(sandbox, TextureOptions::NEAREST)
+                .expect("nearest"),
+            id
+        );
+        let linear = ctx
+            .load_texture_with("textures/sandbox_quadrants.png", TextureOptions::LINEAR)
+            .expect("linear");
+        assert_ne!(linear, id, "another filter is another texture");
+        assert_eq!(ctx.texture_size(linear), Some(Vec2::new(16.0, 16.0)));
+        let filter = |id| state_filter(&ctx, id);
+        assert_eq!(
+            (filter(id), filter(linear)),
+            (
+                crate::render::TextureFilter::Nearest,
+                crate::render::TextureFilter::Linear
+            )
+        );
+    }
+
+    fn state_filter(ctx: &Context<'_>, id: TextureId) -> crate::render::TextureFilter {
+        ctx.state.textures.get(id).expect("loaded").filter
     }
 
     #[test]

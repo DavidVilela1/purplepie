@@ -154,6 +154,10 @@ Likelihood and impact are qualitative: Low, Medium or High.
   1.95 and cannot download newer toolchains (static.rust-lang.org is blocked by the egress proxy). Fixed with
   `as_chunks_mut::<4>()` (stable since 1.88, so the MSRV holds). New lints in future stable releases can only be caught by
   CI; fix them as they appear.
+- **Recurred (2026-10-07, after PP-025):** the owner's clippy 1.98 flagged six new `chunks_exact(4)` calls in
+  `render/texture.rs` (alpha bleeding and its tests). Fixed with `as_chunks::<4>()`. **Mitigation added:** before every
+  delivery, `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` must find nothing (DEVELOPMENT §8), since Cowork's
+  clippy 1.95 cannot report this lint.
 
 ### R-20: Compile-time growth in a single crate
 - **Trigger:** wgpu was added in PP-006, bringing the tree to 116 unique normal dependencies on Linux (128 after `image` in PP-008). The spike took about 1m21s for a clean debug build in Cowork.

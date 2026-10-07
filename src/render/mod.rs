@@ -2,7 +2,8 @@
 //!
 //! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
 //! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`,
-//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`) and the
+//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`,
+//! `TextureFilter`, `TextureOptions`) and the
 //! `advance_animations` system.
 //! Crate-private: the `Renderer`, which owns every `wgpu` object, the CPU-side
 //! texture and font stores, and the glyph atlas. Game code never touches the
@@ -13,7 +14,7 @@
 //! entity with [`Transform2D`](crate::math::Transform2D) + [`Quad`], [`Sprite`]
 //! or [`Text`] is drawn, lowest [`Layer`] first; within a layer, quads, then
 //! sprites, then text. Coordinates: ADR-018. Camera: ADR-022. Textures:
-//! ADR-020. Draw order: ADR-021. Text: ADR-027.
+//! ADR-020, sampling per texture: ADR-034. Draw order: ADR-021. Text: ADR-027.
 
 mod animation;
 mod atlas;
@@ -44,5 +45,5 @@ pub use screen::{ScreenAnchor, ScreenSpace};
 pub use sprite::Sprite;
 pub(crate) use text::measure as measure_text;
 pub use text::{HorizontalAnchor, Text, TextAnchor, TextMetrics, VerticalAnchor};
-pub use texture::TextureId;
 pub(crate) use texture::Textures;
+pub use texture::{TextureFilter, TextureId, TextureOptions};

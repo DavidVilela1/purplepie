@@ -12,9 +12,11 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 ## Current Stage
 
-**Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
-Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects, PP-023 UI buttons, PP-024a playback control and PP-024b OGG Vorbis decoding done; **PP-025 per-texture sampling** (the last planned P2 item) is next. The long-term plan (in-game UI and an editor) is in
+**Post-portfolio phase P2 (runtime essentials): complete** (2026-10-07, verified on Linux): PP-019 sprite sheets,
+PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-023 UI buttons, PP-024a playback
+control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
+earlier. **Phase P3 (editor foundations) has not started;** its first task, **PP-026 scene files, part 1**, is next.
+The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -94,6 +96,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-023: UI buttons: `ui::Button`, `ui::Pointer`, `ui::update_buttons` (ADR-031).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
+- PP-025: per-texture sampling: `TextureFilter`/`TextureOptions`, `Context::load_texture_with`; Breakout's ball is `Linear` (ADR-034). Phase P2 complete.
 
 ## In Progress
 
@@ -101,7 +104,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-025: Per-texture sampling** (post-portfolio phase P2, friction point F9). See [TASKS.md](TASKS.md#pp-025-per-texture-sampling--next).
+- **PP-026: Scene files, part 1** (phase P3, editor foundations). See [TASKS.md](TASKS.md#pp-026-scene-files-part-1--next).
 
 ## Blocked
 
@@ -121,7 +124,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Windows (owner): the purple window (Stage 4), `cargo test`, Escape and the close button are confirmed. Stages 5–7 rendering, vsync pacing and GPU fault paths are unverified there. macOS compiles and passes `cargo test` in CI but its rendering has never been seen; Wayland is untested.
 - Input: 99 physical keys and 5 mouse buttons only (no text input, gamepads, touch or rebinding). Under X11 + XTEST, winit reports each synthetic wheel click twice (2 lines); real hardware unverified. An edge reaches `fixed_update` one frame late when the frame that saw it ran no fixed step.
 - One camera only, without rotation. Screen-space content (`ScreenSpace`, PP-021) is always drawn above world content. UI widgets: buttons only (PP-023; no keyboard focus, layout, text input or disabled state). A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
-- Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
+- Quads and sprites are drawn without MSAA, so rotated quad edges are aliased. Textures are sampled `Nearest` (default) or `Linear` (chosen per texture at load, ADR-034); there are no mipmaps, so even `Linear` sprites alias when shrunk below half size, and cells of a `Linear` sprite sheet blend with neighbouring texels unless the sheet has spacing.
 - Textures: PNG only. A sprite shows its whole texture or one rectangular region of it (sprite sheets, PP-019); regions can be animated with `SpriteAnimation` (fixed frame rate per animation; no per-frame durations or events), and sheets need `Nearest` sampling (linear filtering would bleed across cells). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
 - Text: no wrapping or text boxes, no shaping (one glyph per `char`: no ligatures, complex or right-to-left scripts), no font fallback, kerning only from a `kern` table; small light-on-dark text looks a little bolder than in gamma-space renderers (linear blending, R-25); text larger than 512 physical pixels is not drawn. Sprites use `Nearest` sampling only (scaled-down sprites alias). Other Breakout friction points were decided in ADR-026 (some deliberately unchanged).
@@ -136,6 +139,12 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-025 Per-texture sampling (phase P2 complete).**
+  - New public API (ADR-034): `render::TextureFilter` (`Nearest` default, `Linear`), `render::TextureOptions` (`NEAREST`, `LINEAR`, `with_filter`; non-exhaustive) and `Context::load_texture_with(path, options)`. `load_texture` is unchanged (Nearest).
+  - The texture store keys its cache by (path, options); `Linear` textures get their transparent texels' colour bled from their neighbours on load (no dark fringes with straight alpha). The sprite pipeline has a `Nearest` and a `Linear` sampler and picks one per texture's bind group.
+  - Breakout's ball loads `Linear` (friction point F9). No new dependencies.
+  - Follow-up fix: the owner's clippy 1.98 rejected six `chunks_exact(4)` calls in `render/texture.rs` (`chunks_exact_to_as_chunks`, a lint Cowork's clippy 1.95 lacks); replaced with `as_chunks::<4>()`, and a pre-delivery grep was added to DEVELOPMENT §8 (R-19).
 
 - **2026-10-07: PP-024b OGG Vorbis decoding.**
   - New dependency `lewton` 0.10.2 (ADR-033; +4 crates on every platform: `lewton`, `ogg`, `tinyvec`, `byteorder`).
@@ -292,22 +301,21 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-024b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-025 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 194 unit tests + 26 doctests, 10 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10 |
+| `cargo test --locked` | ✅ PASS: 197 unit tests + 28 doctests, 11 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 11/11, incl. the new filter readback test (mutations: no bleeding → fringe detected; wrong sampler → blend mismatch) |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox OGG music loop via ALSA `file` plugin (`M` … `M`) | ✅ matches the mixer model applied to `lewton`'s decoded `loop.ogg` exactly (max diff 0) over 6,290,400 frames = 131 loops; L = R; exactly silent after the stop |
-| Scratch OGG files (not shipped) | ✅ stereo decodes with channels in order (right channel exactly 0); 3 channels rejected; chained file joined; chain changing the rate rejected |
+| Breakout mid-game screenshots (ball `Linear`) | ✅ the ball and the three lives icons have blended edges; no pixel around them is darker than the background (no fringe) |
 | Sandbox whole-frame model + HUD + animated cell (cameras (0,0)×1, (120,−40)×1.5, (−200,60)×2) | ✅ 0 mismatches apart from the cursor marker (400 px at zoom 2); HUD panel, corner square and button crops identical at all three; one animation frame |
 | Breakout autoplay `win` / `lose` (debug, ALSA null device) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-024a | ✅ pixel-identical (overlay colour still 339,277 px) |
+| Breakout lose screen vs PP-024b | ✅ pixel-identical (no ball is visible on it) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -315,4 +323,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-024b done (OGG Vorbis decoding; ADR-033). PP-025 (per-texture sampling) is next.
+2026-10-07. PP-025 done (per-texture sampling; ADR-034); phase P2 complete. PP-026 (scene files, part 1) is next.

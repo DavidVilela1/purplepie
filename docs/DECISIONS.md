@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
 
 ---
 
@@ -906,6 +907,7 @@ component without touching wgpu (ADR-009: the renderer is crate-private, and
 - **GPU format:** `Rgba8UnormSrgb` when the surface is sRGB, `Rgba8Unorm` otherwise. This mirrors
   ADR-015: blending happens in the same space as quad colours on either kind of target.
 - **Sampling:** one sampler, `Nearest` min/mag, `ClampToEdge`, no mipmaps. Crisp texels and exact pixel tests.
+  *(Since PP-025 a texture can choose `Linear` instead; `Nearest` stays the default: ADR-034.)*
 - **Pipeline:** a second instanced pipeline (`sprite.wgsl`) with the same `Instance` layout as quads
   (ADR-019). The instance colour is the tint, which multiplies the sample. UV `v = 0` is the top row of the image.
   One bind group (texture + sampler) per texture. Consecutive sprites with the same texture share one
@@ -958,7 +960,8 @@ rectangles, or a need for linear filtering.
   neighbouring-cell texel); the sandbox shows the same cells and matches the whole-frame model at zoom 1, 1.5 and 2.
   Sprites without a region are pixel-identical to before (Breakout's lose screen unchanged).
 - **Revisit:** frame animation (PP-020) builds on `SpriteGrid::frame`; linear filtering (F9) would need padding between
-  cells (sampling bleeds across cell edges), so it stays `Nearest`-only for now.
+  cells (sampling bleeds across cell edges), so it stays `Nearest`-only for now. *(PP-025, ADR-034: sheets may now be
+  loaded `Linear`; the bleeding across cell edges is documented, not prevented, so such sheets need spacing.)*
 
 ---
 
@@ -1257,7 +1260,7 @@ game: every interaction Breakout needed went through `Context`, and keeping game
 | F6 No "cursor moved" signal | **No change.** Two lines in the game (`last != current`); revisit if a second game needs it. |
 | F7 No camera fit helper | **Added** `Camera2D::fit(center, size, viewport)`: the largest zoom that shows the whole area (invalid sizes → zoom 1). |
 | F8 `request_exit` has no exit code | **No change.** `Engine::run` returns `Result<()>`; a game that needs a process exit code can call `std::process::exit` after `run` returns. |
-| F9 `Nearest` sampling aliases scaled-down sprites | **Deferred** with sprite sheets / per-texture sampling options (post-portfolio). |
+| F9 `Nearest` sampling aliases scaled-down sprites | **Deferred** with sprite sheets / per-texture sampling options (post-portfolio). *Resolved by PP-025 (ADR-034): Breakout's ball loads with `TextureOptions::LINEAR`.* |
 | F10 No randomness helper | **No change, by design.** Games bring their own generator (determinism and choice of algorithm stay with the game). |
 
 - **`exit_on_escape` stays**, default `true`: a convenience for prototypes, handled before input reaches the game; games that
@@ -1706,6 +1709,73 @@ and keeps the audio thread free of decoding work.
 ## Revisit Conditions
 Long music tracks or many loaded at once (stream instead), MP3/FLAC requests (consider `symphonia`), or a `lewton`
 bug or security advisory.
+
+---
+
+# ADR-034: Per-texture sampling: `Nearest` by default, `Linear` on request
+
+## Status
+Accepted (2026-10-07, PP-025). Extends ADR-020 (textures) and its PP-019 sprite-sheet extension. Resolves friction
+point F9 (ADR-026).
+
+## Context
+Every texture was sampled with one `Nearest` sampler. That keeps pixel art crisp and pixel tests exact, but sprites
+drawn smaller than their texture, rotated, or moved by fractions of a pixel shimmer: Breakout's 32×32 ball is drawn at
+16–20 px (F9). Smooth art needs bilinear (`Linear`) sampling. With straight alpha (ADR-015), linear sampling also mixes
+the colour of fully transparent texels into a sprite's edge; image editors usually store those as black, so edges
+darken (a "fringe").
+
+## Decision
+- **Public API:** `render::TextureFilter { Nearest (default), Linear }` and `render::TextureOptions { filter }`
+  (`#[non_exhaustive]`, so wrap modes or mipmaps can be added without breaking games; build it with
+  `TextureOptions::NEAREST` / `LINEAR` or `with_filter`). New `Context::load_texture_with(path, options)`;
+  `load_texture(path)` is `load_texture_with(path, TextureOptions::NEAREST)`, so existing games are unchanged.
+- **The choice belongs to the texture, made at load.** The store's cache key becomes (path, options): the same file
+  with the same options returns the same `TextureId`; with other options it becomes a second texture (its own pixels on
+  the CPU and GPU). Not per sprite: a per-sprite filter would need a second bind group per texture and would split
+  batches, and the art itself decides how it should be sampled.
+- **Renderer:** the sprite pipeline keeps two samplers (`Nearest`, `Linear`; both `ClampToEdge`, no mipmaps) and builds
+  each texture's bind group with the one its filter names. The draw list, batching, shader and instance layout are
+  unchanged. The glyph atlas keeps its own linear sampler (ADR-027).
+- **Edge bleeding on load:** for `Linear` textures, every fully transparent texel takes the average colour of its
+  nearest visible texels (spreading ring by ring through the 8-neighbourhood), keeping alpha 0. Visible texels never
+  change, so coverage and the `Nearest` look are untouched. `Nearest` textures keep the file's texels exactly.
+- **Sprite sheets:** cells of a `Linear` sheet blend with the texels just outside them when scaled or moved by
+  fractions of a pixel. This is documented (on `load_texture_with`), not prevented: such sheets need spacing between
+  cells or edge texels repeated, as in other engines.
+- **Breakout's ball** now loads `Linear`. Gameplay is untouched (rendering does not feed the simulation).
+
+## Alternatives Considered
+- **Linear for everything:** smooth, but breaks pixel art and every exact pixel check, and changes all existing games.
+- **A filter per sprite** (on `Sprite`): flexible, but two bind groups per texture and more batches for a rare need.
+- **Premultiplied alpha** throughout (instead of bleeding): the correct general fix for filtering, but it changes the
+  blend state, tint and text paths of the whole renderer (ADR-015). Bleeding gives the same result for the common case
+  (opaque art with transparent surroundings) at load time only.
+- **Clamping UVs inside a sprite's region in the shader:** stops sheet cells bleeding, but needs the texture size in
+  the shader and changes glyph sampling too; deferred until a game needs it.
+- **Mipmaps:** needed for shrinking far below half size; generating them adds GPU work and memory. Not needed yet.
+
+## Rationale
+The smallest change that fixes F9: one enum on the load call, one more sampler, a CPU pass at load; nothing in the
+per-frame path changes, and `Nearest` games render byte-for-byte as before.
+
+## Consequences
+### Positive
+- Verified: unit tests for the defaults, the (path, options) cache, bleeding (rings, averages, sources with alpha > 0,
+  fully transparent textures, Breakout's ball becoming all white with unchanged alpha) and `Context::load_texture_with`;
+  an offscreen GPU test where a 2×2 texture drawn 32× larger shows exact texels with `Nearest` and the bilinear blend
+  (within 2/255) with `Linear`, and a `Linear` white-to-transparent-black strip over blue fades with no dark fringe (blue
+  stays ≥ 254). Mutation checks: without bleeding the fringe test fails (blue 251); with the wrong sampler the blend
+  test fails. Sandbox (all `Nearest`) and Breakout's lose screen are pixel-identical to before; in a mid-game Breakout
+  screenshot the ball's edge pixels lie between the background and white, none darker than the background.
+### Negative
+- A file loaded with both filters is stored twice.
+- `Linear` without mipmaps still aliases when shrinking below half size; `Linear` sheets need spacing.
+- Bleeding costs a pass over the texture at load (linear in its texel count).
+
+## Revisit Conditions
+Sprites shrunk far below half size (mipmaps), sheets that must be `Linear` without spacing (UV clamping), semi-transparent
+art where bleeding is not enough (premultiplied alpha), or wrap/repeat modes for tiling (another `TextureOptions` field).
 
 ---
 

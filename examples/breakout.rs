@@ -26,6 +26,7 @@ use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{
     Camera2D, Color, FontId, Hidden, Layer, Quad, Sprite, Text, TextAnchor, TextureId,
+    TextureOptions,
 };
 use purplepie::{Context, Engine, EngineConfig, Game};
 
@@ -543,7 +544,9 @@ fn overlap(a: Vec2, a_size: Vec2, b: Vec2, b_size: Vec2) -> Option<Vec2> {
 impl Game for Breakout {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
         self.textures = Some(Textures {
-            ball: ctx.load_texture("textures/breakout/ball.png")?,
+            // Linear: the 32×32 ball is drawn at 16–20 px and moves by fractions
+            // of a pixel, so nearest sampling made its edge shimmer (F9, ADR-034).
+            ball: ctx.load_texture_with("textures/breakout/ball.png", TextureOptions::LINEAR)?,
             brick: ctx.load_texture("textures/breakout/brick.png")?,
             font: ctx.load_font("fonts/Poppins-Regular.ttf")?,
         });

@@ -904,7 +904,9 @@ mod tests {
         let mut textures = Textures::default();
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("assets/textures/sandbox_sheet.png");
-        let id = textures.load(&path).expect("sheet loads");
+        let id = textures
+            .load(&path, super::super::TextureOptions::NEAREST)
+            .expect("sheet loads");
         (textures, id)
     }
 

@@ -129,6 +129,14 @@ cargo build
 cargo run            # sandbox
 ```
 
+Cowork has clippy 1.95, but the owner and CI use the latest stable, whose `clippy::chunks_exact_to_as_chunks` rejects
+`chunks_exact(4)`-style calls with a constant size (R-19). Before delivering, this must print nothing; use
+`as_chunks::<N>()` / `as_chunks_mut::<N>()` instead:
+
+```bash
+grep -rnE "chunks_exact(_mut)?\([0-9]" src examples
+```
+
 Windowed stages in Cowork (Linux, no display) use a virtual X server:
 
 ```bash
@@ -196,6 +204,9 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Since PP-018b the lose screen also shows text: compare it with an earlier screenshot and check that every changed
   pixel lies inside the rectangles `TextMetrics::bounds` predicts (compute them from the font's advance widths and
   ascent/descent at the `Camera2D::fit` zoom); the overlay colour `(161, 33, 47)` covers 339,277 px at 1024×768.
+  Since PP-025 the ball texture is `Linear` (ADR-034): in a mid-game screenshot its edge pixels lie between the
+  background `(16, 0, 43)` and white, and none is darker than the background (a darker ring would mean a fringe). The
+  exact check is the ignored GPU test `linear_textures_blend_texels_and_nearest_ones_stay_exact`.
   Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
   scripts that also started Xvfb (it waits for the server forever).
 - **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.

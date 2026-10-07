@@ -4,7 +4,8 @@
 //! and gets back a [`TextureId`]: plain, copyable data that can live in
 //! components. Decoding happens immediately, so a missing or broken file is
 //! reported to the caller. The GPU upload happens later, inside the
-//! renderer, so no wgpu type ever reaches game code (ADR-009).
+//! renderer, so no wgpu type ever reaches game code (ADR-009). How a texture
+//! is sampled ([`TextureFilter`]) is chosen per texture when it loads (ADR-034).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,126 @@ impl TextureId {
     }
 }
 
+/// How a texture's texels are blended when it is drawn larger, smaller, rotated
+/// or between whole pixels (ADR-034).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum TextureFilter {
+    /// Every pixel shows exactly one texel: crisp, blocky edges. Right for
+    /// pixel art and exact at whole-number scales; scaled-down or rotated
+    /// sprites shimmer. The default.
+    #[default]
+    Nearest,
+    /// Blends the four nearest texels: smooth when scaled, rotated or moved by
+    /// fractions of a pixel, slightly soft at large magnification. Without
+    /// mipmaps, shrinking below half size still aliases. Fully transparent
+    /// texels take on their neighbours' colour when the texture loads, so
+    /// edges blend without dark fringes.
+    Linear,
+}
+
+/// Options for [`Context::load_texture_with`](crate::Context::load_texture_with).
+///
+/// Build one from [`TextureOptions::NEAREST`] (the default, what
+/// [`Context::load_texture`](crate::Context::load_texture) uses) or
+/// [`TextureOptions::LINEAR`], or with [`with_filter`](Self::with_filter).
+/// More options may be added later, so the struct cannot be built with a
+/// literal.
+///
+/// ```
+/// use purplepie::render::{TextureFilter, TextureOptions};
+///
+/// assert_eq!(TextureOptions::default(), TextureOptions::NEAREST);
+/// assert_eq!(TextureOptions::LINEAR.filter, TextureFilter::Linear);
+/// assert_eq!(TextureOptions::default().with_filter(TextureFilter::Linear), TextureOptions::LINEAR);
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct TextureOptions {
+    /// How the texture is sampled. Default: [`TextureFilter::Nearest`].
+    pub filter: TextureFilter,
+}
+
+impl TextureOptions {
+    /// Nearest-texel sampling: crisp pixel art (the default).
+    pub const NEAREST: Self = Self {
+        filter: TextureFilter::Nearest,
+    };
+    /// Linear (bilinear) sampling: smooth scaled and rotated sprites.
+    pub const LINEAR: Self = Self {
+        filter: TextureFilter::Linear,
+    };
+
+    /// The same options with `filter`.
+    pub const fn with_filter(mut self, filter: TextureFilter) -> Self {
+        self.filter = filter;
+        self
+    }
+}
+
+/// Gives every fully transparent texel (alpha 0) the average colour of its
+/// nearest non-transparent texels, spreading outwards ring by ring
+/// (8-neighbourhood), and keeps its alpha at 0. Texels with any alpha are not
+/// changed. Linear filtering mixes the colour of neighbouring texels, so
+/// without this the (usually black) colour of transparent texels would darken
+/// the edges of a sprite drawn with straight alpha. A texture with no visible
+/// texel is left as it is.
+pub(crate) fn bleed_transparent_texels(width: u32, height: u32, pixels: &mut [u8]) {
+    let (w, h) = (width as usize, height as usize);
+    debug_assert_eq!(pixels.len(), w * h * 4);
+    let mut done: Vec<bool> = pixels.as_chunks::<4>().0.iter().map(|p| p[3] > 0).collect();
+    if done.len() != w * h || !done.iter().any(|&d| d) {
+        return;
+    }
+    let neighbours = |i: usize| {
+        let (x, y) = ((i % w) as isize, (i / w) as isize);
+        (-1..=1_isize)
+            .flat_map(move |dy| (-1..=1_isize).map(move |dx| (x + dx, y + dy)))
+            .filter(move |&(nx, ny)| {
+                (nx, ny) != (x, y) && nx >= 0 && ny >= 0 && nx < w as isize && ny < h as isize
+            })
+            .map(move |(nx, ny)| ny as usize * w + nx as usize)
+    };
+    let mut queued = done.clone();
+    let mut ring: Vec<usize> = Vec::new();
+    for i in 0..w * h {
+        if !done[i] && neighbours(i).any(|n| done[n]) {
+            queued[i] = true;
+            ring.push(i);
+        }
+    }
+    while !ring.is_empty() {
+        let colours: Vec<(usize, [u8; 3])> = ring
+            .iter()
+            .map(|&i| {
+                let (mut sum, mut count) = ([0_u32; 3], 0_u32);
+                for n in neighbours(i).filter(|&n| done[n]) {
+                    for (c, total) in sum.iter_mut().enumerate() {
+                        *total += u32::from(pixels[n * 4 + c]);
+                    }
+                    count += 1;
+                }
+                // `count` ≥ 1: every texel in the ring touches a finished one.
+                let average = sum.map(|total| ((total + count / 2) / count.max(1)) as u8);
+                (i, average)
+            })
+            .collect();
+        for &(i, rgb) in &colours {
+            pixels[i * 4..i * 4 + 3].copy_from_slice(&rgb);
+            done[i] = true;
+        }
+        let mut next = Vec::new();
+        for &(i, _) in &colours {
+            for n in neighbours(i) {
+                if !queued[n] {
+                    queued[n] = true;
+                    next.push(n);
+                }
+            }
+        }
+        ring = next;
+    }
+}
+
 /// Decoded pixels: RGBA, 8 bits per channel, sRGB, straight (not premultiplied) alpha,
 /// rows top to bottom.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +159,8 @@ pub(crate) struct TextureData {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) pixels: Vec<u8>,
+    /// How the renderer samples it.
+    pub(crate) filter: TextureFilter,
 }
 
 /// Decodes a PNG file's bytes into RGBA8. Any PNG colour type and bit depth is
@@ -59,17 +182,20 @@ pub(crate) fn decode_png(bytes: &[u8]) -> std::result::Result<(u32, u32, Vec<u8>
 #[derive(Debug, Default)]
 pub(crate) struct Textures {
     entries: Vec<TextureData>,
-    /// Path → id, so loading the same path twice returns the same texture.
-    by_path: HashMap<PathBuf, TextureId>,
+    /// (Path, options) → id, so loading the same path with the same options
+    /// twice returns the same texture.
+    by_path: HashMap<(PathBuf, TextureOptions), TextureId>,
 }
 
 impl Textures {
     /// Loads and decodes the PNG at `path`, normally a full path from the asset
-    /// root (ADR-025; `Context::load_texture` resolves it). Loading a path that
-    /// is already loaded (same spelling) returns the existing id without reading
-    /// the file.
-    pub(crate) fn load(&mut self, path: &Path) -> Result<TextureId> {
-        if let Some(&id) = self.by_path.get(path) {
+    /// root (ADR-025; `Context::load_texture` resolves it), to be sampled as
+    /// `options` say. Loading a path that is already loaded (same spelling)
+    /// with the same options returns the existing id without reading the file;
+    /// other options make a separate texture.
+    pub(crate) fn load(&mut self, path: &Path, options: TextureOptions) -> Result<TextureId> {
+        let key = (path.to_path_buf(), options);
+        if let Some(&id) = self.by_path.get(&key) {
             return Ok(id);
         }
         let asset_error = |source: BoxError| Error::Asset {
@@ -77,17 +203,22 @@ impl Textures {
             source,
         };
         let bytes = std::fs::read(path).map_err(|e| asset_error(Box::new(e)))?;
-        let (width, height, pixels) = decode_png(&bytes).map_err(asset_error)?;
+        let (width, height, mut pixels) = decode_png(&bytes).map_err(asset_error)?;
+        if options.filter == TextureFilter::Linear {
+            bleed_transparent_texels(width, height, &mut pixels);
+        }
         let id = self.push(TextureData {
             source: path.to_path_buf(),
             width,
             height,
             pixels,
+            filter: options.filter,
         });
-        self.by_path.insert(path.to_path_buf(), id);
+        self.by_path.insert(key, id);
         log::debug!(
-            "loaded texture {} ({width}×{height}) as {id:?}",
-            path.display()
+            "loaded texture {} ({width}×{height}, {:?}) as {id:?}",
+            path.display(),
+            options.filter
         );
         Ok(id)
     }
@@ -221,9 +352,11 @@ pub(crate) mod tests {
         std::fs::write(&b, encode_png(1, 1, &[1, 2, 3, 4])).expect("write");
 
         let mut textures = Textures::default();
-        let id_a = textures.load(&a).expect("load a");
-        let id_b = textures.load(&b).expect("load b");
-        let id_a_again = textures.load(&a).expect("load a again");
+        let id_a = textures.load(&a, TextureOptions::NEAREST).expect("load a");
+        let id_b = textures.load(&b, TextureOptions::NEAREST).expect("load b");
+        let id_a_again = textures
+            .load(&a, TextureOptions::NEAREST)
+            .expect("load a again");
         std::fs::remove_file(&a).ok();
         std::fs::remove_file(&b).ok();
 
@@ -239,11 +372,96 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn options_default_to_nearest_and_key_the_cache() {
+        assert_eq!(TextureOptions::default(), TextureOptions::NEAREST);
+        assert_eq!(TextureFilter::default(), TextureFilter::Nearest);
+        assert_eq!(
+            TextureOptions::NEAREST.with_filter(TextureFilter::Linear),
+            TextureOptions::LINEAR
+        );
+        let path = temp_path("options.png");
+        std::fs::write(&path, encode_png(2, 2, &PIXELS_2X2)).expect("write");
+        let mut textures = Textures::default();
+        let nearest = textures.load(&path, TextureOptions::NEAREST).expect("load");
+        let linear = textures.load(&path, TextureOptions::LINEAR).expect("load");
+        assert_eq!(
+            textures.load(&path, TextureOptions::LINEAR).expect("again"),
+            linear
+        );
+        std::fs::remove_file(&path).ok();
+        assert_ne!(nearest, linear);
+        assert_eq!(textures.len(), 2);
+        let (n, l) = (
+            textures.get(nearest).expect("n"),
+            textures.get(linear).expect("l"),
+        );
+        assert_eq!(
+            (n.filter, l.filter),
+            (TextureFilter::Nearest, TextureFilter::Linear)
+        );
+        assert_eq!(n.pixels, PIXELS_2X2, "Nearest keeps the file's texels");
+        // Linear: the transparent texel takes its neighbours' average colour, alpha stays 0.
+        assert_eq!(l.pixels[..12], PIXELS_2X2[..12]);
+        assert_eq!(l.pixels[12..], [85, 85, 85, 0]);
+    }
+
+    #[test]
+    fn bleeding_fills_transparent_texels_ring_by_ring() {
+        // 4×1: red, transparent, transparent, transparent.
+        let mut row = [
+            255, 0, 0, 255, /**/ 0, 0, 0, 0, /**/ 0, 0, 0, 0, /**/ 9, 9, 9, 0,
+        ];
+        bleed_transparent_texels(4, 1, &mut row);
+        assert_eq!(
+            row,
+            [255, 0, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0]
+        );
+        // Between two colours the first ring averages them; texels with alpha > 0
+        // (even 1) are sources and never change.
+        let mut row = [200, 0, 0, 1, /**/ 0, 0, 0, 0, /**/ 0, 0, 100, 255];
+        bleed_transparent_texels(3, 1, &mut row);
+        assert_eq!(row, [200, 0, 0, 1, 100, 0, 50, 0, 0, 0, 100, 255]);
+        // 3×3 with one opaque corner: every texel ends up with its colour.
+        let mut grid = [0_u8; 36];
+        grid[..4].copy_from_slice(&[10, 20, 30, 255]);
+        bleed_transparent_texels(3, 3, &mut grid);
+        for (i, texel) in grid.as_chunks::<4>().0.iter().enumerate() {
+            let alpha = if i == 0 { 255 } else { 0 };
+            assert_eq!(*texel, [10, 20, 30, alpha], "texel {i}");
+        }
+        // Nothing visible: unchanged.
+        let mut empty = [7_u8, 7, 7, 0, 0, 0, 0, 0];
+        bleed_transparent_texels(2, 1, &mut empty);
+        assert_eq!(empty, [7, 7, 7, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn the_breakout_ball_has_no_dark_texels_after_bleeding() {
+        let bytes = include_bytes!("../../assets/textures/breakout/ball.png");
+        let (w, h, mut pixels) = decode_png(bytes).expect("decode");
+        assert!(
+            pixels.as_chunks::<4>().0.contains(&[0, 0, 0, 0]),
+            "the file stores black transparent texels"
+        );
+        let alpha_before: Vec<u8> = pixels.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
+        bleed_transparent_texels(w, h, &mut pixels);
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p[..3] == [255, 255, 255])
+        );
+        let alpha_after: Vec<u8> = pixels.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
+        assert_eq!(alpha_after, alpha_before, "coverage is untouched");
+    }
+
+    #[test]
     fn since_lists_only_entries_not_yet_seen() {
         let a = temp_path("since.png");
         std::fs::write(&a, encode_png(1, 1, &[0, 0, 0, 255])).expect("write");
         let mut textures = Textures::default();
-        let first = textures.load(&a).expect("load");
+        let first = textures.load(&a, TextureOptions::NEAREST).expect("load");
         std::fs::remove_file(&a).ok();
         assert_eq!(
             textures.since(0).map(|(id, _)| id).collect::<Vec<_>>(),
@@ -256,7 +474,9 @@ pub(crate) mod tests {
     fn missing_file_is_an_asset_error_naming_the_path() {
         let path = temp_path("does-not-exist.png");
         let mut textures = Textures::default();
-        let err = textures.load(&path).expect_err("missing file must fail");
+        let err = textures
+            .load(&path, TextureOptions::NEAREST)
+            .expect_err("missing file must fail");
         assert!(matches!(&err, Error::Asset { path: p, .. } if *p == path));
         assert!(err.to_string().contains("does-not-exist.png"), "{err}");
         let source = err.source().expect("io error kept as source");
@@ -273,11 +493,15 @@ pub(crate) mod tests {
         let path = temp_path("broken.png");
         std::fs::write(&path, b"not a png").expect("write");
         let mut textures = Textures::default();
-        let err = textures.load(&path).expect_err("garbage must fail");
+        let err = textures
+            .load(&path, TextureOptions::NEAREST)
+            .expect_err("garbage must fail");
         assert!(matches!(err, Error::Asset { .. }));
         // Fixing the file and loading again works: failures are not remembered.
         std::fs::write(&path, encode_png(1, 1, &[9, 9, 9, 255])).expect("write");
-        let id = textures.load(&path).expect("now valid");
+        let id = textures
+            .load(&path, TextureOptions::NEAREST)
+            .expect("now valid");
         std::fs::remove_file(&path).ok();
         assert_eq!(id.index(), 0);
     }

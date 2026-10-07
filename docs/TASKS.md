@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-025: Per-texture sampling (Nearest or Linear, friction point F9)** · P1 · TODO ← **next task**
+- [ ] **PP-026: Scene files, part 1: save and load the engine's own components (phase P3)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -49,6 +49,7 @@ _None._
 - [x] **PP-023: UI buttons (ADR-031)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-024a: Audio, part 2a: playback control and looping (ADR-032)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music (ADR-033)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-025: Per-texture sampling, Nearest or Linear (ADR-034; F9; phase P2 complete)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -290,14 +291,24 @@ verifiable on its own.
 | Scope (as built) | ADR-033. New dependency `lewton` 0.10.2 (+4 crates on every platform). `audio/sound.rs`: `decode` picks the decoder from the first bytes (`RIFF` → `hound`, `OggS` → `lewton`, else `Error::Asset` "not a WAV or OGG Vorbis file"); `decode_ogg` decodes fully on load to interleaved `f32` (mono/stereo, consistent chained streams). New asset `assets/sounds/loop.ogg` (`loop.wav` via ffmpeg/libvorbis q4, 4.9 KB, exactly 22,050 frames); the sandbox's `M` loop plays it. `load_sound` docs list both formats and the memory/load-time cost. |
 | Acceptance criteria | ✅ 1. Unit tests (+3, and `loop.ogg` added to the shipped-sounds test): the shipped OGG has the source's channels, rate and exact length, RMS difference 0.0019 (limit 0.005); format by content (an OGG named `.wav` loads; unknown magic rejected); broken OGG (magic only, garbage, cut headers, damaged page) → error / `Error::Asset`; `Context::load_sound("sounds/loop.ogg")` = 1.0 s. ✅ 2. ALSA `file`-plugin capture: `M`…`M` plays `loop.ogg` exactly as the mixer model predicts from `lewton`'s output (max diff 0) for 6,290,400 frames (131 loops), L = R, silent after the stop. ✅ 3. Scratch files: stereo channel order, 3 channels rejected, chained file joined, rate-changing chain rejected. ✅ 4. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-024a; sandbox model 0 mismatches (cursor marker aside), HUD/button crops identical at 3 cameras; fault test clean. |
 
-### PP-025: Per-texture sampling ← NEXT
+### PP-025: Per-texture sampling
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 · Priority P1 · TODO |
+| Stage | Post-portfolio phase P2 · Priority P1 · **DONE** (2026-10-07; verified on Linux). Last P2 item: phase P2 complete. |
 | Dependencies | PP-019 (DONE) |
 | Why now | The last planned P2 item. Friction point F9: scaled-down or rotated sprites alias because every texture is sampled with `Nearest` (Breakout's ball). Pixel art wants `Nearest`, smooth art wants `Linear`. |
 | Scope | Decide the API (ADR): a sampling choice per texture chosen at load (e.g. `Context::load_texture_with(path, TextureOptions { filter })`, default `Nearest` so existing games are unchanged); one sampler per filter mode, chosen when the texture's bind group is built (no extra draw-list state beyond the texture batch). Document that sprite-sheet cells with `Linear` bleed into neighbours unless the sheet has spacing (ADR-020 extension). Use `Linear` where F9 was seen (Breakout's ball) only if it does not change the deterministic gameplay output. |
-| Acceptance criteria | Unit tests for the options and their defaults; an ignored GPU test where a 2×2 texture drawn at 4× shows blended pixels with `Linear` and exact texels with `Nearest`; existing GPU tests unchanged; sandbox and Breakout regressions (lose screen identical unless the ball deliberately changes, explained); CI green. |
+| Scope (as built) | ADR-034. Public `render::TextureFilter { Nearest (default), Linear }`, `render::TextureOptions { filter }` (non-exhaustive; `NEAREST`, `LINEAR`, `with_filter`), `Context::load_texture_with(path, options)`; `load_texture` = Nearest. `Textures` cache keyed by (path, options); `Linear` textures get `bleed_transparent_texels` on load (transparent texels take their neighbours' colour, alpha 0 kept). `SpritePipeline` holds a `Nearest` and a `Linear` sampler and binds each texture with its own. Breakout's ball loads `Linear`. No new dependencies; draw list, shader and batching unchanged. |
+| Acceptance criteria | ✅ 1. Unit tests (+3, one extended): defaults, cache by (path, options), Nearest keeps the file's texels, bleeding (rings, averages, alpha > 0 sources, empty textures, the ball becomes all white with unchanged alpha), `Context::load_texture_with` + filters; doctest for `TextureOptions`. ✅ 2. Ignored GPU readback test (2×2 texture at 32×, the 2×2-at-4× idea made larger so the blend is measurable): `Nearest` exact, `Linear` = CPU bilinear within 2/255, and a `Linear` white→transparent-black strip over blue has no fringe (blue ≥ 254); mutation checks fail as expected (no bleeding → blue 251; wrong sampler → blend mismatch). ✅ 3. Regressions: all earlier GPU tests pass; sandbox model 0 mismatches (cursor marker aside), HUD/button crops identical at 3 cameras; Breakout autoplay unchanged; lose screen pixel-identical (no ball on it); mid-game screenshots: ball edges blended, nothing darker than the background; fault test clean. |
+
+### PP-026: Scene files, part 1 ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 (editor foundations) · Priority P1 · TODO |
+| Dependencies | PP-025 (DONE; phase P2 complete) |
+| Why now | First item of P3. An editor (P5) and a debug overlay (P4) both need entities that can be written to and read from files; the engine's own components are the part that does not need a component registry yet. |
+| Scope | ADR first: file format and dependency (measure per ADR-013; candidates `serde` + `ron`, `serde` + JSON/TOML, or a hand-written format), how assets are referenced (relative asset paths plus `TextureOptions`, never per-run ids), and versioning. Then save and load the engine's components (`Transform2D`, `Quad`, `Sprite` incl. region, `Layer`, `Hidden`, `ScreenSpace`, `Text` incl. font, `SpriteAnimation`, `Velocity`) for a whole `World`, through `Context` (load resolves assets via the asset root). Game components and a registry are later tasks. Split again if the ADR shows it is too large. |
+| Acceptance criteria | Round-trip unit tests (save → load → equal components, including asset references); typed `Error::Asset` for broken or unknown-version files; crate counts measured; the sandbox (or a small example) saves and reloads a scene and renders the same picture (Xvfb pixel comparison); CI green. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

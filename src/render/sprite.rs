@@ -11,7 +11,7 @@ use super::Color;
 use super::atlas::GlyphAtlas;
 use super::quad::rect_pipeline;
 use super::region::TextureRegion;
-use super::texture::{TextureData, TextureId, Textures};
+use super::texture::{TextureData, TextureFilter, TextureId, Textures};
 use crate::error::{Error, Result};
 use crate::math::Vec2;
 
@@ -164,7 +164,9 @@ impl GpuGlyphAtlas {
 pub(crate) struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
+    /// One sampler per [`TextureFilter`]; each texture's bind group uses its own (ADR-034).
+    nearest_sampler: wgpu::Sampler,
+    linear_sampler: wgpu::Sampler,
     /// Texture formats follow the target: sRGB targets sample sRGB textures
     /// (decoded to linear), others sample the raw values (ADR-015).
     texture_format: wgpu::TextureFormat,
@@ -213,16 +215,21 @@ impl SpritePipeline {
             &shader,
             format,
         );
-        // Nearest filtering: texels stay crisp (pixel art) and pixel tests are exact.
-        // Clamp so the edges never pick up texels from the opposite side.
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("purplepie sprite sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
+        // Nearest (the default): texels stay crisp (pixel art) and pixel tests
+        // are exact. Linear: smooth scaling and rotation (ADR-034). Both clamp,
+        // so the edges never pick up texels from the opposite side.
+        let sampler = |label, filter| {
+            device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some(label),
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                mag_filter: filter,
+                min_filter: filter,
+                ..Default::default()
+            })
+        };
+        let nearest_sampler = sampler("purplepie nearest sampler", wgpu::FilterMode::Nearest);
+        let linear_sampler = sampler("purplepie linear sampler", wgpu::FilterMode::Linear);
         let texture_format = if format.is_srgb() {
             wgpu::TextureFormat::Rgba8UnormSrgb
         } else {
@@ -232,7 +239,8 @@ impl SpritePipeline {
         Self {
             pipeline,
             bind_group_layout,
-            sampler,
+            nearest_sampler,
+            linear_sampler,
             texture_format,
             textures: Vec::new(),
             glyphs,
@@ -329,6 +337,10 @@ impl SpritePipeline {
             &data.pixels,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = match data.filter {
+            TextureFilter::Nearest => &self.nearest_sampler,
+            TextureFilter::Linear => &self.linear_sampler,
+        };
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&label),
             layout: &self.bind_group_layout,
@@ -339,7 +351,7 @@ impl SpritePipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    resource: wgpu::BindingResource::Sampler(sampler),
                 },
             ],
         });
@@ -385,7 +397,9 @@ mod tests {
         let path = std::env::temp_dir().join(format!("purplepie-{}-{name}", std::process::id()));
         let pixels = vec![255; (w * h * 4) as usize];
         std::fs::write(&path, encode_png(w, h, &pixels)).expect("write");
-        let id = textures.load(&path).expect("load");
+        let id = textures
+            .load(&path, super::super::TextureOptions::NEAREST)
+            .expect("load");
         std::fs::remove_file(&path).ok();
         id
     }

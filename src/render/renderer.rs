@@ -652,7 +652,9 @@ mod tests {
         let mut textures = Textures::default();
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("assets/textures/sandbox_sheet.png");
-        let sheet = textures.load(&path).expect("sheet");
+        let sheet = textures
+            .load(&path, super::super::TextureOptions::NEAREST)
+            .expect("sheet");
         let data = textures.get(sheet).expect("data").clone();
         let texel = |x: u32, y: u32| {
             let i = ((y * data.width + x) * 4) as usize;
@@ -702,6 +704,135 @@ mod tests {
                         "frame {frame}, pixel ({px}, {py})"
                     );
                 }
+            }
+        }
+    }
+
+    /// The two filters on the GPU (ADR-034): a 2×2 texture drawn 32× larger
+    /// shows exact texels with `Nearest` and the bilinear blend of its texels
+    /// (clamped at the edges) with `Linear`; a `Linear` sprite with transparent
+    /// texels blends over the background without a dark fringe, because the
+    /// transparent texels were given their neighbours' colour on load.
+    #[test]
+    #[ignore = "needs a GPU adapter; run with `cargo test -- --ignored`"]
+    fn linear_textures_blend_texels_and_nearest_ones_stay_exact() {
+        use super::super::texture::tests::encode_png;
+        use super::super::{Layer, Quad, Sprite, TextureOptions};
+        let (fonts, _) = super::super::font::tests::poppins();
+        let dir = std::env::temp_dir();
+        let write = |name: &str, w: u32, h: u32, pixels: &[u8]| {
+            let path = dir.join(format!("purplepie-{}-{name}", std::process::id()));
+            std::fs::write(&path, encode_png(w, h, pixels)).expect("write");
+            path
+        };
+        // Red, green / blue, white, all opaque.
+        let quad_texels: [[u8; 3]; 4] = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]];
+        let rgba: Vec<u8> = quad_texels
+            .iter()
+            .flat_map(|t| [t[0], t[1], t[2], 255])
+            .collect();
+        let four = write("filter4.png", 2, 2, &rgba);
+        // Opaque white, then transparent *black* (as image editors save it).
+        let edge = write("edge.png", 2, 1, &[255, 255, 255, 255, 0, 0, 0, 0]);
+        let mut textures = Textures::default();
+        let nearest = textures
+            .load(&four, TextureOptions::NEAREST)
+            .expect("nearest");
+        let linear = textures
+            .load(&four, TextureOptions::LINEAR)
+            .expect("linear");
+        let faded = textures.load(&edge, TextureOptions::LINEAR).expect("edge");
+        std::fs::remove_file(&four).ok();
+        std::fs::remove_file(&edge).ok();
+
+        // Screen (left, top) of a sprite of `size` → world centre (+Y up, origin at the centre).
+        let centre = |left: u32, top: u32, size: Vec2| {
+            Vec2::new(
+                left as f32 + size.x / 2.0 - WIDTH as f32 / 2.0,
+                HEIGHT as f32 / 2.0 - (top as f32 + size.y / 2.0),
+            )
+        };
+        let square = Vec2::splat(64.0);
+        let strip = Vec2::new(64.0, 32.0);
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::from_position(centre(16, 16, square)),
+            Sprite::new(nearest, square),
+        ));
+        world.spawn((
+            Transform2D::from_position(centre(96, 16, square)),
+            Sprite::new(linear, square),
+        ));
+        world.spawn((
+            Transform2D::from_position(centre(176, 16, strip)),
+            Quad::new(strip, Color::rgb(0.0, 0.0, 1.0)),
+            Layer(-1),
+        ));
+        world.spawn((
+            Transform2D::from_position(centre(176, 16, strip)),
+            Sprite::new(faded, strip),
+        ));
+        let mut atlas = GlyphAtlas::new(64);
+        let pixels = render_offscreen(
+            &world,
+            &textures,
+            &fonts,
+            &Camera2D::default(),
+            wgpu::TextureFormat::Rgba8Unorm,
+            &mut atlas,
+        );
+        let at = |x: u32, y: u32| {
+            let i = ((y * WIDTH + x) * 4) as usize;
+            [pixels[i], pixels[i + 1], pixels[i + 2]]
+        };
+        // Bilinear weights along one axis of a 2-texel texture drawn over `span` pixels.
+        let weights = |pixel: u32, span: f64| {
+            let t = (f64::from(pixel) + 0.5) / span * 2.0 - 0.5;
+            let f = t.clamp(0.0, 1.0); // clamp-to-edge: outside the centres, the edge texel
+            [1.0 - f, f]
+        };
+        let mut blended = 0;
+        for py in 0..64 {
+            for px in 0..64 {
+                let exact = quad_texels[((py / 32) * 2 + px / 32) as usize];
+                assert_eq!(at(16 + px, 16 + py), exact, "nearest ({px}, {py})");
+                let (wx, wy) = (weights(px, 64.0), weights(py, 64.0));
+                let mut want = [0.0_f64; 3];
+                for (ty, wy) in wy.iter().enumerate() {
+                    for (tx, wx) in wx.iter().enumerate() {
+                        for (c, value) in want.iter_mut().enumerate() {
+                            *value += wx * wy * f64::from(quad_texels[ty * 2 + tx][c]);
+                        }
+                    }
+                }
+                let got = at(96 + px, 16 + py);
+                for c in 0..3 {
+                    let diff = (f64::from(got[c]) - want[c]).abs();
+                    assert!(
+                        diff <= 2.0,
+                        "linear ({px}, {py}) channel {c}: {got:?} vs {want:?}"
+                    );
+                }
+                if got != exact {
+                    blended += 1;
+                }
+            }
+        }
+        assert!(
+            blended > 64 * 64 / 2,
+            "most linear pixels are blends: {blended}"
+        );
+        // Over blue: out = white·a + blue·(1 − a). A dark fringe would lower blue.
+        for py in 0..32 {
+            let mut previous = 256;
+            for px in 0..64 {
+                let [r, g, b] = at(176 + px, 16 + py);
+                let a = weights(px, 64.0)[0] * 255.0;
+                assert_eq!(r, g, "({px}, {py})");
+                assert!(b >= 254, "no dark fringe at ({px}, {py}): blue {b}");
+                assert!((f64::from(r) - a).abs() <= 2.0, "({px}, {py}): {r} vs {a}");
+                assert!(u32::from(r) <= previous, "fades left to right");
+                previous = u32::from(r);
             }
         }
     }
