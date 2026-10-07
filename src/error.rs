@@ -63,6 +63,18 @@ pub enum Error {
         source: BoxError,
     },
 
+    /// A file could not be written, e.g. by
+    /// [`Context::save_scene`](crate::Context::save_scene): the folder is
+    /// missing or read-only, or the data could not be encoded. `source` says which.
+    #[error("failed to save `{}`", .path.display())]
+    Save {
+        /// The path as the game passed it.
+        path: std::path::PathBuf,
+        /// The underlying I/O or encoding error.
+        #[source]
+        source: BoxError,
+    },
+
     /// An error returned by game code, e.g. from [`Game::init`](crate::Game::init).
     #[error("game error")]
     Game(#[source] BoxError),

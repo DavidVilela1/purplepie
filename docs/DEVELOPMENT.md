@@ -209,6 +209,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   exact check is the ignored GPU test `linear_textures_blend_texels_and_nearest_ones_stay_exact`.
   Interactive: `xdotool mousemove 300 600` → paddle centred at x = 300; `click 1` launches. Don't `wait` without a PID in
   scripts that also started Xvfb (it waits for the server forever).
+- **Scene files (PP-026a+, ADR-035):** run `examples/scene` under Xvfb three times with
+  `PURPLEPIE_SCENE_EXAMPLE=save`, `=build` and unset (`load`), move the pointer out of the window first, screenshot each
+  after ~3 s and expect pixel-identical frames. `save` rewrites `assets/scenes/demo.ron`; keep the file unchanged unless
+  the demo deliberately changes (a unit test compares it byte-for-byte with what `save_scene` writes).
 - **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.
   In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
   centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;

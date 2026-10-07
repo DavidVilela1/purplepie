@@ -1,0 +1,156 @@
+// PurplePie scene (ADR-035). Asset paths are relative to the asset root.
+(
+    version: 1,
+    entities: [
+        (
+            transform: (
+                position: (0.0, -40.0),
+            ),
+            quad: (
+                size: (1000.0, 420.0),
+                color: (0.14117648, 0.0, 0.27450982, 1.0),
+            ),
+            layer: -10,
+        ),
+        (
+            transform: (
+                position: (-380.0, 60.0),
+            ),
+            quad: (
+                size: (120.0, 80.0),
+                color: (1.0, 0.0, 0.43137255, 1.0),
+            ),
+            layer: 0,
+        ),
+        (
+            transform: (
+                position: (-350.0, 30.0),
+            ),
+            quad: (
+                size: (120.0, 80.0),
+                color: (0.9843137, 0.3372549, 0.02745098, 1.0),
+            ),
+            layer: 1,
+        ),
+        (
+            transform: (
+                position: (-320.0, 0.0),
+            ),
+            quad: (
+                size: (120.0, 80.0),
+                color: (1.0, 0.74509805, 0.043137256, 1.0),
+            ),
+            layer: 2,
+        ),
+        (
+            transform: (
+                position: (0.0, 0.0),
+            ),
+            quad: (
+                size: (2000.0, 2000.0),
+                color: (1.0, 1.0, 1.0, 1.0),
+            ),
+            layer: 100,
+            hidden: true,
+        ),
+        (
+            transform: (
+                position: (-120.0, 40.0),
+            ),
+            sprite: (
+                texture: "textures/sandbox_sheet.png",
+                size: (48.0, 48.0),
+                region: (0, 0, 8, 8),
+            ),
+        ),
+        (
+            transform: (
+                position: (-60.0, 40.0),
+            ),
+            sprite: (
+                texture: "textures/sandbox_sheet.png",
+                size: (48.0, 48.0),
+                region: (8, 8, 8, 8),
+            ),
+        ),
+        (
+            transform: (
+                position: (0.0, 40.0),
+                scale: (-1.0, 1.0),
+            ),
+            sprite: (
+                texture: "textures/sandbox_sheet.png",
+                size: (48.0, 48.0),
+                region: (16, 8, 8, 8),
+            ),
+        ),
+        (
+            transform: (
+                position: (150.0, 40.0),
+                rotation: 0.3,
+            ),
+            sprite: (
+                texture: "textures/sandbox_quadrants.png",
+                size: (96.0, 96.0),
+            ),
+        ),
+        (
+            transform: (
+                position: (290.0, 40.0),
+                rotation: 0.3,
+            ),
+            sprite: (
+                texture: "textures/sandbox_quadrants.png",
+                filter: Linear,
+                size: (96.0, 96.0),
+                tint: (1.0, 1.0, 1.0, 0.8),
+            ),
+        ),
+        (
+            transform: (
+                position: (400.0, 40.0),
+            ),
+            sprite: (
+                texture: "textures/breakout/ball.png",
+                filter: Linear,
+                size: (20.0, 20.0),
+            ),
+            layer: 2,
+        ),
+        (
+            transform: (
+                position: (0.0, -140.0),
+            ),
+            text: (
+                content: "Saved and loaded with scene files",
+                font: "fonts/Poppins-Regular.ttf",
+                size: 28.0,
+                anchor: (Center, Baseline),
+            ),
+        ),
+        (
+            transform: (
+                position: (16.0, -16.0),
+            ),
+            text: (
+                content: "SCENE DEMO",
+                font: "fonts/Poppins-Regular.ttf",
+                size: 18.0,
+                color: (1.0, 0.74509805, 0.043137256, 1.0),
+                anchor: (Left, Top),
+            ),
+            layer: 20,
+            screen_space: TopLeft,
+        ),
+        (
+            transform: (
+                position: (-30.0, 30.0),
+            ),
+            quad: (
+                size: (40.0, 40.0),
+                color: (0.22745098, 0.5254902, 1.0, 1.0),
+            ),
+            screen_space: BottomRight,
+        ),
+    ],
+)

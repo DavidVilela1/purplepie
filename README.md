@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope: runtime essentials done (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops and UI buttons); editor foundations next.**
+> **Status: Stages 0–10 complete; growing past the portfolio scope: runtime essentials done (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops and UI buttons); editor foundations started (scene files).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -22,9 +22,11 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   master volume (mixed in software, any sample rate); games keep running silently without an audio device.
 - **Assets:** textures, fonts and sounds loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
+- **Scenes:** `Context::save_scene` / `load_scene` write and read the drawable entities (transforms, quads, sprites,
+  text, layers, hidden, screen space) as human-readable RON, with textures and fonts referenced by asset path.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
-  scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
+  animation/game components in scene files, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
 
@@ -107,6 +109,7 @@ to build: `sudo apt install libasound2-dev` (Debian/Ubuntu).
 cargo run            # opens the sandbox window (M toggles a music loop; Escape or close to quit)
 cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/click launch, Escape quits
 # PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
+cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_EXAMPLE=build|save: build in code / write it)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
@@ -128,8 +131,8 @@ PurplePie/
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
-├── examples/         breakout.rs: a complete game on the public API
-├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav; loop.ogg), shaders/
+├── examples/         breakout.rs: a complete game on the public API; scene.rs: scene files
+├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav; loop.ogg), scenes/ (demo.ron), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/
     ├── PROJECT_STATUS.md where we are, what works, validation log   ← start here
@@ -163,6 +166,8 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | cpal | 0.18.2 | PP-022 |
 | hound | 3.5.1 | PP-022 |
 | lewton | 0.10.2 | PP-024b |
+| ron | 0.12.2 | PP-026a |
+| serde | 1.0.229 | PP-026a |
 
 ## License
 

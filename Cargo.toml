@@ -44,6 +44,10 @@ ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
 cpal = "0.18.2"
 hound = "3.5.1"      # PP-022: WAV decoding, used only in `audio` (ADR-030)
 lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.rs` (ADR-033); +4 crates
+# PP-026a: scene files (ADR-035), used only in `scene`. +5 crates on every platform
+# (`ron`, `serde`, `serde_core`, `serde_derive`, `typeid`); serde is not part of the public API.
+ron = "0.12.2"
+serde = { version = "1.0.229", features = ["derive"] }
 
 [lints.rust]
 unsafe_code = "forbid"

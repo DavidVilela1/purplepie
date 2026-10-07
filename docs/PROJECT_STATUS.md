@@ -15,7 +15,8 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 **Post-portfolio phase P2 (runtime essentials): complete** (2026-10-07, verified on Linux): PP-019 sprite sheets,
 PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-023 UI buttons, PP-024a playback
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
-earlier. **Phase P3 (editor foundations) has not started;** its first task, **PP-026 scene files, part 1**, is next.
+earlier. **Phase P3 (editor foundations) in progress:** PP-026a scene files (RON format, drawing components;
+ADR-035) done; **PP-026b** (animation, velocity and UI buttons in scenes) is next.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -96,6 +97,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-023: UI buttons: `ui::Button`, `ui::Pointer`, `ui::update_buttons` (ADR-031).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
+- PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
 - PP-025: per-texture sampling: `TextureFilter`/`TextureOptions`, `Context::load_texture_with`; Breakout's ball is `Linear` (ADR-034). Phase P2 complete.
 
 ## In Progress
@@ -104,7 +106,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-026: Scene files, part 1** (phase P3, editor foundations). See [TASKS.md](TASKS.md#pp-026-scene-files-part-1--next).
+- **PP-026b: Scene files: animation, velocity and UI buttons** (phase P3). See [TASKS.md](TASKS.md#pp-026b-scene-files-animation-velocity-and-ui-buttons--next).
 
 ## Blocked
 
@@ -135,10 +137,17 @@ executable, else `assets/` in the working directory (ADR-025).
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
+- Scenes (PP-026a): only `Transform2D`, `Quad`, `Sprite`, `Text`, `Layer`, `Hidden` and `ScreenSpace` are saved, and only on entities with a drawable; `SpriteAnimation`, `Velocity`, `ui::Button` (PP-026b) and game components (registry, later) are dropped. Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-026a Scene files, part 1a (phase P3 started).**
+  - New dependencies `ron` 0.12.2 + `serde` 1.0.229 (ADR-035; +5 crates on every platform). serde is used only inside the new crate-private `scene` module; no public type derives it.
+  - New `Context::save_scene(path)` and `Context::load_scene(path) -> Vec<Entity>`: RON text, `version: 1`, assets by path relative to the asset root, all-or-nothing loading. New `Error::Save` for write failures.
+  - New example `examples/scene.rs` and `assets/scenes/demo.ron` (14 entities: quads, sprites incl. regions/mirroring/rotation/Linear, world and screen-space text, layers, a hidden quad).
+  - Follow-up fix: on the owner's Windows machine the shipped-scene test failed because `ron` writes `\r\n` line ends on Windows by default (only the header line used `\n`). Scene files are now always written with `\n`; the round-trip test asserts it (forcing `\r\n` on Linux reproduces the Windows failure).
 
 - **2026-10-07: PP-025 Per-texture sampling (phase P2 complete).**
   - New public API (ADR-034): `render::TextureFilter` (`Nearest` default, `Linear`), `render::TextureOptions` (`NEAREST`, `LINEAR`, `with_filter`; non-exhaustive) and `Context::load_texture_with(path, options)`. `load_texture` is unchanged (Nearest).
@@ -301,21 +310,23 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-025 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-026a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 197 unit tests + 28 doctests, 11 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 11/11, incl. the new filter readback test (mutations: no bleeding → fringe detected; wrong sampler → blend mismatch) |
+| `cargo test --locked` | ✅ PASS: 204 unit tests + 29 doctests, 11 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 11/11 |
+| `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` (R-19 guard) | ✅ no matches |
+| Scene example (`PURPLEPIE_SCENE_EXAMPLE=save`, `build`, default `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical; `save` wrote `assets/scenes/demo.ron`, which the unit tests read back byte-for-byte |
+| Scene mutation checks | ✅ dropping `ScreenSpace` on load or the tint on save fails the round-trip tests |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Breakout mid-game screenshots (ball `Linear`) | ✅ the ball and the three lives icons have blended edges; no pixel around them is darker than the background (no fringe) |
-| Sandbox whole-frame model + HUD + animated cell (cameras (0,0)×1, (120,−40)×1.5, (−200,60)×2) | ✅ 0 mismatches apart from the cursor marker (400 px at zoom 2); HUD panel, corner square and button crops identical at all three; one animation frame |
+| Sandbox whole-frame model + HUD (camera (0,0)×1) | ✅ 0 mismatches; HUD panel, corner square and button crops identical to the PP-025 run |
 | Breakout autoplay `win` / `lose` (debug, ALSA null device) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-024b | ✅ pixel-identical (no ball is visible on it) |
+| Breakout lose screen vs PP-025 | ✅ pixel-identical |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -323,4 +334,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-025 done (per-texture sampling; ADR-034); phase P2 complete. PP-026 (scene files, part 1) is next.
+2026-10-07. PP-026a done (scene files: format + drawing components; ADR-035). PP-026b (animation, velocity, buttons in scenes) is next.

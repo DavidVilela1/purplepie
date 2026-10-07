@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; engine drawing components only (part 1) | Accepted | Yes (PP-026a) |
 | ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
 
 ---
@@ -1776,6 +1777,77 @@ per-frame path changes, and `Nearest` games render byte-for-byte as before.
 ## Revisit Conditions
 Sprites shrunk far below half size (mipmaps), sheets that must be `Linear` without spacing (UV clamping), semi-transparent
 art where bleeding is not enough (premultiplied alpha), or wrap/repeat modes for tiling (another `TextureOptions` field).
+
+---
+
+# ADR-035: Scene files: RON through private mirror types, assets by path
+
+## Status
+Accepted (2026-10-07, PP-026a). First decision of phase P3 (editor foundations). Part 1 covers the engine's drawing
+components; animation, velocity, UI buttons (PP-026b) and the game's own components (a registry, later) follow.
+
+## Context
+An editor (P5) and a debug overlay (P4) need entities written to and read from files. Components hold per-run handles
+(`TextureId`, `FontId`) that mean nothing in another run, and their Rust layout will keep changing. ADR-013 asks every
+dependency to earn its place.
+
+## Decision
+- **Format: RON** (`ron` 0.12.2) through **`serde`** 1.0.229 (`derive`). Measured with `cargo tree -e normal --target …`:
+  **+5 crates on every platform** (`ron`, `serde`, `serde_core`, `serde_derive`, `typeid`; all MIT OR Apache-2.0;
+  `syn`/`quote`/`proc-macro2` were already in the tree): Linux 137 → 142, Windows 110 → 115, macOS 112 → 117.
+  RON reads like Rust (structs, tuples, enum names), allows comments and trailing commas, and is the usual Rust scene
+  format, so files stay hand-editable.
+- **Private mirror types.** A crate-private `scene` module defines `SceneFile`/`EntityFile` and one `*File` type per
+  component; only they derive `Serialize`/`Deserialize`. Components do not derive serde traits and `glam`'s `serde`
+  feature stays off, so serde is not part of the public API and the file layout is decoupled from component layout.
+- **Assets by path.** Sprites store the texture's path **relative to the asset root** (`/` separators on every OS) plus
+  its `TextureFilter`; texts store the font's path. Paths outside the asset root are written absolute. Loading resolves
+  them like `load_texture`/`load_font` (same cache, so an already loaded file is reused).
+- **Versioned and strict.** Top-level `version: 1`; it is read first, so a newer file says "scene version N is not
+  supported". Unknown fields are errors (typos are named), and omitted optional fields take the same defaults as the
+  constructors (no rotation, unit scale, white tint, no region, `Nearest`, baseline-left anchor). Files are written with
+  RON's `implicit_some` extension, which PurplePie also enables when reading, and always with `\n` line ends
+  (`ron` would use `\r\n` on Windows), so the same scene gives the same bytes on every platform; `\r\n` files read fine.
+- **API:** `Context::save_scene(path)` writes every entity that has a `Quad`, `Sprite` or `Text` (with its
+  `Transform2D`, `Layer`, `Hidden`, `ScreenSpace`), in entity order; `Context::load_scene(path) -> Vec<Entity>` adds the
+  entities to the world in file order. Relative paths resolve against the asset root. **Loading is all-or-nothing:**
+  every asset is loaded before anything is spawned. Errors: `Error::Asset` for unreadable/invalid/unsupported files and
+  missing assets; a new `Error::Save { path, source }` for write failures.
+- **Demo:** `examples/scene.rs` builds a 14-entity scene in code or loads `assets/scenes/demo.ron`, which the example
+  itself wrote (`PURPLEPIE_SCENE_EXAMPLE=save`).
+
+## Alternatives Considered
+- **JSON (`serde_json`):** +6/+7 crates, no comments, noisy for hand editing. **TOML:** +9 crates and awkward for lists
+  of nested tables.
+- **Hand-written format, no dependency:** zero crates, but a parser and its error messages to maintain, and no path to
+  game components later; a serde-based registry will let games describe their own components.
+- **Deriving serde on the components / hecs's `serde` feature:** less code, but puts serde (and glam's serde feature)
+  into the public API and ties files to component layout and hecs's column format.
+- **Saving every entity:** entities without a drawable are usually game bookkeeping whose components cannot be saved
+  yet; writing bare transforms for them would produce meaningless entities.
+
+## Rationale
+The smallest dependency set that gives a readable, editable, versioned format and leaves room for a component registry,
+while keeping the public API free of serde.
+
+## Consequences
+### Positive
+- Verified: unit tests round-trip every saved component and option through text into a fresh world (same components,
+  same texture files and filters, same fonts) and save it back to identical text; hand-written files use defaults; CRLF
+  files read the same; wrong versions, garbage, missing `version`, unknown fields and missing assets are rejected with a
+  reason and spawn nothing; the shipped `demo.ron` loads and saves back byte-for-byte; `Context` saves and loads
+  relative to the asset root with `Error::Save` for a missing folder. Mutation checks (drop `ScreenSpace` on load, drop
+  the tint on save) fail the tests. Under Xvfb the example's `load` and `build` modes render pixel-identical frames.
+### Negative
+- Animation, velocity, UI buttons and game components are lost on save (PP-026b and the registry task).
+- Draw order between entities on the same layer and material falls back to entity ids (ADR-021), which a scene does not
+  store; entities load in file order, so a fresh world keeps the order, but loading into a world with despawned slots
+  may not. Use layers when overlap order matters.
+- Colours are stored as floats (exact, but less readable than hex); compile time grows by `serde_derive` (not measured).
+
+## Revisit Conditions
+The component registry (game components), a binary or streaming format for very large scenes, scene replacement /
+unloading semantics (with PD-06 handles), or a format change (bump `version` and keep reading 1).
 
 ---
 

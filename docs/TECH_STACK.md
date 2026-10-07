@@ -19,10 +19,12 @@ throwaway spike ([spikes/stage-0-compat-spike.md](spikes/stage-0-compat-spike.md
 | `cpal` | **0.18.2** ✅ added (default features; Linux: `alsa` 0.11.0 + `alsa-sys` 0.4.0, needs `libasound2-dev` at build time; macOS: CoreAudio crates; Windows: WASAPI via the `windows` crate already in the tree). With `hound`: **+5 crates Linux (128 → 133), +3 Windows (103 → 106), +9 macOS (99 → 108)**, measured 2026-10-07 | PP-022 | audio output device (ADR-030) | 1.85 |
 | `hound` | **3.5.1** ✅ added (Apache-2.0, no dependencies) | PP-022 | WAV decoding (ADR-030) | — |
 | `lewton` | **0.10.2** ✅ added (MIT OR Apache-2.0, pure Rust, default `ogg` feature; pulls `ogg` 0.8.0 **BSD-3-Clause**, `tinyvec` 1.13.3 Zlib/Apache-2.0/MIT, `byteorder` 1.5.0 Unlicense/MIT). **+4 crates on every platform: Linux 133 → 137, Windows 106 → 110, macOS 108 → 112**, measured with `cargo tree -e normal --target …` on 2026-10-07 | PP-024b | OGG Vorbis decoding (ADR-033) | — (`byteorder` 1.60) |
+| `ron` | **0.12.2** ✅ added (MIT OR Apache-2.0) | PP-026a | scene file format (ADR-035) | 1.64 |
+| `serde` | **1.0.229** ✅ added (`derive`; pulls `serde_core`, `serde_derive`; MIT OR Apache-2.0). With `ron` (+`typeid`): **+5 crates on every platform: Linux 137 → 142, Windows 110 → 115, macOS 112 → 117**, measured 2026-10-07. Used only by the crate-private `scene` module: no public type derives serde | PP-026a | scene (de)serialization via private mirror types (ADR-035) | 1.56 (`serde_derive` 1.71) |
 
 **Declared `rust-version = "1.90"`.** This is the highest `rust-version` found
 in the resolved Stage 1–4 dependency graph (`ordered-float 5.5.0` via
-`wgpu-hal`). Still the highest after PP-008 (`image` declares 1.88, `moxcms`/`pxfm` 1.85) and PP-018a (`ttf-parser` 1.63) and PP-022 (`cpal` 1.85) and PP-024b (`byteorder` 1.60; `lewton`, `ogg`, `tinyvec` declare none). Only 1.95.0 has actually been exercised: the sandbox could not
+`wgpu-hal`). Still the highest after PP-008 (`image` declares 1.88, `moxcms`/`pxfm` 1.85) and PP-018a (`ttf-parser` 1.63) and PP-022 (`cpal` 1.85) and PP-024b (`byteorder` 1.60; `lewton`, `ogg`, `tinyvec` declare none) and PP-026a (`serde_derive` 1.71, `ron` 1.64). Only 1.95.0 has actually been exercised: the sandbox could not
 download other toolchains. Raise the value if a lower toolchain fails.
 
 ## Versions deliberately not chosen
@@ -36,6 +38,7 @@ download other toolchains. Raise the value if a lower toolchain fails.
 | `fontdue 0.9.4` | Fine rasterizer, but +4 crates on Linux and +5 on Windows (a second `hashbrown`) where `ab_glyph` costs +0/+4 (ADR-027). |
 | `rodio 0.22.2` | Convenient playback API, but +20/+18/+22 crates (Linux/Windows/macOS) even with only `playback` + `wav`, and its decoders come from `symphonia` (MPL-2.0) (ADR-030). |
 | `symphonia` | Many formats (MP3, FLAC, Vorbis, …), but MPL-2.0 and a larger tree than one format needs (ADR-033). Revisit for MP3/FLAC. |
+| `serde_json` 1.0.151 / `toml` 1.1.6 (scenes) | +6/+7 and +9 crates with serde (vs +5 for `ron`); JSON has no comments and is noisy to hand-edit, TOML is awkward for lists of nested tables (ADR-035). |
 | `kira 0.12.5` | Game-oriented audio (tweens, clocks, tracks), but +28/+25/+29 crates; revisit for music features (ADR-030). |
 | `glyphon` / `cosmic-text` | Shaping and font fallback, but a large tree, its own wgpu pipeline locked to wgpu versions, and text outside the draw list (ADR-027). Revisit for non-Latin scripts. |
 

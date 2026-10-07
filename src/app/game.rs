@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::state::EngineState;
 use crate::audio::{PlaybackId, SoundId};
-use crate::ecs::World;
+use crate::ecs::{Entity, World};
 use crate::error::Result;
 use crate::input::Input;
 use crate::math::Vec2;
@@ -156,6 +156,90 @@ impl<'a> Context<'a> {
     ) -> Result<TextureId> {
         let file = self.state.assets.locate(path.as_ref())?;
         self.state.textures.load(&file, options)
+    }
+
+    /// Saves the engine's components of every entity that has a
+    /// [`Quad`](crate::render::Quad), [`Sprite`](crate::render::Sprite) or
+    /// [`Text`](crate::render::Text) to a scene file (ADR-035): their
+    /// `Transform2D`, `Quad`, `Sprite` (texture by asset path, filter, tint,
+    /// region), `Text` (font by asset path), `Layer`, `Hidden` and
+    /// `ScreenSpace`. Other components, including the game's own, are not
+    /// saved yet, and entities without a drawable are skipped.
+    ///
+    /// The file is human-readable [RON](https://docs.rs/ron) text. A relative
+    /// `path` is resolved against the asset root like
+    /// [`load_texture`](Self::load_texture) (e.g. `"scenes/level1.ron"`); its
+    /// folder must exist. Asset references are written relative to the asset
+    /// root, so the scene keeps working when the game folder moves. Failures
+    /// are [`Error::Save`](crate::Error::Save).
+    pub fn save_scene(&mut self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        let save_error = |source: crate::error::BoxError| crate::Error::Save {
+            path: path.to_path_buf(),
+            source,
+        };
+        let file = self
+            .state
+            .assets
+            .locate(path)
+            .map_err(|e| save_error(Box::new(e)))?;
+        let state = &*self.state;
+        let scene = crate::scene::capture(
+            &state.world,
+            &state.textures,
+            &state.fonts,
+            state.assets.path(),
+        )
+        .map_err(save_error)?;
+        let text = crate::scene::to_text(&scene).map_err(save_error)?;
+        std::fs::write(&file, text).map_err(|e| save_error(Box::new(e)))?;
+        log::debug!(
+            "saved {} entities to scene {}",
+            scene.entities.len(),
+            file.display()
+        );
+        Ok(())
+    }
+
+    /// Loads a scene file written by [`save_scene`](Self::save_scene) (or by
+    /// hand) and spawns its entities into the world, after any that are
+    /// already there. Returns the new entities in file order.
+    ///
+    /// Every texture and font the scene names is loaded first (cached like
+    /// [`load_texture`](Self::load_texture) and [`load_font`](Self::load_font));
+    /// if one fails, or the file is not a valid scene of a supported version,
+    /// the error is [`Error::Asset`](crate::Error::Asset) and nothing is spawned.
+    ///
+    /// ```no_run
+    /// # fn init(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
+    /// let entities = ctx.load_scene("scenes/level1.ron")?;
+    /// println!("spawned {} entities", entities.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn load_scene(&mut self, path: impl AsRef<Path>) -> Result<Vec<Entity>> {
+        let path = path.as_ref();
+        let file = self.state.assets.locate(path)?;
+        let asset_error = |source: crate::error::BoxError| crate::Error::Asset {
+            path: path.to_path_buf(),
+            source,
+        };
+        let text = std::fs::read_to_string(&file).map_err(|e| asset_error(Box::new(e)))?;
+        let scene = crate::scene::from_text(&text).map_err(asset_error)?;
+        let state = &mut *self.state;
+        let (assets, textures, fonts) = (&state.assets, &mut state.textures, &mut state.fonts);
+        let resolved = crate::scene::resolve_assets(
+            &scene,
+            |p, options| textures.load(&assets.locate(p)?, options),
+            |p| fonts.load(&assets.locate(p)?),
+        )?;
+        let entities = crate::scene::spawn(scene, resolved, &mut state.world);
+        log::debug!(
+            "loaded {} entities from scene {}",
+            entities.len(),
+            file.display()
+        );
+        Ok(entities)
     }
 
     /// Loads a TrueType (`.ttf`) or OpenType (`.otf`) font and returns a
@@ -480,6 +564,72 @@ mod tests {
         assert_eq!(two.lines, 2);
         assert!((two.width - one.width).abs() < 1e-3, "the widest line");
         assert!((two.height - 290.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn scenes_save_and_load_relative_to_the_asset_root() {
+        use crate::math::Transform2D;
+        use crate::render::{Color, Quad, Sprite};
+        // A scratch asset root holding one texture, so the scene is written there.
+        let root = std::env::temp_dir().join(format!("purplepie-scene-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("textures")).expect("mkdir");
+        std::fs::create_dir_all(root.join("scenes")).expect("mkdir");
+        std::fs::copy(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/assets/textures/sandbox_quadrants.png"
+            ),
+            root.join("textures/q.png"),
+        )
+        .expect("copy texture");
+        let mut state = EngineState::new(0.25, AssetRoot::Found(root.clone()));
+        let mut ctx = Context::new(&mut state, 0.0);
+        let texture = ctx
+            .load_texture_with("textures/q.png", TextureOptions::LINEAR)
+            .expect("texture");
+        ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(3.0, 4.0)),
+            Sprite::new(texture, Vec2::splat(16.0)),
+        ));
+        ctx.world_mut().spawn((Quad::new(Vec2::ONE, Color::WHITE),));
+        ctx.save_scene("scenes/a.ron").expect("save");
+        let text = std::fs::read_to_string(root.join("scenes/a.ron")).expect("written");
+        assert!(
+            text.contains("\"textures/q.png\""),
+            "relative reference: {text}"
+        );
+        assert!(text.contains("filter: Linear"), "{text}");
+
+        let spawned = ctx.load_scene("scenes/a.ron").expect("load");
+        assert_eq!(spawned.len(), 2);
+        assert_eq!(ctx.world().len(), 4, "loading adds to the world");
+        let sprite = *ctx.world().get::<&Sprite>(spawned[0]).expect("sprite");
+        assert_eq!(
+            sprite.texture, texture,
+            "same file + options: the cached texture"
+        );
+
+        let err = ctx
+            .save_scene("no-such-folder/a.ron")
+            .expect_err("missing folder");
+        assert!(
+            matches!(&err, crate::Error::Save { path, .. } if path.ends_with("no-such-folder/a.ron")),
+            "{err}"
+        );
+        assert!(err.to_string().starts_with("failed to save"), "{err}");
+        let err = ctx
+            .load_scene("scenes/missing.ron")
+            .expect_err("missing file");
+        assert!(matches!(err, crate::Error::Asset { .. }), "{err}");
+        std::fs::write(root.join("scenes/bad.ron"), "(version: 99, entities: [])").expect("write");
+        let err = ctx
+            .load_scene("scenes/bad.ron")
+            .expect_err("future version");
+        let reason = std::error::Error::source(&err).expect("reason").to_string();
+        assert!(reason.contains("version 99"), "{reason}");
+        assert_eq!(ctx.world().len(), 4, "failed loads spawn nothing");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

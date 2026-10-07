@@ -38,6 +38,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-26 | Third-party asset licensing (shipped font) | MITIGATED | — | Medium | PP-018 |
 | R-27 | Audio: platform builds, devices and the audio thread | OPEN | Medium | Medium | PP-022 |
 | R-28 | OGG Vorbis decoding: memory, load time and a slow-moving decoder | OPEN | Medium | Low | PP-024b |
+| R-29 | Scene files: format compatibility and silent loss of unsaved components | OPEN | Medium | Medium | PP-026a |
 
 ## Details
 
@@ -234,4 +235,17 @@ Likelihood and impact are qualitative: Low, Medium or High.
   notice when redistributing binaries).
 - **Fallback:** stream long tracks instead of decoding them up front; switch to `symphonia` if `lewton` shows a bug or
   advisory, or if MP3/FLAC are needed.
+
+### R-29: Scene files: format compatibility and silent loss of unsaved components
+- **Trigger:** once games and an editor keep scene files, every format change can break them (ADR-035). Today a save
+  silently drops components the format does not cover (`SpriteAnimation`, `Velocity`, `ui::Button`, game components),
+  and same-layer draw order relies on entity ids that scenes do not store.
+- **Mitigation:** files carry `version: 1`, checked before parsing, and are written from private mirror types, so
+  component changes do not change the file; new fields must be optional (old files keep loading). The shipped
+  `assets/scenes/demo.ron` is a regression fixture: a unit test loads it and must save it back byte-for-byte. What is not
+  saved is documented on `Context::save_scene`.
+- **Fallback:** bump `version` with a reader for the old one; log or reject unsaved components once a registry exists.
+- **Occurred (2026-10-07, after PP-026a):** the byte-for-byte test failed on Windows because `ron`'s pretty printer
+  defaults to `\r\n` there. Fixed by writing `\n` explicitly and asserting it in a test. Lesson: dependency defaults can
+  differ per OS, and Cowork only runs Linux, so new file output needs an explicit line-ending (and path-separator) choice.
 

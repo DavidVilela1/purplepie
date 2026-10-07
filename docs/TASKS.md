@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-026: Scene files, part 1: save and load the engine's own components (phase P3)** · P1 · TODO ← **next task**
+- [ ] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons in scenes** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -50,6 +50,7 @@ _None._
 - [x] **PP-024a: Audio, part 2a: playback control and looping (ADR-032)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music (ADR-033)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-025: Per-texture sampling, Nearest or Linear (ADR-034; F9; phase P2 complete)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-026a: Scene files, part 1a: format decision + drawing components (ADR-035)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -301,15 +302,35 @@ verifiable on its own.
 | Scope (as built) | ADR-034. Public `render::TextureFilter { Nearest (default), Linear }`, `render::TextureOptions { filter }` (non-exhaustive; `NEAREST`, `LINEAR`, `with_filter`), `Context::load_texture_with(path, options)`; `load_texture` = Nearest. `Textures` cache keyed by (path, options); `Linear` textures get `bleed_transparent_texels` on load (transparent texels take their neighbours' colour, alpha 0 kept). `SpritePipeline` holds a `Nearest` and a `Linear` sampler and binds each texture with its own. Breakout's ball loads `Linear`. No new dependencies; draw list, shader and batching unchanged. |
 | Acceptance criteria | ✅ 1. Unit tests (+3, one extended): defaults, cache by (path, options), Nearest keeps the file's texels, bleeding (rings, averages, alpha > 0 sources, empty textures, the ball becomes all white with unchanged alpha), `Context::load_texture_with` + filters; doctest for `TextureOptions`. ✅ 2. Ignored GPU readback test (2×2 texture at 32×, the 2×2-at-4× idea made larger so the blend is measurable): `Nearest` exact, `Linear` = CPU bilinear within 2/255, and a `Linear` white→transparent-black strip over blue has no fringe (blue ≥ 254); mutation checks fail as expected (no bleeding → blue 251; wrong sampler → blend mismatch). ✅ 3. Regressions: all earlier GPU tests pass; sandbox model 0 mismatches (cursor marker aside), HUD/button crops identical at 3 cameras; Breakout autoplay unchanged; lose screen pixel-identical (no ball on it); mid-game screenshots: ball edges blended, nothing darker than the background; fault test clean. |
 
-### PP-026: Scene files, part 1 ← NEXT
+### PP-026: Scene files, part 1 (split on 2026-10-07 into PP-026a + PP-026b)
+The format decision, the asset references and the drawing components are one verifiable slice (a scene that renders
+the same picture); `SpriteAnimation` (private playback state), `Velocity` and `ui::Button` add questions of their own
+(save playback position or not, entities without drawables). Original definition kept below.
+
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 (editor foundations) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 (editor foundations) · Priority P1 · split |
 | Dependencies | PP-025 (DONE; phase P2 complete) |
 | Why now | First item of P3. An editor (P5) and a debug overlay (P4) both need entities that can be written to and read from files; the engine's own components are the part that does not need a component registry yet. |
 | Scope | ADR first: file format and dependency (measure per ADR-013; candidates `serde` + `ron`, `serde` + JSON/TOML, or a hand-written format), how assets are referenced (relative asset paths plus `TextureOptions`, never per-run ids), and versioning. Then save and load the engine's components (`Transform2D`, `Quad`, `Sprite` incl. region, `Layer`, `Hidden`, `ScreenSpace`, `Text` incl. font, `SpriteAnimation`, `Velocity`) for a whole `World`, through `Context` (load resolves assets via the asset root). Game components and a registry are later tasks. Split again if the ADR shows it is too large. |
 | Acceptance criteria | Round-trip unit tests (save → load → equal components, including asset references); typed `Error::Asset` for broken or unknown-version files; crate counts measured; the sandbox (or a small example) saves and reloads a scene and renders the same picture (Xvfb pixel comparison); CI green. |
 
+### PP-026a: Scene files: format decision + drawing components
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 · Priority P1 · **DONE** (2026-10-07; verified on Linux) |
+| Dependencies | PP-025 (DONE) |
+| Scope (as built) | ADR-035. New dependencies `ron` 0.12.2 + `serde` 1.0.229 (`derive`): +5 crates on every platform (Linux 137 → 142, Windows 110 → 115, macOS 112 → 117); JSON (+6/+7) and TOML (+9) measured and rejected. New crate-private `src/scene/mod.rs`: serde mirror types (`SceneFile`, `EntityFile`, `*File`), `capture` (entities with `Quad`/`Sprite`/`Text`, sorted by entity id; asset paths relative to the asset root), `to_text`/`from_text` (version checked first, unknown fields rejected, `implicit_some`), `resolve_assets` (all assets before any spawn) and `spawn`. New `Context::save_scene(path)` / `Context::load_scene(path) -> Vec<Entity>`; new `Error::Save { path, source }`. New `examples/scene.rs` (modes `load`/`build`/`save`) and `assets/scenes/demo.ron` (14 entities, written by the example). |
+| Acceptance criteria | ✅ 1. Unit tests (+7): full round trip of every saved component/option into a fresh world and back to identical text; relative `/` asset paths, absolute outside the root; hand-written defaults, empty entities, CRLF; bad version / garbage / missing version / unknown fields named / extra top-level field; missing asset → `Error::Asset`, nothing spawned; shipped `demo.ron` loads and saves back byte-for-byte; `Context` save/load relative to the asset root, cache reuse, `Error::Save`, failed loads spawn nothing. Mutations (drop `ScreenSpace` on load, drop tint on save) fail the tests. A real bug was caught on the way: asset ids were consumed for entities without a sprite (fixed with per-entity resolution). ✅ 2. Xvfb: the example's `build`, `save` and `load` modes render pixel-identical 1024×600 frames. ✅ 3. Crate counts measured. ✅ 4. Regressions: GPU tests 11/11; sandbox model 0 mismatches, HUD/button crops unchanged; Breakout autoplay unchanged, lose screen pixel-identical; fault test clean. |
+
+### PP-026b: Scene files: animation, velocity and UI buttons ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 · Priority P1 · TODO |
+| Dependencies | PP-026a (DONE) |
+| Why now | Completes "the engine's own components" in scenes before game components (registry) are tackled: the sandbox and Breakout use `SpriteAnimation`, `Velocity` and `ui::Button`, which PP-026a drops on save. |
+| Scope | Extend scene version 1 compatibly (new optional fields, old files still load): `SpriteAnimation` (grid, range, fps, mode; decide in the ADR-035 extension whether the playback position is saved — probably yes, for editor snapshots), `ecs::Velocity`, `ui::Button` (size). Decide whether entities whose only engine components are these (no drawable) are saved. Keep serde private. |
+| Acceptance criteria | Round-trip unit tests for the new components (including an animation mid-frame); a version-1 file from PP-026a (the shipped `demo.ron`) still loads unchanged; the scene example gains an animated sprite and a button and still renders `load` = `build` (Xvfb); CI green. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|
