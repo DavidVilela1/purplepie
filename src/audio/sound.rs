@@ -193,7 +193,7 @@ pub(crate) mod tests {
     #[test]
     fn the_shipped_sounds_decode() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/sounds");
-        for name in ["blip.wav", "hit.wav", "lose.wav"] {
+        for name in ["blip.wav", "hit.wav", "lose.wav", "loop.wav"] {
             let data = decode_wav(std::fs::read(dir.join(name)).expect("read")).expect(name);
             assert_eq!((data.channels, data.sample_rate), (1, 22_050), "{name}");
             assert!(

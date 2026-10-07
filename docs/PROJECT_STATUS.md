@@ -14,7 +14,7 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 **Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
 Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects and PP-023 UI buttons done; **PP-024 audio part 2 (music)** is next. The long-term plan (in-game UI and an editor) is in
+progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects, PP-023 UI buttons and PP-024a playback control done; **PP-024b OGG Vorbis decoding** is next. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -92,6 +92,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-021: screen-space drawing for HUD/UI: `ScreenSpace` (ADR-029).
 - PP-022: audio part 1, sound effects: `cpal` + `hound` + own mixer, `Context::load_sound` / `play_sound` (ADR-030).
 - PP-023: UI buttons: `ui::Button`, `ui::Pointer`, `ui::update_buttons` (ADR-031).
+- PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 
 ## In Progress
 
@@ -99,7 +100,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-024: Audio, part 2 (music)** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-024-audio-part-2--next).
+- **PP-024b: OGG Vorbis decoding** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-024b-ogg-vorbis-decoding--next).
 
 ## Blocked
 
@@ -129,11 +130,16 @@ executable, else `assets/` in the working directory (ADR-025).
 - Render interpolation is not implemented. `Time::alpha()` is exposed for it, but nothing uses it yet.
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
-- Audio (PP-022): WAV sound effects only (no music streaming, looping, stopping or OGG yet); Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
+- Audio (PP-022/024a): WAV only (OGG is PP-024b), no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-024a Audio playback control and looping (PP-024 split into a + b).**
+  - `Context::play_sound` returns an `audio::PlaybackId`; new `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `master_volume`, `sound_duration` (ADR-032).
+  - Mixer handles commands, seamless loops (interpolated across the seam), a master volume, and keeps loops when the 32-voice limit is hit.
+  - New asset `assets/sounds/loop.wav`; the sandbox toggles it with `M`. No new dependencies.
 
 - **2026-10-07: PP-023 UI buttons.**
   - New public module `ui` (ADR-031): `Button` component (hovered / pressed / clicked), `Pointer` snapshot (`from_input`), `update_buttons(world, pointer, viewport)` called by the game; topmost button wins.
@@ -280,21 +286,21 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-023 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-024a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 187 unit tests + 26 doctests, 10 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 191 unit tests + 26 doctests, 10 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10 |
-| `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings (after fixing one redundant link found by this run) |
+| `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox button via XTEST (camera started at (0,120)×2) | ✅ idle `#3A86FF` → hover `#6FA8FF` → held `#1D5FCC` → hover; 1 click → camera (0,0)×1; press on + release off = no click; only the off-button click stamped |
-| Sandbox whole-frame model (button area excluded) + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
+| Sandbox music loop via ALSA `file` plugin (`M` … `M`) | ✅ matches the mixer model exactly (max diff 0) over 3,522,960 frames = 73.4 loops; L = R; exactly silent after the stop |
+| Sandbox whole-frame model + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
 | Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-022 | ✅ pixel-identical |
+| Breakout lose screen vs PP-023 | ✅ pixel-identical |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -302,4 +308,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-023 done (UI buttons; ADR-031). PP-024 (audio part 2: music) is next.
+2026-10-07. PP-024a done (playback control and looping; ADR-032). PP-024b (OGG Vorbis decoding) is next.

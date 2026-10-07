@@ -4,6 +4,7 @@
 //! `purplepie` API, exactly like an external game crate would.
 //!
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
+//! `M` starts / stops a music loop,
 //! left click stamps a square at the cursor (with a blip sound), Escape quits. A green marker follows the cursor.
 //! A text label at the bottom left lists these controls; four sprite-sheet cells
 //! (one mirrored) and one animated cell sit at the bottom right. A screen-space
@@ -103,6 +104,8 @@ const SHEET_CELLS: [(u32, f32, bool); 4] = [
 ];
 /// Played when a click stamps a square (ADR-030).
 const CLICK_SOUND: &str = "sounds/blip.wav";
+/// Looped while music is on (`M`, ADR-032).
+const MUSIC_LOOP: &str = "sounds/loop.wav";
 /// The reset button (ADR-031): idle, hovered and pressed colours.
 const BUTTON_COLORS: [u32; 3] = [0x3A86FF, 0x6FA8FF, 0x1D5FCC];
 /// The animated cell (ADR-028): all 8 sheet frames in a loop, at (580, −250).
@@ -136,6 +139,9 @@ struct Sandbox {
     reset_button: Option<Entity>,
     /// Clicks on the reset button.
     reset_clicks: u32,
+    /// The music loop, and its playback while it plays.
+    music: Option<purplepie::audio::SoundId>,
+    music_playback: Option<purplepie::audio::PlaybackId>,
     /// Played on every stamp.
     click_sound: Option<purplepie::audio::SoundId>,
     camera: Camera2D,
@@ -154,6 +160,7 @@ impl Game for Sandbox {
         let font = ctx.load_font(FONT)?;
         let sheet = ctx.load_texture(SHEET_TEXTURE)?;
         self.click_sound = Some(ctx.load_sound(CLICK_SOUND)?);
+        self.music = Some(ctx.load_sound(MUSIC_LOOP)?);
         let world = ctx.world_mut();
         // Sprite sheet cells (regions of one texture, one draw call); one mirrored by a negative scale.
         let grid = SpriteGrid::new(8, 8, 4, 2);
@@ -286,6 +293,7 @@ impl Game for Sandbox {
             input.axis(KeyCode::ArrowLeft, KeyCode::ArrowRight),
             input.axis(KeyCode::ArrowDown, KeyCode::ArrowUp),
         );
+        let toggle_music = input.just_pressed(KeyCode::M);
         let zoom_in = input.just_pressed(KeyCode::Equal);
         let zoom_out = input.just_pressed(KeyCode::Minus);
         let wheel = input.scroll().y;
@@ -307,6 +315,13 @@ impl Game for Sandbox {
         }
         // Left click: stamp a cyan square at the cursor (world coordinates, read
         // before this step's camera change).
+        // M: start or stop the music loop (ADR-032).
+        if toggle_music {
+            match self.music_playback.take() {
+                Some(playback) => ctx.stop_sound(playback),
+                None => self.music_playback = self.music.map(|m| ctx.loop_sound(m, 0.5)),
+            }
+        }
         // Clicks on the UI button are the button's, not the world's.
         let over_button = self
             .reset_button
@@ -405,6 +420,7 @@ impl Game for Sandbox {
             println!("sandbox: animated cell shows frame {frame:?}");
             println!("sandbox: audio output available: {}", ctx.audio_available());
             println!("sandbox: reset button clicks: {}", self.reset_clicks);
+            println!("sandbox: music playing: {}", self.music_playback.is_some());
             let cursor = ctx.input().cursor_position();
             println!(
                 "sandbox: left clicks seen: {} in fixed_update, {} in update; cursor {:?} screen, {:?} world",
@@ -455,6 +471,8 @@ fn main() -> ExitCode {
         spinner: None,
         animated: None,
         click_sound: None,
+        music: None,
+        music_playback: None,
         reset_button: None,
         reset_clicks: 0,
         camera,

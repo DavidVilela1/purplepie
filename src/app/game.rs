@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::state::EngineState;
-use crate::audio::SoundId;
+use crate::audio::{PlaybackId, SoundId};
 use crate::ecs::World;
 use crate::error::Result;
 use crate::input::Input;
@@ -159,10 +159,65 @@ impl<'a> Context<'a> {
     /// recorded, 0 = silent; at most 4.0; invalid values are silent).
     /// Sounds overlap freely, up to 32 at once (the oldest stops first).
     /// Returns immediately; without an audio device it does nothing.
-    pub fn play_sound(&mut self, sound: SoundId, volume: f32) {
-        if let Some(data) = self.state.sounds.get(sound) {
-            self.state.audio.play(std::sync::Arc::clone(data), volume);
+    ///
+    /// The returned [`PlaybackId`] can stop it ([`stop_sound`](Self::stop_sound))
+    /// or change its volume ([`set_sound_volume`](Self::set_sound_volume));
+    /// ignore it for fire-and-forget effects. An unknown `sound` plays nothing.
+    pub fn play_sound(&mut self, sound: SoundId, volume: f32) -> PlaybackId {
+        self.start_sound(sound, volume, false)
+    }
+
+    /// Plays `sound` over and over, seamlessly (music, ambience), until
+    /// [`stop_sound`](Self::stop_sound) or [`stop_all_sounds`](Self::stop_all_sounds).
+    /// Otherwise like [`play_sound`](Self::play_sound). Looping sounds are the
+    /// last to be cut when more than 32 sounds play at once.
+    pub fn loop_sound(&mut self, sound: SoundId, volume: f32) -> PlaybackId {
+        self.start_sound(sound, volume, true)
+    }
+
+    fn start_sound(&mut self, sound: SoundId, volume: f32, looping: bool) -> PlaybackId {
+        let data = self.state.sounds.get(sound).map(std::sync::Arc::clone);
+        match data {
+            Some(data) => self.state.audio.play(data, volume, looping),
+            // An id from another engine run: hand out an id that plays nothing.
+            None => self.state.audio.unused_id(),
         }
+    }
+
+    /// Stops a playback now. Does nothing if it already ended.
+    pub fn stop_sound(&mut self, playback: PlaybackId) {
+        self.state.audio.stop(playback);
+    }
+
+    /// Changes a playback's volume (same range as [`play_sound`](Self::play_sound)),
+    /// immediately and without a fade.
+    pub fn set_sound_volume(&mut self, playback: PlaybackId, volume: f32) {
+        self.state.audio.set_volume(playback, volume);
+    }
+
+    /// Stops every playing sound, looping or not.
+    pub fn stop_all_sounds(&mut self) {
+        self.state.audio.stop_all();
+    }
+
+    /// Sets the volume applied on top of every sound's own volume (1.0 at
+    /// start, 0 mutes everything, at most 4.0; invalid values mute).
+    pub fn set_master_volume(&mut self, volume: f32) {
+        self.state.audio.set_master_volume(volume);
+    }
+
+    /// The master volume (see [`set_master_volume`](Self::set_master_volume)).
+    pub fn master_volume(&self) -> f32 {
+        self.state.audio.master_volume()
+    }
+
+    /// Length of a loaded sound in seconds (at its own sample rate), or
+    /// `None` for an id from another engine run.
+    pub fn sound_duration(&self, sound: SoundId) -> Option<f32> {
+        self.state
+            .sounds
+            .get(sound)
+            .map(|s| s.frames() as f32 / s.sample_rate as f32)
     }
 
     /// `true` if sounds reach an audio device: `false` when audio is turned
@@ -384,8 +439,19 @@ mod tests {
         let blip = ctx.load_sound("sounds/blip.wav").expect("blip");
         assert_eq!(ctx.load_sound("sounds/blip.wav").expect("again"), blip);
         assert!(!ctx.audio_available(), "tests never open a device");
-        ctx.play_sound(blip, 1.0); // silent, must not panic
-        ctx.play_sound(blip, f32::NAN);
+        let a = ctx.play_sound(blip, 1.0); // silent, must not panic
+        let b = ctx.loop_sound(blip, f32::NAN);
+        assert_ne!(a, b, "every playback gets its own id");
+        ctx.set_sound_volume(b, 0.5);
+        ctx.stop_sound(a);
+        ctx.stop_all_sounds();
+        ctx.set_master_volume(0.25);
+        assert_eq!(ctx.master_volume(), 0.25);
+        ctx.set_master_volume(f32::NAN);
+        assert_eq!(ctx.master_volume(), 0.0, "invalid volumes mute");
+        // blip.wav: 1323 frames at 22,050 Hz = 60 ms.
+        let duration = ctx.sound_duration(blip).expect("loaded");
+        assert!((duration - 0.06).abs() < 1e-6, "{duration}");
         assert_eq!(state.sounds.len(), 1);
     }
 

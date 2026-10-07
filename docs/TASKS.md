@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-024: Audio, part 2: music (looping, OGG Vorbis) and sound control** · P1 · TODO ← **next task**
+- [ ] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -47,6 +47,7 @@ _None._
 - [x] **PP-021: Screen-space drawing for HUD/UI (ADR-029)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-022: Audio, part 1: sound effects (ADR-030)** · DONE (2026-10-07; verified on Linux; Windows/macOS compiled by CI only)
 - [x] **PP-023: UI buttons (ADR-031)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-024a: Audio, part 2a: playback control and looping (ADR-032)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -266,14 +267,27 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-031. New public module `src/ui/mod.rs`: `Button { size }` (`is_hovered`, `is_pressed`, `clicked`), `Pointer` (`from_input`: cursor + left button) and `update_buttons(world, pointer, viewport)`; topmost button (layer, then newest) wins; hidden/unanchored buttons inert; unseen release disarms. Sandbox: a "Reset camera" button (top-right, 160×40, idle/hover/pressed colours); clicks on it don't stamp; the timed exit prints `reset button clicks`. No new dependencies. |
 | Acceptance criteria | ✅ 1. Unit tests (9 + 2 doctests): edges, one-update click, quick press+release, drag off/onto, unseen release, topmost by layer and age, hidden/unanchored, anchors + scale + two window sizes, `Pointer::from_input`. ✅ 2. Xvfb XTEST (camera started at (0,120)×2): button pixel `#3A86FF` idle → `#6FA8FF` hover → `#1D5FCC` held → `#6FA8FF` after release; exactly 1 click recorded, camera reset to (0,0)×1; press on the button + release outside = no click (back to idle colour); 3 presses seen, but only the click away from the button stamped a square. ✅ 3. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-022; sandbox model 0 mismatches (button area excluded), HUD exact; GPU tests 10/10; fault test clean. |
 
-### PP-024: Audio, part 2 ← NEXT
+### PP-024: Audio, part 2 (split on 2026-10-07 into PP-024a + PP-024b)
+Music needs two independent things: control over running playbacks (looping, stop, volume) and a compressed format.
+Control is the architectural part (ids, commands, mixer); the decoder is a dependency decision. Split to keep each
+verifiable on its own.
+
+### PP-024a: Playback control and looping
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P2 · Priority P1 · **DONE** (2026-10-07) |
 | Dependencies | PP-022 (DONE) |
-| Why now | Sound effects exist, but games also need background music: a long, compressed, looping track that can be stopped or faded, and per-sound control (stop a playing sound, master volume). |
-| Scope | Decide the OGG Vorbis decoder (e.g. `lewton`; measure cost per ADR-013) and whether to stream or decode fully; a playback handle returned by `play_sound` (or a separate `play_music`) to stop it and change its volume; looping; a master volume. Keep the mixer lock-free and unit-tested. Breakout or the sandbox plays a short generated loop. |
-| Acceptance criteria | Unit tests for looping, stop, volume changes and decoding; the ALSA `file`-plugin capture shows the loop seamlessly repeating and stopping on request; CI green on all platforms; owner hears it on Windows. |
+| Scope (as built) | ADR-032. `audio::PlaybackId`; `Context::play_sound` returns it; new `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `master_volume`, `sound_duration`. Mixer: commands `Play`/`Stop`/`SetVolume`/`SetMaster`/`StopAll` via `Mixer::apply`, seamless looping with interpolation across the seam, master volume, voice limit drops one-shots before loops. New asset `assets/sounds/loop.wav` (generated 1 s periodic chord). Sandbox: `M` toggles the loop at volume 0.5; the exit line prints `music playing`. No new dependencies. |
+| Acceptance criteria | ✅ 1. Unit tests: loop across buffers, seam interpolation, stop, set volume, master, stop-all, unknown ids, voice-limit priority, silent voices, `Context` API without a device (ids distinct, master clamps, duration 0.06 s for blip). ✅ 2. ALSA `file`-plugin capture: `M`…`M` → the loop matches the model exactly (max diff 0) for 3,522,960 frames (73.4 loops), both channels equal, all zero after the stop. ✅ 3. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-023; sandbox model/HUD/animation unchanged; GPU tests 10/10; fault test clean. |
+
+### PP-024b: OGG Vorbis decoding ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 · Priority P1 · TODO |
+| Dependencies | PP-024a (DONE) |
+| Why now | Music as WAV is ~10 MB per minute; games ship music as OGG Vorbis. |
+| Scope | Choose a decoder (e.g. `lewton`, MIT/Apache; measure crates per ADR-013) and decode `.ogg` fully on load (streaming only if a measured need appears); `load_sound` picks the decoder by content; add a small OGG asset produced in Cowork (e.g. with a Python/ffmpeg encoder if available) and use it as the sandbox loop. |
+| Acceptance criteria | Unit tests decoding the shipped OGG (channels, rate, length, sample values close to the source WAV); corrupt OGG → `Error::Asset`; capture shows the OGG loop playing; CI green. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

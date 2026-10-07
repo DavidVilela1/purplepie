@@ -44,6 +44,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-029 | Screen space: a `ScreenSpace { anchor }` component draws quads, sprites and text in logical window pixels from a window anchor, ignoring the camera, after all world content | Accepted | Yes (PP-021) |
 | ADR-030 | Audio: `cpal` output + `hound` WAV decoding + PurplePie's own mixer; `SoundId`; `Context::load_sound` / `play_sound`; silent fallback without a device; generic handles (PD-06) deferred again | Accepted | Yes (PP-022: one-shot sound effects) |
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
+| ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 
 ---
 
@@ -1592,6 +1593,55 @@ The smallest piece that removes repeated, error-prone code while keeping the eng
 
 ## Revisit Conditions
 Menus with keyboard/gamepad navigation, many widgets needing layout, or the editor/debug overlay (P4).
+
+---
+
+# ADR-032: Audio playback control: playback ids, looping and volume as mixer commands
+
+## Status
+Accepted (2026-10-07, PP-024a). Extends ADR-030. OGG Vorbis decoding (music files) follows in PP-024b.
+
+## Context
+PP-022 could only fire sounds. Music and ambience need a sound that loops seamlessly, can be stopped, and can change
+volume while playing; games also want one master volume (options menus, pausing).
+
+## Decision
+- **`audio::PlaybackId`**: `Context::play_sound` now **returns** an id (callers that ignore it keep compiling), and
+  `Context::loop_sound(sound, volume)` starts a looping playback. `stop_sound(id)`, `set_sound_volume(id, volume)`,
+  `stop_all_sounds()`, `set_master_volume(v)` / `master_volume()`, and `sound_duration(sound)` complete the API.
+  Ids come from a counter on the game side (so they exist without a device too); an id of a playback that already
+  ended is harmless.
+- **Everything is a command** on the existing lock-free channel (`Play`, `Stop`, `SetVolume`, `SetMaster`, `StopAll`),
+  handled by the pure `Mixer::apply`, so the whole behaviour is unit-tested without a device.
+- **Looping** wraps the source position and interpolates across the seam (last frame → first frame), so a loop whose
+  samples are periodic plays without a click. **Volumes change instantly** (no ramp).
+- **Voice limit (32):** the oldest one-shot is dropped first; loops only when every voice loops. A silent volume now
+  still starts a voice (it can be raised later).
+- **No "is it still playing?" query yet:** that would need a channel back from the audio thread; `sound_duration` lets
+  games estimate one-shots, and loops play until stopped.
+
+## Alternatives Considered
+- **A separate `play_music` API with one music slot:** simpler for one track, but cross-fades and ambience layers need
+  several looping playbacks anyway.
+- **Shared state (`Arc<Mutex<…>>`) to query playbacks:** would put a lock on the audio thread.
+- **Volume ramps:** avoid clicks on abrupt changes, but add per-voice state and timing; deferred until needed.
+
+## Rationale
+The smallest extension of ADR-030 that covers music and options-menu needs, keeping the audio thread lock-free and the
+logic exactly testable.
+
+## Consequences
+### Positive
+- Verified: mixer unit tests (seamless loop across buffers, interpolation across the seam, stop, volume change,
+  master volume, stop-all, unknown ids, loop survives the voice limit) and `Context` calls without a device; end to end
+  through ALSA's `file` plugin, the sandbox's `M` loop matched the model sample for sample for 3,522,960 frames
+  (73.4 loops) and was exactly silent after the second `M`.
+### Negative
+- Abrupt volume changes and stops can click (no fades yet).
+- WAV only until PP-024b, so music files are large (the 1 s test loop is 44 KB).
+
+## Revisit Conditions
+Fades/cross-fades, "finished" events or queries, or many simultaneous long sounds (streaming instead of decoding fully).
 
 ---
 
