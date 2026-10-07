@@ -8,12 +8,18 @@
 //! ```
 //!
 //! `load` and `build` must look identical: that is the round-trip check. The
-//! shipped `demo.ron` was written by `save`. Escape quits.
+//! shipped `demo.ron` was written by `save`. The animated cell starts part-way
+//! through its animation and the small square drifts right; with
+//! `PURPLEPIE_SCENE_FREEZE=1` both stay still, so screenshots can be compared.
+//! The "Click me" button counts clicks. Escape quits.
 
+use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{
-    Color, Hidden, Layer, Quad, ScreenSpace, Sprite, SpriteGrid, Text, TextAnchor, TextureOptions,
+    self, Color, Hidden, Layer, Quad, ScreenSpace, Sprite, SpriteAnimation, SpriteGrid, Text,
+    TextAnchor, TextureOptions,
 };
+use purplepie::ui::{self, Button, Pointer};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 /// The scene file, relative to the asset root.
@@ -31,6 +37,9 @@ enum Mode {
 
 struct SceneDemo {
     mode: Mode,
+    /// Skip animation and movement (for pixel comparisons).
+    frozen: bool,
+    clicks: u32,
 }
 
 /// Spawns the demo scene: quads, sprites (whole textures, sheet cells,
@@ -113,6 +122,36 @@ fn build(ctx: &mut Context<'_>) -> purplepie::Result<()> {
         Quad::new(Vec2::splat(40.0), Color::hex(0x3A86FF)),
         ScreenSpace::BOTTOM_RIGHT,
     ));
+    // PP-026b: an animation saved part-way through (frame 5, mid-frame), a
+    // drifting square, and a screen-space button with its label.
+    let mut animation = SpriteAnimation::new(grid, 0, 7, 4.0);
+    animation.advance(1.3);
+    world.spawn((
+        Transform2D::from_position(Vec2::new(-260.0, -60.0)),
+        Sprite::new(sheet, Vec2::splat(48.0)),
+        animation,
+    ));
+    world.spawn((
+        Transform2D::from_position(Vec2::new(-420.0, -200.0)),
+        Quad::new(Vec2::splat(12.0), Color::hex(0x8338EC)),
+        Velocity(Vec2::new(40.0, 0.0)),
+        Layer(1),
+    ));
+    world.spawn((
+        Transform2D::from_position(Vec2::new(-100.0, -40.0)),
+        Quad::new(Vec2::new(160.0, 40.0), Color::hex(0xFF006E)),
+        Button::new(Vec2::new(160.0, 40.0)),
+        ScreenSpace::TOP_RIGHT,
+    ));
+    world.spawn((
+        Transform2D::from_position(Vec2::new(-100.0, -40.0)),
+        Text::new("Click me", font, 18.0).with_anchor(TextAnchor::new(
+            render::HorizontalAnchor::Center,
+            render::VerticalAnchor::Middle,
+        )),
+        ScreenSpace::TOP_RIGHT,
+        Layer(1),
+    ));
     Ok(())
 }
 
@@ -135,6 +174,30 @@ impl Game for SceneDemo {
         }
         Ok(())
     }
+
+    fn fixed_update(&mut self, ctx: &mut Context<'_>) {
+        if self.frozen {
+            return;
+        }
+        let dt = ctx.dt();
+        render::advance_animations(ctx.world_mut(), dt);
+        ecs::integrate_velocity(ctx.world_mut(), dt);
+    }
+
+    fn update(&mut self, ctx: &mut Context<'_>) {
+        let pointer = Pointer::from_input(ctx.input());
+        let viewport = ctx.viewport_size();
+        ui::update_buttons(ctx.world_mut(), pointer, viewport);
+        let clicked = ctx
+            .world()
+            .query::<&Button>()
+            .iter()
+            .any(|button| button.clicked());
+        if clicked {
+            self.clicks += 1;
+            println!("scene: button clicked ({} so far)", self.clicks);
+        }
+    }
 }
 
 fn main() -> purplepie::Result<()> {
@@ -144,5 +207,10 @@ fn main() -> purplepie::Result<()> {
         _ => Mode::Load,
     };
     let config = EngineConfig::new("PurplePie Scene").with_size(1024, 600);
-    Engine::new(config)?.run(SceneDemo { mode })
+    let frozen = std::env::var("PURPLEPIE_SCENE_FREEZE").is_ok_and(|v| v == "1");
+    Engine::new(config)?.run(SceneDemo {
+        mode,
+        frozen,
+        clicks: 0,
+    })
 }

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; engine drawing components only (part 1) | Accepted | Yes (PP-026a) |
+| ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; all engine components (animation with playback position, velocity, buttons since PP-026b); game components later | Accepted | Yes (PP-026a, PP-026b) |
 | ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
 
 ---
@@ -1848,6 +1848,26 @@ while keeping the public API free of serde.
 ## Revisit Conditions
 The component registry (game components), a binary or streaming format for very large scenes, scene replacement /
 unloading semantics (with PD-06 handles), or a format change (bump `version` and keep reading 1).
+
+## Extension (PP-026b, 2026-10-07): animation, velocity and buttons
+- **Still version 1.** New optional entity fields `animation`, `velocity`, `button`; files written by PP-026a load
+  unchanged and save back byte-for-byte (kept as the fixture `src/scene/fixtures/demo_v1_pp026a.ron`, tested forever).
+  Rule: a field added within a version must be optional with a default that means "absent"; anything else bumps it.
+- **`SpriteAnimation` saves its playback position** (`step`, `time_in_frame` as `f64`, `finished`) next to grid, range,
+  fps and mode, so a scene is an exact snapshot (an editor saving mid-play, a level whose torches start out of phase).
+  Restoring goes through the crate-private `SpriteAnimation::with_playback`, which clamps invalid values (step inside
+  the range, negative/NaN time → 0, only a `Once` animation can be finished, on its last frame). The fields stay
+  private in the public API.
+- **`Button` saves only its size**: hover/press/click state is per run and starts idle. **`Velocity`** saves its vector.
+- **Which entities are saved:** those with a `Quad`, `Sprite`, `Text`, `SpriteAnimation` or `Button` (something drawn
+  or interactive). An entity with only a transform and/or velocity (often game bookkeeping) is still skipped.
+- **Verified:** round trip of an animation caught mid-frame (reversed range, spaced grid), a finished one-shot without a
+  sprite, a moving quad and a button (whole-value equality, private state included); restored animations produce the
+  same frames as the originals for 40 further steps; the PP-026a fixture; mutation checks (drop `time_in_frame` on
+  save, drop `Velocity` on load) fail the tests. The scene example gained an animation saved at frame 5 mid-frame, a
+  drifting square and a "Click me" button: with `PURPLEPIE_SCENE_FREEZE=1`, `save`/`build`/`load` frames are
+  pixel-identical and the loaded animated cell shows frame 5's texels; unfrozen, it animates and drifts, and two XTEST
+  clicks on the loaded button were counted (a click elsewhere was not).
 
 ---
 

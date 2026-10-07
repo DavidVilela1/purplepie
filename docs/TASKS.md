@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons in scenes** · P1 · TODO ← **next task**
+- [ ] **PP-027: Scene files, part 2: game components through a registry (ADR)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -51,6 +51,7 @@ _None._
 - [x] **PP-024b: Audio, part 2b: OGG Vorbis decoding for music (ADR-033)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-025: Per-texture sampling, Nearest or Linear (ADR-034; F9; phase P2 complete)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-026a: Scene files, part 1a: format decision + drawing components (ADR-035)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons (ADR-035 extension)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -323,14 +324,25 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-035. New dependencies `ron` 0.12.2 + `serde` 1.0.229 (`derive`): +5 crates on every platform (Linux 137 → 142, Windows 110 → 115, macOS 112 → 117); JSON (+6/+7) and TOML (+9) measured and rejected. New crate-private `src/scene/mod.rs`: serde mirror types (`SceneFile`, `EntityFile`, `*File`), `capture` (entities with `Quad`/`Sprite`/`Text`, sorted by entity id; asset paths relative to the asset root), `to_text`/`from_text` (version checked first, unknown fields rejected, `implicit_some`), `resolve_assets` (all assets before any spawn) and `spawn`. New `Context::save_scene(path)` / `Context::load_scene(path) -> Vec<Entity>`; new `Error::Save { path, source }`. New `examples/scene.rs` (modes `load`/`build`/`save`) and `assets/scenes/demo.ron` (14 entities, written by the example). |
 | Acceptance criteria | ✅ 1. Unit tests (+7): full round trip of every saved component/option into a fresh world and back to identical text; relative `/` asset paths, absolute outside the root; hand-written defaults, empty entities, CRLF; bad version / garbage / missing version / unknown fields named / extra top-level field; missing asset → `Error::Asset`, nothing spawned; shipped `demo.ron` loads and saves back byte-for-byte; `Context` save/load relative to the asset root, cache reuse, `Error::Save`, failed loads spawn nothing. Mutations (drop `ScreenSpace` on load, drop tint on save) fail the tests. A real bug was caught on the way: asset ids were consumed for entities without a sprite (fixed with per-entity resolution). ✅ 2. Xvfb: the example's `build`, `save` and `load` modes render pixel-identical 1024×600 frames. ✅ 3. Crate counts measured. ✅ 4. Regressions: GPU tests 11/11; sandbox model 0 mismatches, HUD/button crops unchanged; Breakout autoplay unchanged, lose screen pixel-identical; fault test clean. |
 
-### PP-026b: Scene files: animation, velocity and UI buttons ← NEXT
+### PP-026b: Scene files: animation, velocity and UI buttons
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 · Priority P1 · **DONE** (2026-10-07; verified on Linux) |
 | Dependencies | PP-026a (DONE) |
 | Why now | Completes "the engine's own components" in scenes before game components (registry) are tackled: the sandbox and Breakout use `SpriteAnimation`, `Velocity` and `ui::Button`, which PP-026a drops on save. |
 | Scope | Extend scene version 1 compatibly (new optional fields, old files still load): `SpriteAnimation` (grid, range, fps, mode; decide in the ADR-035 extension whether the playback position is saved — probably yes, for editor snapshots), `ecs::Velocity`, `ui::Button` (size). Decide whether entities whose only engine components are these (no drawable) are saved. Keep serde private. |
 | Acceptance criteria | Round-trip unit tests for the new components (including an animation mid-frame); a version-1 file from PP-026a (the shipped `demo.ron`) still loads unchanged; the scene example gains an animated sprite and a button and still renders `load` = `build` (Xvfb); CI green. |
+| Scope (as built) | ADR-035 extension. Scene version 1 gains optional `animation` (grid, range, fps, mode, `step`, `time_in_frame`, `finished`), `velocity` and `button` (size) fields; saved entities: those with `Quad`/`Sprite`/`Text`/`SpriteAnimation`/`Button`. Crate-private `SpriteAnimation::playback` / `with_playback` (validating). PP-026a's `demo.ron` kept as the fixture `src/scene/fixtures/demo_v1_pp026a.ron`. Example: animation saved at frame 5, drifting square (`Velocity`), "Click me" button; `PURPLEPIE_SCENE_FREEZE=1` stops animation and movement; `assets/scenes/demo.ron` regenerated (18 entities). No new dependencies. |
+| Result | ✅ 1. Unit tests (+3, two extended): full round trip incl. mid-frame reversed animation on a spaced grid, finished one-shot without sprite, velocity, button (whole-value equality); restored animations match the originals for 40 steps; PP-026a fixture loads and saves back byte-for-byte; `with_playback` validation. Mutations (drop `time_in_frame`, drop `Velocity`) fail the tests. ✅ 2. Xvfb: frozen `save`/`build`/`load` pixel-identical; loaded animated cell = frame 5 (all unoccluded pixels exact); unfrozen it animates and moves; 2 XTEST clicks on the loaded button counted, 1 elsewhere ignored. ✅ 3. Regressions: GPU tests 11/11; sandbox model 0 mismatches, HUD/button unchanged; Breakout autoplay unchanged, lose screen identical; fault test clean. |
+
+### PP-027: Scene files, part 2: game components ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 (component registry / reflection item) · Priority P1 · TODO |
+| Dependencies | PP-026b (DONE) |
+| Why now | Scenes now hold every engine component, but a game's own components (Breakout's bricks, the sandbox's mover) are dropped, so no real level can live in a file yet; the editor (P5) needs the same mechanism to show and edit them. |
+| Scope | ADR first: how a game registers a component type for scenes (e.g. `Context`/`EngineConfig` registration with a name and save/load functions; whether `serde` becomes part of the public API or games convert to/from a small engine-owned value type), how unknown component names in a file are handled (error vs. kept), and how entity references inside components are written. Then implement registration + save/load for registered components, keeping existing version-1 files loading. Split if the ADR shows it is too large. |
+| Acceptance criteria | A game component registered by an example round-trips through a scene file; files without game components still load (PP-026a fixture); unregistered names give a clear error; crate counts measured if dependencies change; CI green. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

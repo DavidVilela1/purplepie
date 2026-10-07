@@ -9,23 +9,26 @@
 //! change. Assets are referenced by path relative to the asset root, never by
 //! the per-run `TextureId`/`FontId`.
 //!
-//! Version 1 covers `Transform2D`, `Quad`, `Sprite`, `Text`, `Layer`, `Hidden`
-//! and `ScreenSpace` on every entity that has a `Quad`, `Sprite` or `Text`.
-//! Other components (the game's own, `SpriteAnimation`, `Velocity`,
-//! `ui::Button`) are not saved yet.
+//! Version 1 covers `Transform2D`, `Quad`, `Sprite`, `Text`, `Layer`, `Hidden`,
+//! `ScreenSpace` (PP-026a), `SpriteAnimation` with its playback position,
+//! `Velocity` and `ui::Button` (PP-026b) on every entity that has a `Quad`,
+//! `Sprite`, `Text`, `SpriteAnimation` or `Button`. Fields added later are
+//! optional, so every version-1 file keeps loading. The game's own components
+//! are not saved yet.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ecs::{Entity, World};
+use crate::ecs::{Entity, Velocity, World};
 use crate::error::BoxError;
 use crate::math::{Transform2D, Vec2};
 use crate::render::{
-    Color, FontId, Fonts, Hidden, HorizontalAnchor, Layer, Quad, ScreenAnchor, ScreenSpace, Sprite,
-    Text, TextAnchor, TextureFilter, TextureId, TextureOptions, TextureRegion, Textures,
-    VerticalAnchor,
+    AnimationMode, Color, FontId, Fonts, Hidden, HorizontalAnchor, Layer, Quad, ScreenAnchor,
+    ScreenSpace, Sprite, SpriteAnimation, SpriteGrid, Text, TextAnchor, TextureFilter, TextureId,
+    TextureOptions, TextureRegion, Textures, VerticalAnchor,
 };
+use crate::ui::Button;
 
 /// The scene format version this build writes and reads.
 pub(crate) const VERSION: u32 = 1;
@@ -63,6 +66,24 @@ pub(crate) struct EntityFile {
     hidden: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     screen_space: Option<AnchorFile>,
+    // PP-026b: optional, so PP-026a files still load.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animation: Option<AnimationFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    velocity: Option<Vec2File>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    button: Option<ButtonFile>,
+}
+
+/// Whether an entity is saved: it has something the engine draws or makes
+/// interactive. Entities with only a transform, velocity or game components
+/// are usually game bookkeeping that a scene cannot rebuild yet.
+fn is_saved(e: &hecs::EntityRef<'_>) -> bool {
+    e.has::<Quad>()
+        || e.has::<Sprite>()
+        || e.has::<Text>()
+        || e.has::<SpriteAnimation>()
+        || e.has::<Button>()
 }
 
 fn is_false(value: &bool) -> bool {
@@ -190,6 +211,100 @@ fn is_default_anchor(a: &(HorizontalFile, VerticalFile)) -> bool {
     *a == Default::default()
 }
 
+/// [`SpriteAnimation`]: what to play and, for editor snapshots, where
+/// playback is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnimationFile {
+    grid: GridFile,
+    first: u32,
+    last: u32,
+    fps: f32,
+    #[serde(default, skip_serializing_if = "is_loop")]
+    mode: ModeFile,
+    /// Frames played since `first`.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    step: u32,
+    /// Seconds spent on the current frame (`f64`, as the animation keeps it).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    time_in_frame: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    finished: bool,
+}
+
+/// [`SpriteGrid`]: `cell` is `(width, height)` in texels.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GridFile {
+    cell: (u32, u32),
+    columns: u32,
+    rows: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    spacing: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    margin: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum ModeFile {
+    #[default]
+    Loop,
+    Once,
+}
+
+fn is_loop(m: &ModeFile) -> bool {
+    *m == ModeFile::Loop
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// [`Button`]: only its size; hover/press/click state is per run and starts idle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ButtonFile {
+    size: Vec2File,
+}
+
+fn animation_file(a: &SpriteAnimation) -> AnimationFile {
+    let (step, time_in_frame, finished) = a.playback();
+    AnimationFile {
+        grid: GridFile {
+            cell: (a.grid.cell_width, a.grid.cell_height),
+            columns: a.grid.columns,
+            rows: a.grid.rows,
+            spacing: a.grid.spacing,
+            margin: a.grid.margin,
+        },
+        first: a.first,
+        last: a.last,
+        fps: a.fps,
+        mode: match a.mode {
+            AnimationMode::Loop => ModeFile::Loop,
+            AnimationMode::Once => ModeFile::Once,
+        },
+        step,
+        time_in_frame,
+        finished,
+    }
+}
+
+fn animation(a: AnimationFile) -> SpriteAnimation {
+    let grid = SpriteGrid::new(a.grid.cell.0, a.grid.cell.1, a.grid.columns, a.grid.rows)
+        .with_spacing(a.grid.spacing)
+        .with_margin(a.grid.margin);
+    let mut animation = SpriteAnimation::new(grid, a.first, a.last, a.fps);
+    if a.mode == ModeFile::Once {
+        animation = animation.once();
+    }
+    animation.with_playback(a.step, a.time_in_frame, a.finished)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum AnchorFile {
     TopLeft,
@@ -284,18 +399,15 @@ fn asset_reference(source: &Path, root: Option<&Path>) -> Result<String, BoxErro
     }
 }
 
-/// Builds the scene file for every entity in `world` that has a [`Quad`],
-/// [`Sprite`] or [`Text`], in entity order (normally spawn order).
+/// Builds the scene file for every saved entity in `world` (see [`is_saved`]),
+/// in entity order (normally spawn order).
 pub(crate) fn capture(
     world: &World,
     textures: &Textures,
     fonts: &Fonts,
     asset_root: Option<&Path>,
 ) -> Result<SceneFile, BoxError> {
-    let mut entities: Vec<_> = world
-        .iter()
-        .filter(|e| e.has::<Quad>() || e.has::<Sprite>() || e.has::<Text>())
-        .collect();
+    let mut entities: Vec<_> = world.iter().filter(is_saved).collect();
     entities.sort_by_key(|e| e.entity().id());
     let mut out = Vec::with_capacity(entities.len());
     for e in entities {
@@ -349,6 +461,11 @@ pub(crate) fn capture(
             layer: e.get::<&Layer>().map(|l| l.0),
             hidden: e.has::<Hidden>(),
             screen_space: e.get::<&ScreenSpace>().map(|s| s.anchor.into()),
+            animation: e.get::<&SpriteAnimation>().map(|a| animation_file(&a)),
+            velocity: e.get::<&Velocity>().map(|v| vec2_file(v.0)),
+            button: e.get::<&Button>().map(|b| ButtonFile {
+                size: vec2_file(b.size),
+            }),
         });
     }
     Ok(SceneFile {
@@ -467,6 +584,15 @@ pub(crate) fn spawn(scene: SceneFile, assets: Resolved, world: &mut World) -> Ve
         if let Some(anchor) = e.screen_space {
             insert(world, entity, ScreenSpace::new(anchor.into()));
         }
+        if let Some(a) = e.animation {
+            insert(world, entity, animation(a));
+        }
+        if let Some(v) = e.velocity {
+            insert(world, entity, Velocity(vec2(v)));
+        }
+        if let Some(b) = e.button {
+            insert(world, entity, Button::new(vec2(b.size)));
+        }
         spawned.push(entity);
     }
     spawned
@@ -553,6 +679,33 @@ mod tests {
             ScreenSpace::BOTTOM_RIGHT,
             Layer(7),
         ));
+        // PP-026b: an animation caught mid-frame, a finished one-shot without a
+        // sprite, a moving quad, a button, and a moving point that is not saved.
+        let grid = SpriteGrid::new(8, 8, 4, 2).with_spacing(1).with_margin(2);
+        let mut walking = SpriteAnimation::new(grid, 6, 1, 7.5);
+        walking.advance(0.7);
+        assert!(walking.playback().0 > 0 && walking.playback().1 > 0.0);
+        world.spawn((
+            Transform2D::from_position(Vec2::new(5.0, 5.0)),
+            Sprite::new(sheet, Vec2::splat(16.0)),
+            walking,
+        ));
+        let mut burst = SpriteAnimation::new(SpriteGrid::new(4, 4, 2, 2), 0, 3, 30.0).once();
+        burst.advance(1.0);
+        assert!(burst.is_finished());
+        world.spawn((burst,));
+        world.spawn((
+            Transform2D::default(),
+            Quad::new(Vec2::splat(3.0), Color::WHITE),
+            Velocity(Vec2::new(-12.5, 40.0)),
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-100.0, -40.0)),
+            Quad::new(Vec2::new(160.0, 40.0), Color::hex(0x3A86FF)),
+            Button::new(Vec2::new(160.0, 40.0)),
+            ScreenSpace::TOP_RIGHT,
+        ));
+        world.spawn((Transform2D::default(), Velocity(Vec2::ONE))); // not saved
         (world, textures, fonts)
     }
 
@@ -562,8 +715,8 @@ mod tests {
         let scene = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
         assert_eq!(
             scene.entities.len(),
-            4,
-            "the transform-only entity is skipped"
+            8,
+            "the transform-only and transform+velocity entities are skipped"
         );
         let text = to_text(&scene).expect("write");
         assert!(
@@ -576,13 +729,10 @@ mod tests {
         let (mut textures2, mut fonts2) = (Textures::default(), Fonts::default());
         let mut world2 = World::new();
         let spawned = load(&parsed, &mut textures2, &mut fonts2, &mut world2).expect("load");
-        assert_eq!(spawned.len(), 4);
+        assert_eq!(spawned.len(), 8);
         // Same components, entity by entity in file order (= spawn order).
-        let mut originals: Vec<Entity> = world
-            .iter()
-            .filter(|e| e.has::<Quad>() || e.has::<Sprite>() || e.has::<Text>())
-            .map(|e| e.entity())
-            .collect();
+        let mut originals: Vec<Entity> =
+            world.iter().filter(is_saved).map(|e| e.entity()).collect();
         originals.sort_by_key(|e| e.id());
         for (&a, &b) in originals.iter().zip(&spawned) {
             let (ea, eb) = (world.entity(a).expect("a"), world2.entity(b).expect("b"));
@@ -596,6 +746,19 @@ mod tests {
                 eb.get::<&Layer>().map(|l| *l)
             );
             assert_eq!(ea.has::<Hidden>(), eb.has::<Hidden>());
+            // Whole-value equality, private playback state included.
+            assert_eq!(
+                ea.get::<&SpriteAnimation>().map(|a| *a),
+                eb.get::<&SpriteAnimation>().map(|a| *a)
+            );
+            assert_eq!(
+                ea.get::<&Velocity>().map(|v| *v),
+                eb.get::<&Velocity>().map(|v| *v)
+            );
+            assert_eq!(
+                ea.get::<&Button>().map(|b| *b),
+                eb.get::<&Button>().map(|b| *b)
+            );
             assert_eq!(
                 ea.get::<&ScreenSpace>().map(|s| *s),
                 eb.get::<&ScreenSpace>().map(|s| *s)
@@ -630,6 +793,48 @@ mod tests {
         }
         // Saving the loaded world again gives the same text.
         let again = capture(&world2, &textures2, &fonts2, Some(&root())).expect("again");
+        assert_eq!(to_text(&again).expect("write"), text);
+    }
+
+    #[test]
+    fn a_restored_animation_continues_exactly_like_the_original() {
+        let (world, textures, fonts) = sample();
+        let scene = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
+        let parsed = from_text(&to_text(&scene).expect("write")).expect("read");
+        let (mut t2, mut f2, mut world2) = (Textures::default(), Fonts::default(), World::new());
+        load(&parsed, &mut t2, &mut f2, &mut world2).expect("load");
+        let frames = |world: &mut World| {
+            let mut seen = Vec::new();
+            for _ in 0..40 {
+                crate::render::advance_animations(world, 1.0 / 60.0);
+                let mut frames: Vec<(u32, bool)> = world
+                    .query::<&SpriteAnimation>()
+                    .iter()
+                    .map(|a| (a.frame(), a.is_finished()))
+                    .collect();
+                frames.sort_unstable();
+                seen.push(frames);
+            }
+            seen
+        };
+        let mut original = World::new();
+        for a in world.query::<&SpriteAnimation>().iter() {
+            original.spawn((*a,));
+        }
+        assert_eq!(frames(&mut original), frames(&mut world2));
+    }
+
+    #[test]
+    fn files_from_part_1a_still_load_and_save_back_unchanged() {
+        // Written by PP-026a's `save_scene`: a version-1 file before animation,
+        // velocity and buttons existed. Kept forever as a compatibility check.
+        let text = include_str!("fixtures/demo_v1_pp026a.ron").replace("\r\n", "\n");
+        let scene = from_text(&text).expect("parse");
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        let spawned = load(&scene, &mut textures, &mut fonts, &mut world).expect("load");
+        assert_eq!(spawned.len(), 14);
+        let again = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
         assert_eq!(to_text(&again).expect("write"), text);
     }
 

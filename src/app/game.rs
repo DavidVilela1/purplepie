@@ -159,12 +159,16 @@ impl<'a> Context<'a> {
     }
 
     /// Saves the engine's components of every entity that has a
-    /// [`Quad`](crate::render::Quad), [`Sprite`](crate::render::Sprite) or
-    /// [`Text`](crate::render::Text) to a scene file (ADR-035): their
+    /// [`Quad`](crate::render::Quad), [`Sprite`](crate::render::Sprite),
+    /// [`Text`](crate::render::Text),
+    /// [`SpriteAnimation`](crate::render::SpriteAnimation) or
+    /// [`Button`](crate::ui::Button) to a scene file (ADR-035): their
     /// `Transform2D`, `Quad`, `Sprite` (texture by asset path, filter, tint,
-    /// region), `Text` (font by asset path), `Layer`, `Hidden` and
-    /// `ScreenSpace`. Other components, including the game's own, are not
-    /// saved yet, and entities without a drawable are skipped.
+    /// region), `Text` (font by asset path), `Layer`, `Hidden`, `ScreenSpace`,
+    /// `SpriteAnimation` (including how far it has played), `Velocity` and
+    /// `Button` (its size; hover and click state start fresh). The game's own
+    /// components are not saved yet, and entities with none of the five
+    /// components above are skipped.
     ///
     /// The file is human-readable [RON](https://docs.rs/ron) text. A relative
     /// `path` is resolved against the asset root like

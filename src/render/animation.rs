@@ -130,6 +130,31 @@ impl SpriteAnimation {
         self.finished = false;
     }
 
+    /// The playback position: frames played since `first`, seconds spent on
+    /// the current frame, and whether a `Once` animation has finished. Scene
+    /// files save it (ADR-035).
+    pub(crate) fn playback(&self) -> (u32, f64, bool) {
+        (self.step, self.time_in_frame, self.finished)
+    }
+
+    /// The same animation at a saved playback position, made valid: the step
+    /// is kept inside the range, a negative or non-finite time becomes 0, and
+    /// only a `Once` animation can be finished (on its last frame).
+    pub(crate) fn with_playback(mut self, step: u32, time_in_frame: f64, finished: bool) -> Self {
+        self.step = step.min(self.len() - 1);
+        self.time_in_frame = if time_in_frame.is_finite() && time_in_frame >= 0.0 {
+            time_in_frame
+        } else {
+            0.0
+        };
+        self.finished = finished && self.mode == AnimationMode::Once;
+        if self.finished {
+            self.step = self.len() - 1;
+            self.time_in_frame = 0.0;
+        }
+        self
+    }
+
     /// Moves playback forward by `dt` seconds (several frames if `dt` is
     /// long). Negative or non-finite `dt` is ignored.
     pub fn advance(&mut self, dt: f32) {
@@ -335,6 +360,34 @@ mod tests {
         let mut once = SpriteAnimation::new(grid(), 2, 2, 60.0).once();
         once.advance(STEP);
         assert!(once.is_finished());
+    }
+
+    #[test]
+    fn saved_playback_positions_are_restored_and_made_valid() {
+        let mut playing = SpriteAnimation::new(grid(), 0, 7, 10.0);
+        playing.advance(0.35);
+        let (step, time, finished) = playing.playback();
+        assert_eq!((step, finished), (3, false));
+        let restored = SpriteAnimation::new(grid(), 0, 7, 10.0).with_playback(step, time, finished);
+        assert_eq!(restored, playing);
+        // Out-of-range or nonsense values become valid ones.
+        let fixed = SpriteAnimation::new(grid(), 2, 4, 10.0).with_playback(99, f64::NAN, true);
+        assert_eq!(
+            fixed.playback(),
+            (2, 0.0, false),
+            "a loop is never finished"
+        );
+        assert_eq!(fixed.frame(), 4);
+        let done = SpriteAnimation::new(grid(), 0, 3, 10.0)
+            .once()
+            .with_playback(1, 0.05, true);
+        assert_eq!((done.frame(), done.is_finished()), (3, true));
+        assert_eq!(
+            SpriteAnimation::new(grid(), 0, 3, 10.0)
+                .with_playback(0, -1.0, false)
+                .playback(),
+            (0, 0.0, false)
+        );
     }
 
     #[test]

@@ -22,11 +22,12 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   master volume (mixed in software, any sample rate); games keep running silently without an audio device.
 - **Assets:** textures, fonts and sounds loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
-- **Scenes:** `Context::save_scene` / `load_scene` write and read the drawable entities (transforms, quads, sprites,
-  text, layers, hidden, screen space) as human-readable RON, with textures and fonts referenced by asset path.
+- **Scenes:** `Context::save_scene` / `load_scene` write and read entities with all engine components (transforms,
+  quads, sprites, text, layers, hidden, screen space, animations mid-play, velocity, buttons) as human-readable RON,
+  with textures and fonts referenced by asset path.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
-  animation/game components in scene files, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
+  game components in scene files, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
 
