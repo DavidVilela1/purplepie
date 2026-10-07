@@ -93,6 +93,9 @@
                 texture: "textures/sandbox_quadrants.png",
                 size: (96.0, 96.0),
             ),
+            components: {
+                "scene_demo::Spin": (speed:0.8,direction:Clockwise),
+            },
         ),
         (
             transform: (
@@ -105,6 +108,14 @@
                 size: (96.0, 96.0),
                 tint: (1.0, 1.0, 1.0, 0.8),
             ),
+            components: {
+                "scene_demo::Spin": (speed:0.8,direction:CounterClockwise),
+            },
+        ),
+        (
+            components: {
+                "scene_demo::Visits": (label:"demo scene",count:0),
+            },
         ),
         (
             transform: (

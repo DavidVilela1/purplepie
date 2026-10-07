@@ -166,9 +166,11 @@ impl<'a> Context<'a> {
     /// `Transform2D`, `Quad`, `Sprite` (texture by asset path, filter, tint,
     /// region), `Text` (font by asset path), `Layer`, `Hidden`, `ScreenSpace`,
     /// `SpriteAnimation` (including how far it has played), `Velocity` and
-    /// `Button` (its size; hover and click state start fresh). The game's own
-    /// components are not saved yet, and entities with none of the five
-    /// components above are skipped.
+    /// `Button` (its size; hover and click state start fresh), plus every
+    /// game component registered with
+    /// [`register_scene_component`](Self::register_scene_component). Entities
+    /// with none of the five engine components above and no registered
+    /// component are skipped.
     ///
     /// The file is human-readable [RON](https://docs.rs/ron) text. A relative
     /// `path` is resolved against the asset root like
@@ -193,6 +195,7 @@ impl<'a> Context<'a> {
             &state.textures,
             &state.fonts,
             state.assets.path(),
+            &state.scene_components,
         )
         .map_err(save_error)?;
         let text = crate::scene::to_text(&scene).map_err(save_error)?;
@@ -205,14 +208,58 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
+    /// Lets scene files save and load the game's own component `T` under
+    /// `name` (ADR-036). Call it before [`save_scene`](Self::save_scene) or
+    /// [`load_scene`](Self::load_scene), usually in [`Game::init`](crate::Game::init).
+    ///
+    /// `T` is written and read with its `serde` implementation, so derive
+    /// `Serialize` and `Deserialize` for it (add `serde = { version = "1",
+    /// features = ["derive"] }` to the game's `Cargo.toml`). In the file it
+    /// appears under `components: { "name": (...) }` in plain RON (options as
+    /// `Some(…)`). Entities with a registered component are saved even without
+    /// anything drawable. Choose a stable name (e.g. `"mygame::Health"`): it is
+    /// what files refer to, so renaming the Rust type later does not break them.
+    ///
+    /// Registering the same type under the same name again does nothing. A
+    /// name already used for another type, a type already registered under
+    /// another name, or an empty name is
+    /// [`Error::InvalidConfig`](crate::Error::InvalidConfig). Components that
+    /// hold an [`Entity`] are not supported (entity ids change between runs).
+    ///
+    /// ```
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Health {
+    ///     current: u32,
+    ///     max: u32,
+    /// }
+    ///
+    /// # fn init(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
+    /// ctx.register_scene_component::<Health>("mygame::Health")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn register_scene_component<T>(&mut self, name: &str) -> Result<()>
+    where
+        T: hecs::Component + serde::Serialize + serde::de::DeserializeOwned,
+    {
+        self.state
+            .scene_components
+            .register::<T>(name)
+            .map_err(crate::Error::InvalidConfig)
+    }
+
     /// Loads a scene file written by [`save_scene`](Self::save_scene) (or by
     /// hand) and spawns its entities into the world, after any that are
     /// already there. Returns the new entities in file order.
     ///
     /// Every texture and font the scene names is loaded first (cached like
     /// [`load_texture`](Self::load_texture) and [`load_font`](Self::load_font));
-    /// if one fails, or the file is not a valid scene of a supported version,
-    /// the error is [`Error::Asset`](crate::Error::Asset) and nothing is spawned.
+    /// if one fails, the file is not a valid scene of a supported version, or it
+    /// holds a game component that is not
+    /// [registered](Self::register_scene_component) (or does not decode), the
+    /// error is [`Error::Asset`](crate::Error::Asset) and nothing is spawned.
     ///
     /// ```no_run
     /// # fn init(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
@@ -231,13 +278,15 @@ impl<'a> Context<'a> {
         let text = std::fs::read_to_string(&file).map_err(|e| asset_error(Box::new(e)))?;
         let scene = crate::scene::from_text(&text).map_err(asset_error)?;
         let state = &mut *self.state;
+        let components = crate::scene::decode_components(&scene, &state.scene_components)
+            .map_err(asset_error)?;
         let (assets, textures, fonts) = (&state.assets, &mut state.textures, &mut state.fonts);
         let resolved = crate::scene::resolve_assets(
             &scene,
             |p, options| textures.load(&assets.locate(p)?, options),
             |p| fonts.load(&assets.locate(p)?),
         )?;
-        let entities = crate::scene::spawn(scene, resolved, &mut state.world);
+        let entities = crate::scene::spawn(scene, resolved, components, &mut state.world);
         log::debug!(
             "loaded {} entities from scene {}",
             entities.len(),
@@ -568,6 +617,37 @@ mod tests {
         assert_eq!(two.lines, 2);
         assert!((two.width - one.width).abs() < 1e-3, "the widest line");
         assert!((two.height - 290.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn game_components_register_once_and_travel_through_scene_files() {
+        #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+        struct Health(u32);
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Other;
+        let root = std::env::temp_dir().join(format!("purplepie-scene-reg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("mkdir");
+        let mut state = EngineState::new(0.25, AssetRoot::Found(root.clone()));
+        let mut ctx = Context::new(&mut state, 0.0);
+        ctx.register_scene_component::<Health>("test::Health")
+            .expect("register");
+        ctx.register_scene_component::<Health>("test::Health")
+            .expect("again");
+        let err = ctx
+            .register_scene_component::<Other>("test::Health")
+            .expect_err("clash");
+        assert!(matches!(err, crate::Error::InvalidConfig(_)), "{err}");
+        ctx.world_mut().spawn((Health(42),));
+        ctx.save_scene("game.ron").expect("save");
+        let text = std::fs::read_to_string(root.join("game.ron")).expect("written");
+        assert!(text.contains("\"test::Health\": (42)"), "{text}");
+        let spawned = ctx.load_scene("game.ron").expect("load");
+        assert_eq!(
+            ctx.world().get::<&Health>(spawned[0]).map(|h| h.0).ok(),
+            Some(42)
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

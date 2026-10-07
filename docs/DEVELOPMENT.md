@@ -217,6 +217,9 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   the animated cell at world (−260, −60), 48×48, must show sheet frame 5. Unfrozen, click the "Click me" button (window
   x W−180..W−21, y 20..59) with XTEST: each click prints `scene: button clicked (n so far)`. Never edit or regenerate
   `src/scene/fixtures/demo_v1_pp026a.ron`: it is the compatibility check for files written by older builds.
+  Since PP-027 the example registers `Spin` and `Visits`; the unit test that reads `assets/scenes/demo.ron` registers
+  copies of them under the same names, so change both together. Unfrozen, the two rotated squares must turn after a
+  `load` (compare two screenshots 1 s apart; the static text must not change).
 - **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.
   In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
   centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;

@@ -16,8 +16,8 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-023 UI buttons, PP-024a playback
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
 earlier. **Phase P3 (editor foundations) in progress:** PP-026a scene files (RON format, drawing components;
-ADR-035) and PP-026b (animation, velocity and UI buttons in scenes) done; **PP-027** (game components in scenes, via a
-registry) is next.
+ADR-035), PP-026b (animation, velocity and UI buttons in scenes) and PP-027 (game components in scenes via a registry;
+ADR-036) done; **PP-028** (texture hot reload) is next.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -99,6 +99,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-027: scene files, part 2: game components via `Context::register_scene_component` (serde bound), stored by name (ADR-036).
 - PP-026b: scene files, part 1b: `SpriteAnimation` (with playback position), `Velocity`, `ui::Button` in scenes; PP-026a files still load (fixture).
 - PP-025: per-texture sampling: `TextureFilter`/`TextureOptions`, `Context::load_texture_with`; Breakout's ball is `Linear` (ADR-034). Phase P2 complete.
 
@@ -108,7 +109,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-027: Scene files, part 2: game components** (phase P3, registry). See [TASKS.md](TASKS.md#pp-027-scene-files-part-2-game-components--next).
+- **PP-028: Asset hot reload, part 1: textures** (phase P3). See [TASKS.md](TASKS.md#pp-028-asset-hot-reload-part-1-textures--next).
 
 ## Blocked
 
@@ -139,11 +140,16 @@ executable, else `assets/` in the working directory (ADR-025).
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
-- Scenes (PP-026a/b): every engine component is saved, but only on entities with a `Quad`, `Sprite`, `Text`, `SpriteAnimation` or `Button`; the game's own components are dropped (registry: PP-027). Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
+- Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-027 Scene files, part 2: game components.**
+  - New `Context::register_scene_component::<T>(name)` (ADR-036): `T` needs serde's `Serialize` + `DeserializeOwned`, so serde now appears in one public trait bound; engine types still do not derive it.
+  - Crate-private `src/scene/registry.rs`; scene version 1 gains the optional `components: { "name": … }` field. Unknown names or bad values fail the load before anything spawns. No new dependencies.
+  - `examples/scene.rs` registers `Spin` (rotating squares) and `Visits` (a game-state entity); `demo.ron` regenerated (19 entities).
 
 - **2026-10-07: PP-026b Scene files, part 1b.**
   - Scene version 1 gains optional `animation` (incl. playback position), `velocity` and `button` fields (ADR-035 extension); PP-026a files load and save back unchanged (fixture `src/scene/fixtures/demo_v1_pp026a.ron`).
@@ -317,19 +323,19 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-026b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-027 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 207 unit tests + 29 doctests, 11 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 211 unit tests + 30 doctests, 11 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 11/11 |
 | `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` (R-19 guard) | ✅ no matches |
-| Scene example (`PURPLEPIE_SCENE_FREEZE=1`, modes `save`, `build`, `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical; the loaded animated cell shows frame 5 (every unoccluded pixel exact); `save` wrote `assets/scenes/demo.ron`, which the unit tests read back byte-for-byte |
-| Scene example unfrozen + XTEST | ✅ animation and drift run; 2 clicks on the loaded "Click me" button counted, 1 click elsewhere ignored |
-| Scene mutation checks | ✅ dropping `time_in_frame` on save or `Velocity` on load fails the round-trip tests |
+| Scene example (`PURPLEPIE_SCENE_FREEZE=1`, modes `save`, `build`, `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical, and identical to PP-026b's frame; `save` wrote `assets/scenes/demo.ron` (19 entities, 2 game component types), which the unit tests read back byte-for-byte |
+| Scene example unfrozen (load) | ✅ the two squares loaded with `Spin` rotate between screenshots, the static text does not; prints `demo scene loaded 1 time(s)` and `2 spinning sprites` |
+| Scene mutation check | ✅ not inserting decoded game components fails 3 tests |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
 | Sandbox whole-frame model + HUD (camera (0,0)×1) | ✅ 0 mismatches; HUD panel, corner square and button crops identical to the PP-025 run |
@@ -342,4 +348,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-026b done (animation, velocity and buttons in scenes; ADR-035 extension). PP-027 (game components in scenes) is next.
+2026-10-07. PP-027 done (game components in scenes; ADR-036). PP-028 (texture hot reload) is next.

@@ -244,7 +244,9 @@ Likelihood and impact are qualitative: Low, Medium or High.
   component changes do not change the file; new fields must be optional (old files keep loading). The shipped
   `assets/scenes/demo.ron` and the frozen PP-026a file `src/scene/fixtures/demo_v1_pp026a.ron` are regression fixtures:
   unit tests load them and must save them back byte-for-byte. What is not saved is documented on `Context::save_scene`.
-  Since PP-026b only the game's own components are dropped.
+  Since PP-026b only the game's own components are dropped; since PP-027 only *unregistered* ones (ADR-036). A file
+  with game components needs those registered to load at all (unknown names are errors), and serde 1.x is now part of
+  the public API through `register_scene_component`'s bound.
 - **Fallback:** bump `version` with a reader for the old one; log or reject unsaved components once a registry exists.
 - **Occurred (2026-10-07, after PP-026a):** the byte-for-byte test failed on Windows because `ron`'s pretty printer
   defaults to `\r\n` there. Fixed by writing `\n` explicitly and asserting it in a test. Lesson: dependency defaults can

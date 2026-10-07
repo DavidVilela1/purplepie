@@ -10,8 +10,12 @@
 //! `load` and `build` must look identical: that is the round-trip check. The
 //! shipped `demo.ron` was written by `save`. The animated cell starts part-way
 //! through its animation and the small square drifts right; with
-//! `PURPLEPIE_SCENE_FREEZE=1` both stay still, so screenshots can be compared.
-//! The "Click me" button counts clicks. Escape quits.
+//! `PURPLEPIE_SCENE_FREEZE=1` everything stays still, so screenshots can be compared.
+//! The "Click me" button counts clicks. The two rotated squares carry a game
+//! component of this example, `Spin` (registered with
+//! `register_scene_component`, ADR-036), so they keep turning after a load; a
+//! `Visits` component on an entity with nothing to draw counts how often the
+//! scene was loaded. Escape quits.
 
 use purplepie::ecs::{self, Velocity};
 use purplepie::math::{Transform2D, Vec2};
@@ -21,6 +25,28 @@ use purplepie::render::{
 };
 use purplepie::ui::{self, Button, Pointer};
 use purplepie::{Context, Engine, EngineConfig, Game};
+use serde::{Deserialize, Serialize};
+
+/// A game component: turns the entity at `speed` radians per second.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct Spin {
+    speed: f32,
+    direction: Turn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+enum Turn {
+    Clockwise,
+    CounterClockwise,
+}
+
+/// A game component on an entity without a drawable: how often this scene
+/// file has been loaded (the `save` mode writes 0).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Visits {
+    label: String,
+    count: u32,
+}
 
 /// The scene file, relative to the asset root.
 const SCENE: &str = "scenes/demo.ron";
@@ -93,11 +119,23 @@ fn build(ctx: &mut Context<'_>) -> purplepie::Result<()> {
     world.spawn((
         Transform2D::from_position(Vec2::new(150.0, 40.0)).with_rotation(0.3),
         Sprite::new(quadrants, Vec2::splat(96.0)),
+        Spin {
+            speed: 0.8,
+            direction: Turn::Clockwise,
+        },
     ));
     world.spawn((
         Transform2D::from_position(Vec2::new(290.0, 40.0)).with_rotation(0.3),
         Sprite::new(smooth, Vec2::splat(96.0)).with_tint(Color::rgba(1.0, 1.0, 1.0, 0.8)),
+        Spin {
+            speed: 0.8,
+            direction: Turn::CounterClockwise,
+        },
     ));
+    world.spawn((Visits {
+        label: "demo scene".into(),
+        count: 0,
+    },));
     world.spawn((
         Transform2D::from_position(Vec2::new(400.0, 40.0)),
         Sprite::new(ball, Vec2::splat(20.0)),
@@ -157,10 +195,20 @@ fn build(ctx: &mut Context<'_>) -> purplepie::Result<()> {
 
 impl Game for SceneDemo {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
+        // Register before saving or loading: files name these components.
+        ctx.register_scene_component::<Spin>("scene_demo::Spin")?;
+        ctx.register_scene_component::<Visits>("scene_demo::Visits")?;
         match self.mode {
             Mode::Load => {
                 let entities = ctx.load_scene(SCENE)?;
                 println!("scene: loaded {} entities from {SCENE}", entities.len());
+                let world = ctx.world_mut();
+                for visits in world.query_mut::<&mut Visits>() {
+                    visits.count += 1;
+                    println!("scene: {} loaded {} time(s)", visits.label, visits.count);
+                }
+                let spinning = ctx.world().query::<&Spin>().iter().count();
+                println!("scene: {spinning} spinning sprites");
             }
             Mode::Build => {
                 build(ctx)?;
@@ -182,6 +230,13 @@ impl Game for SceneDemo {
         let dt = ctx.dt();
         render::advance_animations(ctx.world_mut(), dt);
         ecs::integrate_velocity(ctx.world_mut(), dt);
+        for (transform, spin) in ctx.world_mut().query_mut::<(&mut Transform2D, &Spin)>() {
+            let sign = match spin.direction {
+                Turn::Clockwise => -1.0,
+                Turn::CounterClockwise => 1.0,
+            };
+            transform.rotation += sign * spin.speed * dt;
+        }
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {

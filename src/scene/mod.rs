@@ -4,19 +4,25 @@
 //! Crate-private. Games use [`Context::save_scene`](crate::Context::save_scene)
 //! and [`Context::load_scene`](crate::Context::load_scene). A scene file is
 //! [RON](https://docs.rs/ron) text written from plain mirror types (the `*File`
-//! structs below), never from the components themselves, so `serde` stays out
-//! of the public API and the file layout can stay stable while components
-//! change. Assets are referenced by path relative to the asset root, never by
+//! structs below), never from the engine's components themselves, so the file
+//! layout can stay stable while components change (game components are the
+//! exception: they are written by their own `Serialize`, ADR-036). Assets are referenced by path relative to the asset root, never by
 //! the per-run `TextureId`/`FontId`.
 //!
 //! Version 1 covers `Transform2D`, `Quad`, `Sprite`, `Text`, `Layer`, `Hidden`,
 //! `ScreenSpace` (PP-026a), `SpriteAnimation` with its playback position,
 //! `Velocity` and `ui::Button` (PP-026b) on every entity that has a `Quad`,
 //! `Sprite`, `Text`, `SpriteAnimation` or `Button`. Fields added later are
-//! optional, so every version-1 file keeps loading. The game's own components
-//! are not saved yet.
+//! optional, so every version-1 file keeps loading. Since PP-027 the game's
+//! own components are saved too, under the names they were registered with
+//! (`registry.rs`, ADR-036).
 
+mod registry;
+
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+use ron::value::RawValue;
 
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +35,8 @@ use crate::render::{
     TextureOptions, TextureRegion, Textures, VerticalAnchor,
 };
 use crate::ui::Button;
+
+pub(crate) use registry::{Inserter, Registry};
 
 /// The scene format version this build writes and reads.
 pub(crate) const VERSION: u32 = 1;
@@ -73,17 +81,22 @@ pub(crate) struct EntityFile {
     velocity: Option<Vec2File>,
     #[serde(skip_serializing_if = "Option::is_none")]
     button: Option<ButtonFile>,
+    // PP-027: the game's registered components, by registered name, each as
+    // plain RON (written by the component's own `Serialize`).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    components: BTreeMap<String, Box<RawValue>>,
 }
 
 /// Whether an entity is saved: it has something the engine draws or makes
-/// interactive. Entities with only a transform, velocity or game components
-/// are usually game bookkeeping that a scene cannot rebuild yet.
-fn is_saved(e: &hecs::EntityRef<'_>) -> bool {
+/// interactive, or a component the game registered. Entities with only a
+/// transform, velocity or unregistered components are skipped.
+fn is_saved(e: &hecs::EntityRef<'_>, registry: &Registry) -> bool {
     e.has::<Quad>()
         || e.has::<Sprite>()
         || e.has::<Text>()
         || e.has::<SpriteAnimation>()
         || e.has::<Button>()
+        || registry.any_on(e)
 }
 
 fn is_false(value: &bool) -> bool {
@@ -406,8 +419,9 @@ pub(crate) fn capture(
     textures: &Textures,
     fonts: &Fonts,
     asset_root: Option<&Path>,
+    registry: &Registry,
 ) -> Result<SceneFile, BoxError> {
-    let mut entities: Vec<_> = world.iter().filter(is_saved).collect();
+    let mut entities: Vec<_> = world.iter().filter(|e| is_saved(e, registry)).collect();
     entities.sort_by_key(|e| e.entity().id());
     let mut out = Vec::with_capacity(entities.len());
     for e in entities {
@@ -466,6 +480,7 @@ pub(crate) fn capture(
             button: e.get::<&Button>().map(|b| ButtonFile {
                 size: vec2_file(b.size),
             }),
+            components: registry.save(&e)?,
         });
     }
     Ok(SceneFile {
@@ -507,7 +522,16 @@ pub(crate) fn from_text(text: &str) -> Result<SceneFile, BoxError> {
         Ok(_) => {}
         Err(e) => return Err(format!("not a PurplePie scene file: {e}").into()),
     }
-    Ok(options.from_str::<SceneFile>(text)?)
+    let mut scene = options.from_str::<SceneFile>(text)?;
+    // A raw game-component value keeps the whitespace around it in the file;
+    // trim it so saving the scene again writes the same text.
+    for e in &mut scene.entities {
+        e.components = std::mem::take(&mut e.components)
+            .into_iter()
+            .map(|(name, value)| (name, value.trim_boxed()))
+            .collect();
+    }
+    Ok(scene)
 }
 
 /// The assets a scene needs, resolved before anything is spawned: for each
@@ -545,11 +569,37 @@ pub(crate) fn resolve_assets(
     Ok(Resolved { per_entity })
 }
 
+/// Decodes every game component in `scene` with `registry`, per entity in
+/// file order. Fails on the first unknown name or invalid value; nothing is
+/// spawned yet.
+pub(crate) fn decode_components(
+    scene: &SceneFile,
+    registry: &Registry,
+) -> Result<Vec<Vec<Inserter>>, BoxError> {
+    scene
+        .entities
+        .iter()
+        .map(|e| {
+            e.components
+                .iter()
+                .map(|(name, raw)| registry.load(name, raw))
+                .collect()
+        })
+        .collect()
+}
+
 /// Spawns the scene's entities into `world`, in file order, using the assets
-/// from [`resolve_assets`]. Returns the new entities.
-pub(crate) fn spawn(scene: SceneFile, assets: Resolved, world: &mut World) -> Vec<Entity> {
+/// from [`resolve_assets`] and the game components from
+/// [`decode_components`]. Returns the new entities.
+pub(crate) fn spawn(
+    scene: SceneFile,
+    assets: Resolved,
+    components: Vec<Vec<Inserter>>,
+    world: &mut World,
+) -> Vec<Entity> {
     let mut spawned = Vec::with_capacity(scene.entities.len());
-    for (e, (texture, font)) in scene.entities.into_iter().zip(assets.per_entity) {
+    let per_entity = assets.per_entity.into_iter().zip(components);
+    for (e, ((texture, font), components)) in scene.entities.into_iter().zip(per_entity) {
         let entity = world.spawn(());
         if let Some(t) = e.transform {
             let transform = Transform2D {
@@ -593,6 +643,9 @@ pub(crate) fn spawn(scene: SceneFile, assets: Resolved, world: &mut World) -> Ve
         if let Some(b) = e.button {
             insert(world, entity, Button::new(vec2(b.size)));
         }
+        for add in components {
+            add(world, entity);
+        }
         spawned.push(entity);
     }
     spawned
@@ -621,13 +674,28 @@ mod tests {
         fonts: &mut Fonts,
         world: &mut World,
     ) -> crate::Result<Vec<Entity>> {
+        load_with(scene, textures, fonts, world, &Registry::default())
+    }
+
+    /// [`load`] with game components decoded by `registry`.
+    fn load_with(
+        scene: &SceneFile,
+        textures: &mut Textures,
+        fonts: &mut Fonts,
+        world: &mut World,
+        registry: &Registry,
+    ) -> crate::Result<Vec<Entity>> {
         let root = root();
         let resolved = resolve_assets(
             scene,
             |p, o| textures.load(&root.join(p), o),
             |p| fonts.load(&root.join(p)),
         )?;
-        Ok(spawn(scene.clone(), resolved, world))
+        let components = decode_components(scene, registry).map_err(|e| crate::Error::Asset {
+            path: PathBuf::from("test scene"),
+            source: e,
+        })?;
+        Ok(spawn(scene.clone(), resolved, components, world))
     }
 
     /// A world using every saved component and option.
@@ -712,7 +780,14 @@ mod tests {
     #[test]
     fn every_saved_component_survives_a_round_trip_through_text() {
         let (world, textures, fonts) = sample();
-        let scene = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
+        let scene = capture(
+            &world,
+            &textures,
+            &fonts,
+            Some(&root()),
+            &Registry::default(),
+        )
+        .expect("capture");
         assert_eq!(
             scene.entities.len(),
             8,
@@ -731,8 +806,11 @@ mod tests {
         let spawned = load(&parsed, &mut textures2, &mut fonts2, &mut world2).expect("load");
         assert_eq!(spawned.len(), 8);
         // Same components, entity by entity in file order (= spawn order).
-        let mut originals: Vec<Entity> =
-            world.iter().filter(is_saved).map(|e| e.entity()).collect();
+        let mut originals: Vec<Entity> = world
+            .iter()
+            .filter(|e| is_saved(e, &Registry::default()))
+            .map(|e| e.entity())
+            .collect();
         originals.sort_by_key(|e| e.id());
         for (&a, &b) in originals.iter().zip(&spawned) {
             let (ea, eb) = (world.entity(a).expect("a"), world2.entity(b).expect("b"));
@@ -792,14 +870,28 @@ mod tests {
             }
         }
         // Saving the loaded world again gives the same text.
-        let again = capture(&world2, &textures2, &fonts2, Some(&root())).expect("again");
+        let again = capture(
+            &world2,
+            &textures2,
+            &fonts2,
+            Some(&root()),
+            &Registry::default(),
+        )
+        .expect("again");
         assert_eq!(to_text(&again).expect("write"), text);
     }
 
     #[test]
     fn a_restored_animation_continues_exactly_like_the_original() {
         let (world, textures, fonts) = sample();
-        let scene = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
+        let scene = capture(
+            &world,
+            &textures,
+            &fonts,
+            Some(&root()),
+            &Registry::default(),
+        )
+        .expect("capture");
         let parsed = from_text(&to_text(&scene).expect("write")).expect("read");
         let (mut t2, mut f2, mut world2) = (Textures::default(), Fonts::default(), World::new());
         load(&parsed, &mut t2, &mut f2, &mut world2).expect("load");
@@ -834,8 +926,166 @@ mod tests {
             (Textures::default(), Fonts::default(), World::new());
         let spawned = load(&scene, &mut textures, &mut fonts, &mut world).expect("load");
         assert_eq!(spawned.len(), 14);
-        let again = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
+        let again = capture(
+            &world,
+            &textures,
+            &fonts,
+            Some(&root()),
+            &Registry::default(),
+        )
+        .expect("capture");
         assert_eq!(to_text(&again).expect("write"), text);
+    }
+
+    // PP-027: game components through the registry (ADR-036).
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Spin {
+        speed: f32,
+        turn: Turn,
+        label: Option<String>,
+        path: Vec<(f32, f32)>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Turn {
+        Clockwise,
+        Counter { wobble: f32 },
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    struct Marker;
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Note(String);
+
+    /// Never registered.
+    #[derive(Debug, Clone, PartialEq)]
+    struct Private(u8);
+
+    fn registry() -> Registry {
+        let mut registry = Registry::default();
+        registry.register::<Spin>("demo::Spin").expect("spin");
+        registry.register::<Marker>("demo::Marker").expect("marker");
+        registry.register::<Note>("demo::Note").expect("note");
+        registry
+    }
+
+    #[test]
+    fn registered_game_components_round_trip_and_unregistered_ones_are_skipped() {
+        let registry = registry();
+        let (textures, fonts) = (Textures::default(), Fonts::default());
+        let mut world = World::new();
+        let spin = Spin {
+            speed: -1.5,
+            turn: Turn::Counter { wobble: 0.25 },
+            label: Some("left \"wheel\"".into()),
+            path: vec![(0.0, 1.0), (2.5, -3.0)],
+        };
+        world.spawn((
+            Transform2D::from_position(Vec2::new(1.0, 2.0)),
+            Quad::new(Vec2::ONE, Color::WHITE),
+            spin.clone(),
+            Marker,
+        ));
+        world.spawn((Note("game state, nothing drawn".into()),));
+        world.spawn((Transform2D::default(), Private(7))); // unregistered only: skipped
+        world.spawn((
+            Quad::new(Vec2::ONE, Color::BLACK),
+            Private(9), // dropped, the quad is saved
+            Spin {
+                speed: 2.0,
+                turn: Turn::Clockwise,
+                label: None,
+                path: Vec::new(),
+            },
+        ));
+        let scene = capture(&world, &textures, &fonts, Some(&root()), &registry).expect("capture");
+        assert_eq!(scene.entities.len(), 3);
+        let text = to_text(&scene).expect("write");
+        assert!(text.contains("\"demo::Spin\""), "{text}");
+        assert!(text.contains("components:"), "{text}");
+        let parsed = from_text(&text).expect("read");
+        assert_eq!(parsed, scene);
+
+        let (mut t2, mut f2, mut world2) = (Textures::default(), Fonts::default(), World::new());
+        let spawned = load_with(&parsed, &mut t2, &mut f2, &mut world2, &registry).expect("load");
+        assert_eq!(spawned.len(), 3);
+        let e0 = world2.entity(spawned[0]).expect("first");
+        assert_eq!(*e0.get::<&Spin>().expect("spin"), spin);
+        assert!(e0.has::<Marker>() && e0.has::<Quad>() && e0.has::<Transform2D>());
+        let e1 = world2.entity(spawned[1]).expect("note");
+        assert_eq!(
+            e1.get::<&Note>().expect("note").0,
+            "game state, nothing drawn"
+        );
+        assert_eq!(e1.len(), 1, "only the note");
+        let e2 = world2.entity(spawned[2]).expect("third");
+        assert_eq!(e2.get::<&Spin>().expect("spin").turn, Turn::Clockwise);
+        assert!(!e2.has::<Private>());
+        let again = capture(&world2, &t2, &f2, Some(&root()), &registry).expect("again");
+        assert_eq!(to_text(&again).expect("write"), text);
+    }
+
+    #[test]
+    fn unknown_or_invalid_game_components_fail_before_anything_is_spawned() {
+        let text = r#"(version: 1, entities: [
+            (quad: (size: (1.0, 1.0), color: (1.0, 1.0, 1.0, 1.0))),
+            (components: {"demo::Missing": (x: 1)}),
+        ])"#;
+        let scene = from_text(text).expect("parse");
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        let err = load_with(&scene, &mut textures, &mut fonts, &mut world, &registry())
+            .expect_err("unknown");
+        let reason = std::error::Error::source(&err).expect("reason").to_string();
+        assert!(
+            reason.contains("unknown component `demo::Missing`"),
+            "{reason}"
+        );
+        assert!(reason.contains("register_scene_component"), "{reason}");
+        assert_eq!(world.len(), 0);
+
+        let text = r#"(version: 1, entities: [(components: {"demo::Note": (oops: 1)})])"#;
+        let scene = from_text(text).expect("parse");
+        let err = load_with(&scene, &mut textures, &mut fonts, &mut world, &registry())
+            .expect_err("invalid");
+        let reason = std::error::Error::source(&err).expect("reason").to_string();
+        assert!(reason.starts_with("component `demo::Note`:"), "{reason}");
+        assert_eq!(world.len(), 0);
+        // Files without game components ignore the registry entirely.
+        let text = include_str!("fixtures/demo_v1_pp026a.ron").replace("\r\n", "\n");
+        let scene = from_text(&text).expect("parse");
+        assert_eq!(
+            load_with(&scene, &mut textures, &mut fonts, &mut world, &registry())
+                .expect("fixture")
+                .len(),
+            14
+        );
+    }
+
+    #[test]
+    fn registration_rejects_clashing_or_empty_names() {
+        let mut registry = registry();
+        assert_eq!(registry.len(), 3);
+        registry
+            .register::<Spin>("demo::Spin")
+            .expect("same again is fine");
+        assert_eq!(registry.len(), 3);
+        assert!(
+            registry.register::<Note>("demo::Spin").is_err(),
+            "name taken"
+        );
+        assert!(
+            registry.register::<Spin>("demo::Spin2").is_err(),
+            "type taken"
+        );
+        assert!(registry.register::<Turn>("").is_err());
+        assert!(registry.register::<Turn>(" demo::Turn").is_err());
+        registry
+            .register::<Turn>("demo::Turn")
+            .expect("new type, new name");
+        assert_eq!(registry.len(), 4);
     }
 
     #[test]
@@ -937,6 +1187,34 @@ mod tests {
 
     #[test]
     fn the_shipped_demo_scene_loads_and_saves_back_unchanged() {
+        /// Copies of `examples/scene.rs`'s game components, registered under
+        /// the same names: the file stores names and plain values, so any type
+        /// with the same shape reads it (keep these in step with the example).
+        mod demo {
+            use serde::{Deserialize, Serialize};
+            #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+            pub(super) struct Spin {
+                pub(super) speed: f32,
+                pub(super) direction: Turn,
+            }
+            #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+            pub(super) enum Turn {
+                Clockwise,
+                CounterClockwise,
+            }
+            #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+            pub(super) struct Visits {
+                pub(super) label: String,
+                pub(super) count: u32,
+            }
+        }
+        let mut registry = Registry::default();
+        registry
+            .register::<demo::Spin>("scene_demo::Spin")
+            .expect("spin");
+        registry
+            .register::<demo::Visits>("scene_demo::Visits")
+            .expect("visits");
         let path = root().join("scenes/demo.ron");
         // Git may check text files out with CRLF line ends on Windows.
         let text = std::fs::read_to_string(&path)
@@ -945,9 +1223,11 @@ mod tests {
         let scene = from_text(&text).expect("parse");
         let (mut textures, mut fonts, mut world) =
             (Textures::default(), Fonts::default(), World::new());
-        let spawned = load(&scene, &mut textures, &mut fonts, &mut world).expect("load");
-        assert!(spawned.len() >= 10, "{}", spawned.len());
-        let again = capture(&world, &textures, &fonts, Some(&root())).expect("capture");
+        let spawned =
+            load_with(&scene, &mut textures, &mut fonts, &mut world, &registry).expect("load");
+        assert_eq!(spawned.len(), 19);
+        assert_eq!(world.query::<&demo::Spin>().iter().count(), 2);
+        let again = capture(&world, &textures, &fonts, Some(&root()), &registry).expect("capture");
         assert_eq!(
             to_text(&again).expect("write"),
             text,

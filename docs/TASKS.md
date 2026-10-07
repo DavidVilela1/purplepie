@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-027: Scene files, part 2: game components through a registry (ADR)** · P1 · TODO ← **next task**
+- [ ] **PP-028: Asset hot reload, part 1: reload changed textures while the game runs** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -52,6 +52,7 @@ _None._
 - [x] **PP-025: Per-texture sampling, Nearest or Linear (ADR-034; F9; phase P2 complete)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-026a: Scene files, part 1a: format decision + drawing components (ADR-035)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons (ADR-035 extension)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-027: Scene files, part 2: game components through a registry (ADR-036)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -335,14 +336,25 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-035 extension. Scene version 1 gains optional `animation` (grid, range, fps, mode, `step`, `time_in_frame`, `finished`), `velocity` and `button` (size) fields; saved entities: those with `Quad`/`Sprite`/`Text`/`SpriteAnimation`/`Button`. Crate-private `SpriteAnimation::playback` / `with_playback` (validating). PP-026a's `demo.ron` kept as the fixture `src/scene/fixtures/demo_v1_pp026a.ron`. Example: animation saved at frame 5, drifting square (`Velocity`), "Click me" button; `PURPLEPIE_SCENE_FREEZE=1` stops animation and movement; `assets/scenes/demo.ron` regenerated (18 entities). No new dependencies. |
 | Result | ✅ 1. Unit tests (+3, two extended): full round trip incl. mid-frame reversed animation on a spaced grid, finished one-shot without sprite, velocity, button (whole-value equality); restored animations match the originals for 40 steps; PP-026a fixture loads and saves back byte-for-byte; `with_playback` validation. Mutations (drop `time_in_frame`, drop `Velocity`) fail the tests. ✅ 2. Xvfb: frozen `save`/`build`/`load` pixel-identical; loaded animated cell = frame 5 (all unoccluded pixels exact); unfrozen it animates and moves; 2 XTEST clicks on the loaded button counted, 1 elsewhere ignored. ✅ 3. Regressions: GPU tests 11/11; sandbox model 0 mismatches, HUD/button unchanged; Breakout autoplay unchanged, lose screen identical; fault test clean. |
 
-### PP-027: Scene files, part 2: game components ← NEXT
+### PP-027: Scene files, part 2: game components
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 (component registry / reflection item) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 (component registry / reflection item) · Priority P1 · **DONE** (2026-10-07; verified on Linux) |
 | Dependencies | PP-026b (DONE) |
 | Why now | Scenes now hold every engine component, but a game's own components (Breakout's bricks, the sandbox's mover) are dropped, so no real level can live in a file yet; the editor (P5) needs the same mechanism to show and edit them. |
 | Scope | ADR first: how a game registers a component type for scenes (e.g. `Context`/`EngineConfig` registration with a name and save/load functions; whether `serde` becomes part of the public API or games convert to/from a small engine-owned value type), how unknown component names in a file are handled (error vs. kept), and how entity references inside components are written. Then implement registration + save/load for registered components, keeping existing version-1 files loading. Split if the ADR shows it is too large. |
 | Acceptance criteria | A game component registered by an example round-trips through a scene file; files without game components still load (PP-026a fixture); unregistered names give a clear error; crate counts measured if dependencies change; CI green. |
+| Scope (as built) | ADR-036. New `Context::register_scene_component::<T>(name)` (`T: hecs::Component + Serialize + DeserializeOwned`; serde enters the public API via this bound). New crate-private `src/scene/registry.rs` (`Registry` in `EngineState`: name + monomorphised has/save/load fns; clash rules → `Error::InvalidConfig`). Scene version 1 gains the optional `components: { "name": <RON> }` field (`ron::value::RawValue`, trimmed on parse); entities with a registered component are saved; unknown names / bad values → `Error::Asset` before anything loads or spawns. No new dependencies (no crate-count change). Example: `Spin` (two rotating squares) and `Visits` (an entity with nothing drawn, counted on load) registered; `demo.ron` regenerated (19 entities). |
+| Result | ✅ 1. Unit tests (+4, one replaced): round trip of structs/enums/options/vecs/unit/newtype components incl. a game-only entity, back to identical text; unregistered dropped/skipped; unknown name and bad value errors spawn nothing; PP-026a fixture still loads; registration rules; `Context` registration + `InvalidConfig` + save/load. Mutation (skip inserting decoded components) fails 3 tests. ✅ 2. Xvfb: frozen `save`/`build`/`load` pixel-identical (and identical to PP-026b's frame); unfrozen, the loaded squares rotate and the text does not change; the example prints "demo scene loaded 1 time(s)" and "2 spinning sprites". ✅ 3. Regressions: GPU tests 11/11; sandbox model 0 mismatches; Breakout autoplay unchanged, lose screen identical; fault test clean. |
+
+### PP-028: Asset hot reload, part 1: textures ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · TODO |
+| Dependencies | PP-027 (DONE) |
+| Why now | The next P3 item. An editor (P5) and fast iteration on art both need changed files to show up without restarting the game; textures are the most common case and already have a CPU store and a GPU re-upload path (`sync_textures`, renderer recreation). |
+| Scope | ADR first: how changes are detected (polling modification times on a timer vs. a file-watcher dependency such as `notify`, measured per ADR-013), whether reload is opt-in (`EngineConfig`) or a `Context` call, and what happens on a broken file (keep the old pixels, log). Then reload a changed PNG under the same `TextureId` (same size or not; filter kept, `Linear` bleeding re-applied) and re-upload it. Fonts, sounds and scenes are later parts. |
+| Acceptance criteria | Unit tests for change detection and replacement (same id, new pixels/size, broken file keeps the old texture); an Xvfb run where overwriting a PNG while the sandbox runs changes the picture without a restart; no change in behaviour when reload is off; CI green. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

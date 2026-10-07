@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-036 | Game components in scenes: `Context::register_scene_component::<T>(name)` with `serde` bounds (serde enters the public API through this one bound); values stored as plain RON under stable names; unknown names are load errors; no entity references | Accepted | Yes (PP-027) |
 | ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; all engine components (animation with playback position, velocity, buttons since PP-026b); game components later | Accepted | Yes (PP-026a, PP-026b) |
 | ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
 
@@ -1868,6 +1869,75 @@ unloading semantics (with PD-06 handles), or a format change (bump `version` and
   drifting square and a "Click me" button: with `PURPLEPIE_SCENE_FREEZE=1`, `save`/`build`/`load` frames are
   pixel-identical and the loaded animated cell shows frame 5's texels; unfrozen, it animates and drifts, and two XTEST
   clicks on the loaded button were counted (a click elsewhere was not).
+
+---
+
+# ADR-036: Game components in scene files through a registry of serde types
+
+## Status
+Accepted (2026-10-07, PP-027). Extends ADR-035 (scene files); first part of the P3 "component registry" item.
+
+## Context
+Since PP-026b scenes hold every engine component, but a game's own components (bricks, health, spinners) were dropped,
+so no real level could live in a file, and the editor (P5) will need the same mechanism to show and edit them. The
+engine cannot know game types; something must name them and turn them into text and back. ADR-035 kept serde out of
+the public API, which a generic mechanism has to revisit.
+
+## Decision
+- **API:** `Context::register_scene_component::<T>(name: &str) -> Result<()>` with
+  `T: hecs::Component + serde::Serialize + serde::de::DeserializeOwned`. **serde enters the public API through this one
+  trait bound** (serde 1.x, the ecosystem standard; games add `serde = { version = "1", features = ["derive"] }`).
+  Engine types still do not derive serde and keep their private mirror types (ADR-035).
+- **Registry (crate-private `scene/registry.rs`, owned by `EngineState`):** per type it stores a stable name and three
+  monomorphised function pointers (has / save / load). No `dyn Serialize`, no new dependency (no `erased-serde`).
+  Registering the same type under the same name again is a no-op; a name taken by another type, a type already under
+  another name, or an empty/space-padded name is `Error::InvalidConfig`.
+- **File format: still version 1.** A new optional entity field `components: { "name": <RON value> }`, values written
+  by the type's own `Serialize` as compact plain RON (`ron::value::RawValue`; options as `Some(…)`, no struct names), in
+  name order. Parsing keeps each value raw (trimmed, so saving again gives the same text) and decodes it with the
+  registered type's `Deserialize`. PP-026a files still load and save back byte-for-byte.
+- **Names, not Rust paths,** identify components, so renaming or moving a type does not break files; any type with the
+  same serde shape reads the value.
+- **Unknown names are errors** (like unknown engine fields): loading fails with "unknown component `x`: the game must
+  register it …", and invalid values with "component `x`: <serde error>", as `Error::Asset`, before any asset is loaded
+  or any entity is spawned.
+- **Which entities are saved:** additionally, every entity with at least one registered component, even with nothing
+  drawable (game state such as a score keeper). Unregistered components are still dropped silently.
+- **No entity references:** components that store an `Entity` cannot be saved (hecs's `Entity` has no serde support
+  enabled, and ids change between runs). Revisit with file-local ids when a game needs links between entities.
+
+## Alternatives Considered
+- **An engine-owned value type** (games convert their components to/from a `SceneValue` tree by hand): keeps serde
+  private but costs every game boilerplate per component and duplicates what serde derive already does.
+- **`erased-serde` + `dyn` components:** a new dependency only to avoid monomorphised function pointers, which work.
+- **Keeping unknown components** (raw, re-saved untouched) or skipping them: friendlier for an editor that loads a file
+  without all game types, but silently loses or hides data and typos; can be added as an explicit option later.
+- **Rust type names (`std::any::type_name`) as keys:** unstable across compiler versions and refactors.
+
+## Rationale
+serde is what every Rust game would use to describe its data anyway; a single bound on one method is the smallest
+public surface that lets games put their components into scenes without boilerplate, and the format change is a purely
+optional field, so existing files are untouched.
+
+## Consequences
+### Positive
+- Verified: unit tests round-trip structs with enums (unit and struct variants), `Option<String>` with quotes, `Vec` of
+  tuples, a unit struct and a newtype, including an entity with only a game component, and save the loaded world back
+  to identical text; unregistered components are dropped and unregistered-only entities skipped; unknown names and bad
+  values fail with named errors and spawn nothing; registration rules; `Context` registration, `InvalidConfig` on a
+  clash, save/load through the asset root. A mutation (not inserting decoded components) fails three tests. The scene
+  example registers `Spin` (two rotating squares) and `Visits` (an entity with nothing drawn): frozen `save`/`build`/
+  `load` frames are pixel-identical, and unfrozen the loaded squares rotate.
+### Negative
+- serde is now a public dependency: a future serde 2 would be a breaking change for games (unlikely; serde 1 has been
+  stable since 2017).
+- A file with a game component can only be loaded by a program that registers it (the shipped `demo.ron` test mirrors
+  the example's two types); an editor will need a lenient mode.
+- Game component values are written compactly on one line; deep structures are less readable than engine components.
+
+## Revisit Conditions
+An editor that must open files without every game type (keep unknown values raw), components with entity references
+(file-local ids), or many components per entity (pretty-printed values).
 
 ---
 

@@ -33,6 +33,8 @@ pub(crate) struct EngineState {
     pub(crate) assets: AssetRoot,
     /// A window title requested by the game, applied by the runner after the callback.
     pub(crate) window_title: Option<String>,
+    /// Game component types that scene files save and load (ADR-036).
+    pub(crate) scene_components: crate::scene::Registry,
 }
 
 impl EngineState {
@@ -50,6 +52,7 @@ impl EngineState {
             viewport: Vec2::ZERO,
             assets,
             window_title: None,
+            scene_components: crate::scene::Registry::default(),
         }
     }
 }
