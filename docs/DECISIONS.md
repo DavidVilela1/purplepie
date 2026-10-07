@@ -40,6 +40,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-025 | Asset root: relative asset paths resolve against one folder chosen at startup (config, else next to the executable, else the working directory) | Accepted | Yes (Stage 9, PP-011) |
 | ADR-026 | API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`; `missing_docs` enforced | Accepted | Yes (Stage 10, PP-017) |
 | ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component (with `TextAnchor`); `FontId` handles; `Context::measure_text`; Poppins shipped (OFL) | Accepted (extended by PP-018b) | Yes (PP-018a: fonts, atlas, `Text`; PP-018b: anchors, measuring, Breakout HUD) |
+| ADR-028 | Sprite animation: `SpriteAnimation` component (grid + frame range + fps + loop/once) advanced by the game-called `render::advance_animations`; the draw list shows its current frame | Accepted | Yes (PP-020) |
 
 ---
 
@@ -1377,6 +1378,57 @@ fields), a third asset kind or unloading (generic handles, PD-06), or atlas rese
 - **Breakout** now shows its score, the win/lose headline and the next action as `Text` (centred), verified: all pixels
   that changed on the lose screen lie inside the rectangles `TextMetrics::bounds` predicts, and the autoplay results are
   unchanged.
+
+---
+
+# ADR-028: Sprite animation: a component advanced by a game-called system; the renderer draws its current frame
+
+## Status
+Accepted (2026-10-07, PP-020). Builds on the ADR-020 extension (texture regions, `SpriteGrid`).
+
+## Context
+Sprite sheets (PP-019) cover tiles but not motion. Every game would otherwise write the same timer and frame-index code,
+and get the fixed-step edge cases wrong (frames a step late from `f32` sums, huge `dt` after a stall).
+
+## Decision
+- **`render::SpriteAnimation`** (component): public `grid`, `first`, `last` (inclusive; `last < first` plays backwards),
+  `fps`, `mode: AnimationMode { Loop (default), Once }`; private playback state (frame step + seconds in the current
+  frame, `f64`). Methods: `new`, `once`, `frame`, `region`, `len`, `is_finished`, `restart`, `advance(dt)`.
+- **`render::advance_animations(&mut World, dt)`** advances every animation; the game calls it from `fixed_update`,
+  exactly like `ecs::integrate_velocity` (ADR-008: the game owns the schedule). Playback depends only on the summed
+  `dt`, so it is deterministic with the fixed timestep.
+- **The draw list reads the animation** (`Option<&SpriteAnimation>` in the sprite query): while an entity has one, its
+  sprite shows the animation's current frame and `Sprite::region` is ignored. So the right frame is drawn from the very
+  first frame, before any fixed step has run, and there is no second copy of the frame to keep in sync.
+- **Timing:** frames advance when the time in the current frame reaches `1/fps` (minus a 1 µs slack). Without the
+  slack, 50 Hz steps at 25 fps show a frame one step late (`f32` sums fall a hair short); with it, every tested pair
+  (60/10, 60/12, 60/15, 60/30, 120/24, 144/24, 50/25, 30/6 Hz/fps) switches on exactly the expected step for 20 loops.
+  Long `dt` skips frames like many short steps; invalid `fps` or `dt` holds the frame; absurd `dt` saturates.
+
+## Alternatives Considered
+- **The system writes `Sprite::region`:** two sources of truth, and the first rendered frame shows the whole sheet until
+  a fixed step runs.
+- **Advance animations automatically inside the engine loop:** hides scheduling from the game (pause menus, slow motion
+  and hit-stop would need engine options); every other system is game-called.
+- **Seconds-since-start state:** loses precision over long sessions; the per-frame remainder stays bounded.
+- **Per-frame durations / named clips / events:** not needed yet; a game can switch `first`/`last`/`fps` or swap the
+  component.
+
+## Rationale
+Smallest API that removes the repeated timer code, keeps scheduling in the game, and is exactly testable.
+
+## Consequences
+### Positive
+- Verified: unit tests for timing, ranges, reversal, once/restart, long steps, invalid values; the sandbox's animated cell
+  shows exactly one sheet frame in every screenshot, and timed runs print the frame `⌊steps / 15⌋ mod 8` (4 fps at
+  60 Hz) after 119, 399 and 630 steps.
+### Negative
+- `Sprite::region` is silently ignored while an animation is attached (documented on both types).
+- Playback stops if the game forgets to call `advance_animations` (documented in the examples).
+
+## Revisit Conditions
+Variable frame durations, animation events (e.g. "footstep on frame 3"), blending between clips, or many animated
+entities showing up in profiles.
 
 ---
 

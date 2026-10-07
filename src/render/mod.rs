@@ -2,7 +2,8 @@
 //!
 //! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
 //! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`,
-//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`).
+//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`) and the
+//! `advance_animations` system.
 //! Crate-private: the `Renderer`, which owns every `wgpu` object, the CPU-side
 //! texture and font stores, and the glyph atlas. Game code never touches the
 //! GPU. The engine draws whatever the game state describes.
@@ -14,6 +15,7 @@
 //! sprites, then text. Coordinates: ADR-018. Camera: ADR-022. Textures:
 //! ADR-020. Draw order: ADR-021. Text: ADR-027.
 
+mod animation;
 mod atlas;
 mod camera;
 mod color;
@@ -28,6 +30,7 @@ mod sprite;
 mod text;
 mod texture;
 
+pub use animation::{AnimationMode, SpriteAnimation, advance_animations};
 pub use camera::Camera2D;
 pub use color::Color;
 pub use draw::{Hidden, Layer};

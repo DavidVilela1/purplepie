@@ -202,6 +202,9 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
   centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;
   mirrored: texel column 7 − column) and expect 0 mismatches at zoom 1, 1.5 and 2 (apart from the cursor marker).
+- **Sprite animation (PP-020+, ADR-028):** the fifth cell at (580, −250) plays all 8 sheet frames at 4 fps. In a
+  screenshot it must equal exactly one frame (exclude it from the static model and compare it with each frame). The
+  timed exit prints `animated cell shows frame Some(n)`; expect n = ⌊fixed steps / 15⌋ mod 8.
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
   `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
   rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;

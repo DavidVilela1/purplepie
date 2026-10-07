@@ -14,7 +14,7 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 **Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
 Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets done; **PP-020 sprite frame animation** is next. The long-term plan (in-game UI and an editor) is in
+progress:** PP-019 sprite sheets and PP-020 sprite animation done; **PP-021 screen-space drawing for HUD/UI** is next. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -88,6 +88,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-018a: text rendering part 1: fonts, glyph atlas, `Text` (ADR-027).
 - PP-018b: text anchors/alignment, `Context::measure_text`, Breakout HUD text. Phase P1 (Text) complete.
 - PP-019: sprite sheets: `Sprite` regions (`TextureRegion`) + `SpriteGrid`.
+- PP-020: sprite frame animation: `SpriteAnimation` + `render::advance_animations` (ADR-028).
 
 ## In Progress
 
@@ -95,7 +96,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-020: Sprite frame animation** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-020-sprite-frame-animation--next).
+- **PP-021: Screen-space drawing for HUD/UI** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-021-screen-space-drawing-for-hudui--next).
 
 ## Blocked
 
@@ -116,7 +117,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Input: 99 physical keys and 5 mouse buttons only (no text input, gamepads, touch or rebinding). Under X11 + XTEST, winit reports each synthetic wheel click twice (2 lines); real hardware unverified. An edge reaches `fixed_update` one frame late when the frame that saw it ran no fixed step.
 - One camera only, without rotation, and no screen-space (UI) layer that ignores it. A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
-- Textures: PNG only. A sprite shows its whole texture or one rectangular region of it (sprite sheets, PP-019); regions are not animated yet (PP-020), and sheets need `Nearest` sampling (linear filtering would bleed across cells). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
+- Textures: PNG only. A sprite shows its whole texture or one rectangular region of it (sprite sheets, PP-019); regions can be animated with `SpriteAnimation` (fixed frame rate per animation; no per-frame durations or events), and sheets need `Nearest` sampling (linear filtering would bleed across cells). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
 - Text: no wrapping or text boxes, no shaping (one glyph per `char`: no ligatures, complex or right-to-left scripts), no font fallback, kerning only from a `kern` table; small light-on-dark text looks a little bolder than in gamma-space renderers (linear blending, R-25); text larger than 512 physical pixels is not drawn. Sprites use `Nearest` sampling only (scaled-down sprites alias). Other Breakout friction points were decided in ADR-026 (some deliberately unchanged).
 - GPU faults are not recoverable. A lost surface or device ends the game with `Error::Render` (ADR-017).
@@ -129,6 +130,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-020 Sprite frame animation.**
+  - New public API: `render::{SpriteAnimation, AnimationMode, advance_animations}` (ADR-028). The game calls `advance_animations(world, dt)` from `fixed_update`; the draw list shows each animation's current frame (overriding `Sprite::region`).
+  - Deterministic timing with a 1 µs boundary slack (needed: 50 Hz steps at 25 fps were a step late without it).
+  - Sandbox: an animated sheet cell at (580, −250); the timed exit prints its frame. No new dependencies.
 
 - **2026-10-06: PP-019 Sprite sheets (phase P2 starts).**
   - New public API: `render::{TextureRegion, SpriteGrid}`, `Sprite::region` + `Sprite::with_region`. Regions are texel rectangles turned into the instance's `uv_rect`; one texture is still one draw call.
@@ -256,7 +262,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-06, after the final PP-019 change
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) on 2026-10-07, after the final PP-020 change
 (CI additionally runs the latest stable clippy, which Cowork cannot install; R-19):
 
 | Command / check | Result |
@@ -264,13 +270,15 @@ Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe) 
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 149 unit tests + 21 doctests, 9 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 9/9, incl. sprite-sheet cells = their texels on all 4,096 pixels (mutation-checked), text = CPU rasterization, anchored text inside its bounds |
+| `cargo test --locked` | ✅ PASS: 159 unit tests + 23 doctests, 9 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 9/9 |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox whole-frame model incl. 4 sheet cells (one mirrored) | ✅ 0 mismatches at (0,0)×1; only the known cursor-marker pixels at (450,−250)×2 (400) and (460,−240)×1.5 (225); the model flags a wrong mirror (32 px) or cell (1,008 px) |
+| Sandbox whole-frame model (animated cell checked separately) | ✅ 0 mismatches at (0,0)×1; only the cursor marker at (560,−250)×2 |
+| Sandbox animated cell in screenshots | ✅ exactly one sheet frame each time (frame 1 at ×1, frame 4 at ×2) |
+| Sandbox timed runs (`PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES` = 120 / 400 / 631) | ✅ frame 7 / 2 / 2 after 119 / 399 / 630 steps = ⌊steps/15⌋ mod 8 |
 | Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-018b | ✅ pixel-identical |
+| Breakout lose screen vs PP-019 | ✅ pixel-identical |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -278,4 +286,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-06. PP-019 done (sprite sheets; ADR-020 extension). PP-020 (sprite frame animation) is next.
+2026-10-07. PP-020 done (sprite animation; ADR-028). PP-021 (screen-space drawing for HUD/UI) is next.

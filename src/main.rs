@@ -6,7 +6,7 @@
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
 //! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
 //! A text label at the bottom left lists these controls; four sprite-sheet cells
-//! (one mirrored) sit at the bottom right.
+//! (one mirrored) and one animated cell sit at the bottom right.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -22,7 +22,9 @@ use std::process::ExitCode;
 use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Camera2D, Color, Layer, Quad, Sprite, SpriteGrid, Text};
+use purplepie::render::{
+    self, Camera2D, Color, Layer, Quad, Sprite, SpriteAnimation, SpriteGrid, Text,
+};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -95,6 +97,8 @@ const SHEET_CELLS: [(u32, f32, bool); 4] = [
     (6, 480.0, true),
     (3, 520.0, false),
 ];
+/// The animated cell (ADR-028): all 8 sheet frames in a loop, at (580, −250).
+const ANIMATED_FPS: f32 = 4.0;
 /// The font shipped with PurplePie (SIL Open Font License, `assets/fonts/OFL.txt`).
 const FONT: &str = "fonts/Poppins-Regular.ttf";
 /// The help label: its baseline starts here (world units) and its size is the em size.
@@ -118,6 +122,8 @@ struct Sandbox {
     simulated_seconds: f64,
     mover: Option<Entity>,
     spinner: Option<Entity>,
+    /// The animated sprite-sheet cell.
+    animated: Option<Entity>,
     camera: Camera2D,
     /// `=` presses seen by `fixed_update` and by `update` (each press must count once in each).
     zoom_in_presses: (u32, u32),
@@ -145,6 +151,11 @@ impl Game for Sandbox {
                 ));
             }
         }
+        self.animated = Some(world.spawn((
+            Transform2D::from_position(Vec2::new(580.0, -250.0)),
+            Sprite::new(sheet, Vec2::splat(32.0)),
+            SpriteAnimation::new(grid, 0, grid.len() - 1, ANIMATED_FPS),
+        )));
         // Text (ADR-027): a help label in the bottom-left corner of the default view.
         world.spawn((
             Transform2D::from_position(LABEL_POSITION),
@@ -205,6 +216,7 @@ impl Game for Sandbox {
         self.simulated_seconds += f64::from(ctx.dt());
         let dt = ctx.dt();
         ecs::integrate_velocity(ctx.world_mut(), dt);
+        render::advance_animations(ctx.world_mut(), dt);
         // Bounce the mover between the limits (game logic, not an engine feature).
         for (transform, velocity) in ctx.world_mut().query_mut::<(&Transform2D, &mut Velocity)>() {
             let x = transform.position.x;
@@ -304,6 +316,13 @@ impl Game for Sandbox {
                 "sandbox: '=' presses seen: {} in fixed_update, {} in update",
                 self.zoom_in_presses.0, self.zoom_in_presses.1
             );
+            let frame = self.animated.and_then(|e| {
+                ctx.world()
+                    .get::<&SpriteAnimation>(e)
+                    .ok()
+                    .map(|a| a.frame())
+            });
+            println!("sandbox: animated cell shows frame {frame:?}");
             let cursor = ctx.input().cursor_position();
             println!(
                 "sandbox: left clicks seen: {} in fixed_update, {} in update; cursor {:?} screen, {:?} world",
@@ -352,6 +371,7 @@ fn main() -> ExitCode {
         simulated_seconds: 0.0,
         mover: None,
         spinner: None,
+        animated: None,
         camera,
         zoom_in_presses: (0, 0),
         marker: None,

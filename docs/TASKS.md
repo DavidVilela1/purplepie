@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-020: Sprite frame animation (time-driven `SpriteGrid` frames)** · P1 · TODO ← **next task**
+- [ ] **PP-021: Screen-space drawing for HUD/UI (ignores the camera)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -43,6 +43,7 @@ _None._
 - [x] **PP-018a: Text rendering, part 1 (ADR-027): fonts, glyph atlas, `Text` component** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-018b: Text anchors/alignment, `measure_text`, Breakout HUD text** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-019: Sprite sheets: `Sprite` regions + `SpriteGrid`** · DONE (2026-10-06; verified on Linux)
+- [x] **PP-020: Sprite frame animation (ADR-028)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -230,14 +231,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-020 extension. New `src/render/region.rs`: public `TextureRegion { x, y, width, height }` (texels, rows down; `size()`; crate-private `uv_rect` that cuts to the texture) and `SpriteGrid` (`new`, `with_spacing`, `with_margin`, `cell`, `frame`, `len`, `is_empty`; overflow-safe). `Sprite::region` + `with_region` (default `None` = whole texture). `DrawList::build` now also takes `&Textures` to turn regions into `uv_rect`; regions outside the texture or of unknown textures are skipped. Mirroring stays a negative transform scale (no flip flags). New asset `assets/textures/sandbox_sheet.png` (32×16, 4×2 cells of 8×8, each with its own border/inner colour and a white corner texel); the sandbox shows four cells at (400…520, −250), 32×32, the third mirrored. No new dependencies. |
 | Acceptance criteria | ✅ 1. Unit tests: region → UV (whole, partial, cut, empty, outside, overflow), grid cells with margin/spacing, row-major frames, degenerate/overflowing grids, draw list (regions as `uv_rect`, one batch per texture, skipped regions). ✅ 2. GPU (`--ignored`): four cells drawn at 4× (one mirrored) — every one of 4,096 pixels equals its own texel; fails when regions are ignored (mutation check). ✅ 3. Xvfb sandbox whole-frame model incl. the four cells: 0 mismatches at (0,0)×1; only the known cursor-marker pixels at (450,−250)×2 and (460,−240)×1.5; the model detects a wrong mirror (32 px) or a wrong cell (1,008 px). ✅ 4. Sprites without regions unchanged: Breakout lose screen pixel-identical to PP-018b; autoplay `win` 7135 / 220, `lose` 892 / 14. |
 
-### PP-020: Sprite frame animation ← NEXT
+### PP-020: Sprite frame animation
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 · Priority P1 · TODO |
+| Stage | Post-portfolio phase P2 · Priority P1 · **DONE** (2026-10-07) |
 | Dependencies | PP-019 (DONE) |
-| Why now | Sheets without animation only cover tiles; walking characters, explosions and blinking UI need frames that change over time, and every game would otherwise re-write the same timer code. |
-| Scope | A plain-data animation component (a `SpriteGrid`, a frame range or list, frames per second, looping or once) and a system the game calls from `fixed_update` (like `ecs::integrate_velocity`) that advances it deterministically and writes `Sprite::region`; a way to tell that a one-shot animation finished. Lives in `render` (it writes `Sprite`). No new dependencies. |
-| Acceptance criteria | Unit tests for frame timing at the fixed step (loop, once, zero/negative fps, range edges, large dt); determinism (same steps → same frame); sandbox shows an animated cell and a timed Xvfb run shows the expected frame; existing sprites unchanged. |
+| Scope (as built) | ADR-028. New `src/render/animation.rs`: public `SpriteAnimation` (grid, `first`, `last` (reverse when smaller), `fps`, `mode`; `new`, `once`, `frame`, `region`, `len`, `is_finished`, `restart`, `advance`), `AnimationMode { Loop, Once }` and the system `advance_animations(&mut World, dt)` the game calls from `fixed_update`. Playback state = frame step + `f64` seconds in frame, with a 1 µs boundary slack. The draw list queries `Option<&SpriteAnimation>` and draws its current frame instead of `Sprite::region`. Sandbox: an animated cell (all 8 sheet frames, 4 fps) at (580, −250); the timed exit prints its frame. No new dependencies. |
+| Acceptance criteria | ✅ 1. Unit tests (10 + 1 draw list): exact frame switching for 8 step-rate/fps pairs over 20 loops (fails without the slack at 50 Hz/25 fps: checked), no drift over 8 loops, sub-ranges, reverse, once/finished/restart, one long step = many short steps, huge `dt`, invalid fps/dt, single frame, `advance_animations` over several entities, draw list uses the current frame and skips frames outside the grid. ✅ 2. Xvfb: the animated cell equals exactly one sheet frame in each screenshot (frame 1 at zoom 1, frame 4 at zoom 2; all other frames 1,008 / 4,032 px off); rest of the frame 0 mismatches (cursor marker aside). ✅ 3. Timed runs: frame 7 after 119 steps, 2 after 399, 2 after 630 = ⌊steps/15⌋ mod 8. ✅ 4. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-019; GPU tests 9/9; window-destroy fault test clean. |
+
+### PP-021: Screen-space drawing for HUD/UI ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · TODO |
+| Dependencies | PP-018b (anchored text), PP-020 (DONE) |
+| Why now | First step towards the owner's in-game UI goal and a known limitation: HUDs live in world space, so they move and scale with the camera (Breakout re-fits its camera every frame to keep its HUD in place). Every UI widget later needs a camera-independent space. |
+| Scope | A marker component (or equivalent) that draws an entity's quad/sprite/text in **screen space**: logical pixels with an anchor to a window corner/edge/centre, unaffected by `Camera2D`, drawn after (above) world content; pixel-exact at any DPI; cursor ↔ screen-space helpers if needed for hit testing. Decide the ordering rule against `Layer` in an ADR. Breakout or the sandbox shows one HUD element in screen space. |
+| Acceptance criteria | Unit tests for the screen-space projection (corners, DPI 1/1.25/2, resize); Xvfb pixel check that a screen-space element stays at the same window pixels while the camera pans/zooms; world rendering unchanged. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

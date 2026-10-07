@@ -7,6 +7,7 @@
 
 use std::ops::Range;
 
+use super::animation::SpriteAnimation;
 use super::atlas::GlyphAtlas;
 use super::font::Fonts;
 use super::instance::Instance;
@@ -147,8 +148,17 @@ impl DrawList {
             );
             self.push(entity, layer, Material::Color, 0, instance);
         }
-        for (entity, transform, sprite, layer) in world
-            .query::<Without<(Entity, &Transform2D, &Sprite, Option<&Layer>), &Hidden>>()
+        for (entity, transform, sprite, animation, layer) in world
+            .query::<Without<
+                (
+                    Entity,
+                    &Transform2D,
+                    &Sprite,
+                    Option<&SpriteAnimation>,
+                    Option<&Layer>,
+                ),
+                &Hidden,
+            >>()
             .iter()
         {
             let mut instance = Instance::new(
@@ -158,7 +168,15 @@ impl DrawList {
                 sprite.tint,
                 target_is_srgb,
             );
-            if let Some(region) = sprite.region {
+            // An animation's current frame replaces the sprite's own region (ADR-028).
+            let region = match animation {
+                Some(animation) => match animation.region() {
+                    Some(region) => Some(region),
+                    None => continue, // frame outside its grid: nothing to show
+                },
+                None => sprite.region,
+            };
+            if let Some(region) = region {
                 // Cut to the texture; nothing left (or an unknown texture) → not drawn.
                 let Some(uv_rect) = textures
                     .get(sprite.texture)
@@ -904,5 +922,46 @@ mod tests {
         );
         let uvs: Vec<[f32; 4]> = list.instances().iter().map(|i| i.uv_rect).collect();
         assert_eq!(uvs, [[0.75, 0.5, 0.25, 0.5]]);
+    }
+
+    #[test]
+    fn an_animation_draws_its_current_frame_instead_of_the_sprite_region() {
+        let (textures, tex) = sheet();
+        let grid = super::super::SpriteGrid::new(8, 8, 4, 2);
+        let mut world = World::new();
+        let e = world.spawn((
+            Transform2D::default(),
+            Sprite::new(tex, Vec2::ONE).with_region(super::super::TextureRegion::new(0, 0, 32, 16)),
+            SpriteAnimation::new(grid, 4, 7, 60.0),
+        ));
+        let uv = |world: &World| {
+            let mut list = DrawList::default();
+            list.build(
+                world,
+                &View::flat(Mat4::IDENTITY),
+                &textures,
+                &Fonts::default(),
+                &mut GlyphAtlas::new(16),
+            );
+            list.instances()
+                .iter()
+                .map(|i| i.uv_rect)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            uv(&world),
+            [[0.0, 0.5, 0.25, 0.5]],
+            "frame 4 = column 0, row 1"
+        );
+        super::super::advance_animations(&mut world, 1.0 / 60.0);
+        assert_eq!(uv(&world), [[0.25, 0.5, 0.25, 0.5]], "frame 5");
+        // A frame outside its grid draws nothing.
+        world
+            .insert_one(
+                e,
+                SpriteAnimation::new(super::super::SpriteGrid::new(8, 8, 1, 1), 3, 3, 1.0),
+            )
+            .expect("entity exists");
+        assert!(uv(&world).is_empty());
     }
 }
