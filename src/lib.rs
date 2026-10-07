@@ -40,6 +40,7 @@ pub mod input;
 pub mod math;
 pub mod render;
 mod time;
+pub mod ui;
 
 pub use app::{Context, Engine, EngineConfig, Game};
 pub use error::{BoxError, Error, Result};

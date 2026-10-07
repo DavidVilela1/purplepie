@@ -15,7 +15,7 @@ directory on 2026-09-30, with no decision content changed.
 |---|---|---|---|
 | ADR-001 | Rust as the primary implementation language | Accepted | Yes (Stage 0) |
 | ADR-002 | Single package: engine library + `sandbox` binary | Accepted (reaffirmed by ADR-026) | Yes (Stage 0); `examples/` added in Stage 10 |
-| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9; `audio` in PP-022 |
+| ADR-003 | Module boundaries and dependency direction | Accepted | Yes for `error`, `app`, `time`, `math`, `ecs`, `render`, `input` (keyboard, Stage 8); `assets` in Stage 9; `audio` in PP-022; `ui` in PP-023 |
 | ADR-004 | `winit` 0.30.13 for windowing and events | Accepted | Yes (Stage 1, `src/app/` only) |
 | ADR-005 | `wgpu` 30.0.1 as the GPU abstraction | Accepted | Yes (Stage 4, `src/render/` only) |
 | ADR-006 | `hecs` as the ECS | Accepted | Yes (Stage 3, `src/ecs/`) |
@@ -43,6 +43,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-028 | Sprite animation: `SpriteAnimation` component (grid + frame range + fps + loop/once) advanced by the game-called `render::advance_animations`; the draw list shows its current frame | Accepted | Yes (PP-020) |
 | ADR-029 | Screen space: a `ScreenSpace { anchor }` component draws quads, sprites and text in logical window pixels from a window anchor, ignoring the camera, after all world content | Accepted | Yes (PP-021) |
 | ADR-030 | Audio: `cpal` output + `hound` WAV decoding + PurplePie's own mixer; `SoundId`; `Context::load_sound` / `play_sound`; silent fallback without a device; generic handles (PD-06) deferred again | Accepted | Yes (PP-022: one-shot sound effects) |
+| ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 
 ---
 
@@ -1544,6 +1545,53 @@ matters (mixing) exactly testable.
 ## Revisit Conditions
 Music/looping/stop control (consider `kira`), compressed formats (OGG via `lewton`), latency complaints, or a fourth
 asset kind (generic handles, PD-06).
+
+---
+
+# ADR-031: UI interaction: a `ui` module with a data-only `Button`, a `Pointer` snapshot and a game-called system
+
+## Status
+Accepted (2026-10-07, PP-023). Builds on ADR-029 (screen space) and ADR-024 (input).
+
+## Context
+Screen-space drawing exists (PP-021), but every menu or HUD button needs the same hit testing and the same
+press/release rules, which are easy to get subtly wrong (press on one button, release on another; overlapping buttons;
+focus loss while held).
+
+## Decision
+- **New public module `ui`** (depends on `ecs`, `math`, `input`, `render`; nothing depends on it).
+- **`ui::Button { size, .. }`** component: a rectangle of `size` logical pixels centred on the entity's `Transform2D`
+  (scale applies, rotation is ignored), in the entity's `ScreenSpace`. Read-only state: `is_hovered`, `is_pressed`
+  (pressed on it, still held, cursor over it) and `clicked` (press **and** release on it; true for one update). Buttons
+  without `ScreenSpace` and `Hidden` buttons never react. **Visuals stay the game's choice** (any quad/sprite/text).
+- **`ui::Pointer`** is a `Copy` snapshot of the cursor and the left mouse button (`Pointer::from_input(ctx.input())`),
+  so it can be read before borrowing the world mutably (the ADR-026 F4 pattern).
+- **`ui::update_buttons(&mut World, Pointer, viewport)`** — called by the game (like `integrate_velocity` and
+  `advance_animations`), normally once per `update`. Only the **topmost** button under the cursor reacts: highest
+  `Layer`, then the most recently spawned entity. A release without a seen edge (focus loss) disarms.
+
+## Alternatives Considered
+- **Immediate-mode UI (`if ui.button("Reset") { … }`)**: compact, but needs a UI context, layout and its own drawing;
+  that is the editor/debug-overlay phase (P4, probably egui), not in-game UI.
+- **Callbacks or events on click:** closures in components are awkward with hecs and determinism; polling `clicked()`
+  is simpler and testable.
+- **All overlapping buttons react:** a dialog over a button would click both.
+
+## Rationale
+The smallest piece that removes repeated, error-prone code while keeping the engine free of a widget toolkit.
+
+## Consequences
+### Positive
+- Verified: 9 unit tests (edges, one-update clicks, quick click, drag off/onto, unseen release, topmost by layer and
+  age, hidden/unanchored, anchors + scale + window size, `Pointer::from_input`); Xvfb XTEST in the sandbox: idle →
+  hover → pressed colours exact, one click resets the camera (`reset button clicks: 1`, camera back to (0,0)×1), press
+  on the button and release outside does not click, and clicks on the button never stamp the world.
+### Negative
+- No keyboard focus/navigation, no layout, no text input, no disabled state yet.
+- Hit areas are axis-aligned (rotation ignored).
+
+## Revisit Conditions
+Menus with keyboard/gamepad navigation, many widgets needing layout, or the editor/debug overlay (P4).
 
 ---
 

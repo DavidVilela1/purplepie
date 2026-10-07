@@ -216,6 +216,11 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   `out.raw` (interleaved samples) with `blip.wav` resampled linearly × 0.8: expect exactly one copy, identical channels.
   The null device runs faster than real time and the file grows by ~140 MB/s, so keep runs short and delete it after.
   For determinism with an active device use `pcm.!default { type null }`.
+- **UI buttons (PP-023+, ADR-031):** the sandbox's "Reset camera" button covers window x W−180..W−21, y 20..59. With
+  XTEST (`mousemove`, `mousedown 1`, `mouseup 1`) and screenshots, a pixel inside it away from the text (e.g. W−170, 25)
+  is `#3A86FF` idle, `#6FA8FF` hovered, `#1D5FCC` held. Start with `PURPLEPIE_SANDBOX_CAMERA=0,120,2`: after one click
+  the exit lines show `camera at (0, 0) zoom 1` and `reset button clicks: 1`. Press on the button and release elsewhere:
+  no click. Clicks on the button must not stamp. Exclude the button from the world model.
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
   `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
   rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;

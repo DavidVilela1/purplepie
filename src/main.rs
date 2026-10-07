@@ -7,7 +7,8 @@
 //! left click stamps a square at the cursor (with a blip sound), Escape quits. A green marker follows the cursor.
 //! A text label at the bottom left lists these controls; four sprite-sheet cells
 //! (one mirrored) and one animated cell sit at the bottom right. A screen-space
-//! HUD panel (top-left) and square (bottom-right corner) ignore the camera.
+//! HUD panel (top-left) and square (bottom-right corner) ignore the camera; a
+//! "Reset camera" button (top-right) resets pan and zoom (clicks on it do not stamp).
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -27,6 +28,7 @@ use purplepie::render::{
     self, Camera2D, Color, Layer, Quad, ScreenSpace, Sprite, SpriteAnimation, SpriteGrid, Text,
     TextAnchor,
 };
+use purplepie::ui::{self, Button, Pointer};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
@@ -101,6 +103,8 @@ const SHEET_CELLS: [(u32, f32, bool); 4] = [
 ];
 /// Played when a click stamps a square (ADR-030).
 const CLICK_SOUND: &str = "sounds/blip.wav";
+/// The reset button (ADR-031): idle, hovered and pressed colours.
+const BUTTON_COLORS: [u32; 3] = [0x3A86FF, 0x6FA8FF, 0x1D5FCC];
 /// The animated cell (ADR-028): all 8 sheet frames in a loop, at (580, −250).
 const ANIMATED_FPS: f32 = 4.0;
 /// The font shipped with PurplePie (SIL Open Font License, `assets/fonts/OFL.txt`).
@@ -128,6 +132,10 @@ struct Sandbox {
     spinner: Option<Entity>,
     /// The animated sprite-sheet cell.
     animated: Option<Entity>,
+    /// The "Reset camera" button (its quad shows the state).
+    reset_button: Option<Entity>,
+    /// Clicks on the reset button.
+    reset_clicks: u32,
     /// Played on every stamp.
     click_sound: Option<purplepie::audio::SoundId>,
     camera: Camera2D,
@@ -176,6 +184,21 @@ impl Game for Sandbox {
             Transform2D::from_position(Vec2::new(-30.0, 30.0)),
             Quad::new(Vec2::splat(40.0), Color::hex(0xFF006E)),
             ScreenSpace::BOTTOM_RIGHT,
+        ));
+        // A UI button (ADR-031): 160×40, 20 px from the top-right corner.
+        self.reset_button = Some(world.spawn((
+            Transform2D::from_position(Vec2::new(-100.0, -40.0)),
+            ScreenSpace::TOP_RIGHT,
+            Button::new(Vec2::new(160.0, 40.0)),
+            Quad::new(Vec2::new(160.0, 40.0), Color::hex(BUTTON_COLORS[0])),
+        )));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-100.0, -40.0)),
+            ScreenSpace::TOP_RIGHT,
+            Text::new("Reset camera", font, 18.0)
+                .with_color(Color::hex(0xF1FAEE))
+                .with_anchor(TextAnchor::CENTER),
+            Layer(1),
         ));
         self.animated = Some(world.spawn((
             Transform2D::from_position(Vec2::new(580.0, -250.0)),
@@ -284,9 +307,14 @@ impl Game for Sandbox {
         }
         // Left click: stamp a cyan square at the cursor (world coordinates, read
         // before this step's camera change).
+        // Clicks on the UI button are the button's, not the world's.
+        let over_button = self
+            .reset_button
+            .and_then(|e| ctx.world().get::<&Button>(e).ok().map(|b| b.is_hovered()))
+            .unwrap_or(false);
         if click {
             self.left_clicks.0 += 1;
-            if let Some(position) = cursor {
+            if let Some(position) = cursor.filter(|_| !over_button) {
                 ctx.world_mut().spawn((
                     Transform2D::from_position(position),
                     Quad::new(Vec2::splat(STAMP_SIZE), Color::hex(0x00E0FF)),
@@ -300,6 +328,29 @@ impl Game for Sandbox {
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {
+        // UI first (ADR-031): copy the mouse state, then update the buttons.
+        let pointer = Pointer::from_input(ctx.input());
+        let viewport = ctx.viewport_size();
+        ui::update_buttons(ctx.world_mut(), pointer, viewport);
+        if let Some(entity) = self.reset_button {
+            let state = ctx.world().get::<&Button>(entity).ok().map(|b| *b);
+            if let Some(button) = state {
+                let color = if button.is_pressed() {
+                    BUTTON_COLORS[2]
+                } else if button.is_hovered() {
+                    BUTTON_COLORS[1]
+                } else {
+                    BUTTON_COLORS[0]
+                };
+                if let Ok(mut quad) = ctx.world_mut().get::<&mut Quad>(entity) {
+                    quad.color = Color::hex(color);
+                }
+                if button.clicked() {
+                    self.reset_clicks += 1;
+                    *ctx.camera_mut() = Camera2D::default();
+                }
+            }
+        }
         self.zoom_in_presses.1 += u32::from(ctx.input().just_pressed(KeyCode::Equal));
         self.left_clicks.1 += u32::from(ctx.input().mouse_just_pressed(MouseButton::Left));
         // The marker follows the cursor every frame (hidden outside the window).
@@ -353,6 +404,7 @@ impl Game for Sandbox {
             });
             println!("sandbox: animated cell shows frame {frame:?}");
             println!("sandbox: audio output available: {}", ctx.audio_available());
+            println!("sandbox: reset button clicks: {}", self.reset_clicks);
             let cursor = ctx.input().cursor_position();
             println!(
                 "sandbox: left clicks seen: {} in fixed_update, {} in update; cursor {:?} screen, {:?} world",
@@ -403,6 +455,8 @@ fn main() -> ExitCode {
         spinner: None,
         animated: None,
         click_sound: None,
+        reset_button: None,
+        reset_clicks: 0,
         camera,
         zoom_in_presses: (0, 0),
         marker: None,

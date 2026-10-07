@@ -14,7 +14,7 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 
 **Post-portfolio phase P1 (Text): complete** (PP-018a fonts + glyph atlas + `Text`; PP-018b anchors, measuring and
 Breakout's HUD text; ADR-027), verified on Linux. Stages 0–10 are done. **Phase P2 (runtime essentials) in
-progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects done; **PP-023 UI buttons** is next. The long-term plan (in-game UI and an editor) is in
+progress:** PP-019 sprite sheets, PP-020 sprite animation, PP-021 screen-space drawing and PP-022 sound effects and PP-023 UI buttons done; **PP-024 audio part 2 (music)** is next. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -91,6 +91,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-020: sprite frame animation: `SpriteAnimation` + `render::advance_animations` (ADR-028).
 - PP-021: screen-space drawing for HUD/UI: `ScreenSpace` (ADR-029).
 - PP-022: audio part 1, sound effects: `cpal` + `hound` + own mixer, `Context::load_sound` / `play_sound` (ADR-030).
+- PP-023: UI buttons: `ui::Button`, `ui::Pointer`, `ui::update_buttons` (ADR-031).
 
 ## In Progress
 
@@ -98,7 +99,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-023: UI buttons** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-023-ui-buttons--next).
+- **PP-024: Audio, part 2 (music)** (post-portfolio phase P2). See [TASKS.md](TASKS.md#pp-024-audio-part-2--next).
 
 ## Blocked
 
@@ -117,7 +118,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 - Windows (owner): the purple window (Stage 4), `cargo test`, Escape and the close button are confirmed. Stages 5–7 rendering, vsync pacing and GPU fault paths are unverified there. macOS compiles and passes `cargo test` in CI but its rendering has never been seen; Wayland is untested.
 - Input: 99 physical keys and 5 mouse buttons only (no text input, gamepads, touch or rebinding). Under X11 + XTEST, winit reports each synthetic wheel click twice (2 lines); real hardware unverified. An edge reaches `fixed_update` one frame late when the frame that saw it ran no fixed step.
-- One camera only, without rotation. Screen-space content (`ScreenSpace`, PP-021) is always drawn above world content; there are no UI widgets yet. A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
+- One camera only, without rotation. Screen-space content (`ScreenSpace`, PP-021) is always drawn above world content. UI widgets: buttons only (PP-023; no keyboard focus, layout, text input or disabled state). A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
 - Quads and sprites are drawn without MSAA, so rotated edges are aliased. Sprites use `Nearest` sampling only (no linear filtering, no mipmaps), so scaled-down or rotated sprites shimmer. 
 - Textures: PNG only. A sprite shows its whole texture or one rectangular region of it (sprite sheets, PP-019); regions can be animated with `SpriteAnimation` (fixed frame rate per animation; no per-frame durations or events), and sheets need `Nearest` sampling (linear filtering would bleed across cells). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
 - Linux/X11 only: if another X client destroys the window, winit 0.30.13 can intermittently panic in its own IME cleanup instead of PurplePie's clean `Error::Render` exit. Pre-existing (the Stage 8 build does it too); see R-22.
@@ -133,6 +134,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-07: PP-023 UI buttons.**
+  - New public module `ui` (ADR-031): `Button` component (hovered / pressed / clicked), `Pointer` snapshot (`from_input`), `update_buttons(world, pointer, viewport)` called by the game; topmost button wins.
+  - Sandbox: "Reset camera" button in the top-right corner (colours show idle/hover/pressed; clicks on it don't stamp). No new dependencies.
 
 - **2026-10-07: PP-022 Audio, part 1 (sound effects).**
   - New dependencies `cpal` 0.18.2 + `hound` 3.5.1 (ADR-030; +5 Linux / +3 Windows / +9 macOS crates). Linux builds need `libasound2-dev`; CI installs it.
@@ -275,23 +280,21 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-022 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-023 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 178 unit tests + 24 doctests, 10 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 187 unit tests + 26 doctests, 10 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 10/10 |
-| `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
+| `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings (after fixing one redundant link found by this run) |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| `cargo tree -e normal` unique crates | ✅ Linux 133, Windows target 106, macOS target 108 (resolution only; not compiled for Windows/macOS here) |
-| Sandbox audio end to end (ALSA `file` plugin, 2 ch 48 kHz f32) | ✅ one click → exactly the expected resampled blip × 0.8 in both channels (max diff 0.0 over 2,880 frames) |
-| Sandbox without an audio device | ✅ `audio disabled` warning; runs and exits 0; `audio output available: false` |
-| Breakout autoplay with ALSA null device / without device | ✅ identical: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-021 | ✅ pixel-identical |
-| Sandbox whole-frame model + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
+| Sandbox button via XTEST (camera started at (0,120)×2) | ✅ idle `#3A86FF` → hover `#6FA8FF` → held `#1D5FCC` → hover; 1 click → camera (0,0)×1; press on + release off = no click; only the off-button click stamped |
+| Sandbox whole-frame model (button area excluded) + HUD + animated cell | ✅ 0 mismatches; HUD exact; one animation frame |
+| Breakout autoplay `win` / `lose` (release) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
+| Breakout lose screen vs PP-022 | ✅ pixel-identical |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
@@ -299,4 +302,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-07. PP-022 done (sound effects; ADR-030). PP-023 (UI buttons) is next.
+2026-10-07. PP-023 done (UI buttons; ADR-031). PP-024 (audio part 2: music) is next.

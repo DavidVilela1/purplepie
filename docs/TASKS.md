@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-023: UI buttons: screen-space hit testing, hover/pressed/clicked** · P1 · TODO ← **next task**
+- [ ] **PP-024: Audio, part 2: music (looping, OGG Vorbis) and sound control** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -46,6 +46,7 @@ _None._
 - [x] **PP-020: Sprite frame animation (ADR-028)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-021: Screen-space drawing for HUD/UI (ADR-029)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-022: Audio, part 1: sound effects (ADR-030)** · DONE (2026-10-07; verified on Linux; Windows/macOS compiled by CI only)
+- [x] **PP-023: UI buttons (ADR-031)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -257,14 +258,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-030. Dependencies `cpal` 0.18.2 + `hound` 3.5.1 (+5 Linux / +3 Windows / +9 macOS crates). New public module `audio` (`SoundId`); crate-private `audio/sound.rs` (`Sounds` store, `decode_wav`: PCM 8–32-bit + float, mono/stereo), `audio/mixer.rs` (32 voices, volume 0..4, linear resampling, channel mapping, clamping), `audio/output.rs` (default device via `cpal`, lock-free `mpsc` commands, f32/i16/u16/i32 devices, silent fallback). `Context::load_sound`, `play_sound(id, volume)`, `audio_available`; `EngineConfig::audio` + `with_audio`. CI installs `libasound2-dev` on Linux. Generated assets `assets/sounds/{blip,hit,lose}.wav` (22,050 Hz mono). Sandbox: blip on every click stamp, exit line prints audio availability. Breakout: bounce/brick/lost sounds queued by the simulation and played after each fixed step. PD-06 deferred again. |
 | Acceptance criteria | ✅ 1. Unit tests: WAV decoding (16-bit mono, 24-bit stereo, float, garbage, 3 channels), store (dedup, `Error::Asset`, failed loads not cached), shipped sounds decode, mixer (volume, buffer continuity, sum + clamp, stereo/mono/surround mapping, 2× up- and down-resampling, invalid volume, empty sound, voice limit), `Context` load/play without a device. ✅ 2. End to end via ALSA `file` plugin (2 ch, 48 kHz, f32): one sandbox click → exactly the expected resampled blip × 0.8 in both channels (max difference 0.0, 2,880 frames), nothing else. ✅ 3. No device: `audio disabled` warning, sandbox runs and exits 0, `audio output available: false`. ✅ 4. Breakout autoplay identical with an ALSA null device and without a device (`win` 7135 / 220, `lose` 892 / 14); lose screen pixel-identical to PP-021. ⏳ 5. Windows/macOS: compiled by CI only; the owner should hear the Breakout sounds on Windows. |
 
-### PP-023: UI buttons ← NEXT
+### PP-023: UI buttons
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · TODO |
-| Dependencies | PP-021 (screen space), PP-018b (anchored text) |
-| Why now | The next step of the owner's in-game UI goal: screen-space drawing exists, but every game would re-implement hit testing and hover/press state for menus. |
-| Scope | A small, data-only button component in screen space (rectangle size + anchor) and a system the game calls (like `advance_animations`) that reads the cursor and mouse buttons and sets hovered / pressed / clicked state; visuals stay the game's choice (quad colours, text). No layout engine, no focus/keyboard navigation yet. Sandbox or Breakout uses one (e.g. a restart button). |
-| Acceptance criteria | Unit tests for hit testing at every anchor, DPI, edges, press-inside-release-outside; an Xvfb XTEST click on a button triggers exactly one click; existing input semantics unchanged. |
+| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · **DONE** (2026-10-07) |
+| Dependencies | PP-021, PP-018b |
+| Scope (as built) | ADR-031. New public module `src/ui/mod.rs`: `Button { size }` (`is_hovered`, `is_pressed`, `clicked`), `Pointer` (`from_input`: cursor + left button) and `update_buttons(world, pointer, viewport)`; topmost button (layer, then newest) wins; hidden/unanchored buttons inert; unseen release disarms. Sandbox: a "Reset camera" button (top-right, 160×40, idle/hover/pressed colours); clicks on it don't stamp; the timed exit prints `reset button clicks`. No new dependencies. |
+| Acceptance criteria | ✅ 1. Unit tests (9 + 2 doctests): edges, one-update click, quick press+release, drag off/onto, unseen release, topmost by layer and age, hidden/unanchored, anchors + scale + two window sizes, `Pointer::from_input`. ✅ 2. Xvfb XTEST (camera started at (0,120)×2): button pixel `#3A86FF` idle → `#6FA8FF` hover → `#1D5FCC` held → `#6FA8FF` after release; exactly 1 click recorded, camera reset to (0,0)×1; press on the button + release outside = no click (back to idle colour); 3 presses seen, but only the click away from the button stamped a square. ✅ 3. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-022; sandbox model 0 mismatches (button area excluded), HUD exact; GPU tests 10/10; fault test clean. |
+
+### PP-024: Audio, part 2 ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
+| Dependencies | PP-022 (DONE) |
+| Why now | Sound effects exist, but games also need background music: a long, compressed, looping track that can be stopped or faded, and per-sound control (stop a playing sound, master volume). |
+| Scope | Decide the OGG Vorbis decoder (e.g. `lewton`; measure cost per ADR-013) and whether to stream or decode fully; a playback handle returned by `play_sound` (or a separate `play_music`) to stop it and change its volume; looping; a master volume. Keep the mixer lock-free and unit-tested. Breakout or the sandbox plays a short generated loop. |
+| Acceptance criteria | Unit tests for looping, stop, volume changes and decoding; the ALSA `file`-plugin capture shows the loop seamlessly repeating and stopping on request; CI green on all platforms; owner hears it on Windows. |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
