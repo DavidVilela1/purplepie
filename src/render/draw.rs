@@ -12,6 +12,7 @@ use super::atlas::GlyphAtlas;
 use super::font::Fonts;
 use super::instance::Instance;
 use super::quad::Quad;
+use super::screen::ScreenSpace;
 use super::sprite::Sprite;
 use super::text::{self, MAX_EM_PIXELS, Text};
 use super::texture::{TextureId, Textures};
@@ -83,10 +84,22 @@ impl Material {
 pub(crate) struct View {
     /// World → clip transform (ADR-022).
     pub(crate) view_projection: Mat4,
+    /// Drawing area in logical pixels, for screen-space entities (ADR-029).
+    pub(crate) logical_size: Vec2,
     /// Drawing area in physical pixels, for pixel-exact text.
     pub(crate) physical_size: Vec2,
     /// Colours are converted to linear for sRGB targets (ADR-015).
     pub(crate) target_is_srgb: bool,
+}
+
+impl View {
+    /// World → clip for world entities, or screen → clip for a screen-space one (ADR-029).
+    fn projection(&self, screen: Option<&ScreenSpace>) -> Mat4 {
+        match screen {
+            None => self.view_projection,
+            Some(screen) => ScreenSpace::view_projection(screen.anchor, self.logical_size),
+        }
+    }
 }
 
 /// A run of consecutive instances with the same layer and material: one draw call.
@@ -97,10 +110,15 @@ pub(crate) struct Batch {
     pub(crate) instances: Range<u32>,
 }
 
-/// Total order of a drawable: layer, then material, then entity index (the
-/// tie-breaker that makes the order independent of ECS query order), then the
-/// glyph's position in its text (0 for quads and sprites).
-type SortKey = (i32, u32, u32, u32);
+/// Total order of a drawable: space (world 0, then screen 1, ADR-029), layer,
+/// material, entity index (the tie-breaker that makes the order independent of
+/// ECS query order), then the glyph's position in its text (0 for quads and sprites).
+type SortKey = (u32, i32, u32, u32, u32);
+
+/// Sort bucket for an entity: world content first, screen-space content on top.
+fn space_rank(screen: Option<&ScreenSpace>) -> u32 {
+    u32::from(screen.is_some())
+}
 
 struct Item {
     key: SortKey,
@@ -133,22 +151,30 @@ impl DrawList {
         atlas: &mut GlyphAtlas,
     ) {
         self.items.clear();
-        let view_projection = &view.view_projection;
         let target_is_srgb = view.target_is_srgb;
-        for (entity, transform, quad, layer) in world
-            .query::<Without<(Entity, &Transform2D, &Quad, Option<&Layer>), &Hidden>>()
+        for (entity, transform, quad, layer, screen) in world
+            .query::<Without<
+                (
+                    Entity,
+                    &Transform2D,
+                    &Quad,
+                    Option<&Layer>,
+                    Option<&ScreenSpace>,
+                ),
+                &Hidden,
+            >>()
             .iter()
         {
             let instance = Instance::new(
-                view_projection,
+                &view.projection(screen),
                 transform,
                 quad.size,
                 quad.color,
                 target_is_srgb,
             );
-            self.push(entity, layer, Material::Color, 0, instance);
+            self.push(entity, screen, layer, Material::Color, 0, instance);
         }
-        for (entity, transform, sprite, animation, layer) in world
+        for (entity, transform, sprite, animation, layer, screen) in world
             .query::<Without<
                 (
                     Entity,
@@ -156,13 +182,14 @@ impl DrawList {
                     &Sprite,
                     Option<&SpriteAnimation>,
                     Option<&Layer>,
+                    Option<&ScreenSpace>,
                 ),
                 &Hidden,
             >>()
             .iter()
         {
             let mut instance = Instance::new(
-                view_projection,
+                &view.projection(screen),
                 transform,
                 sprite.size,
                 sprite.tint,
@@ -188,6 +215,7 @@ impl DrawList {
             }
             self.push(
                 entity,
+                screen,
                 layer,
                 Material::Texture(sprite.texture),
                 0,
@@ -219,7 +247,7 @@ impl DrawList {
         for item in &self.items {
             let index = u32::try_from(self.instances.len()).unwrap_or(u32::MAX);
             self.instances.push(item.instance);
-            let layer = item.key.0;
+            let layer = item.key.1;
             match self.batches.last_mut() {
                 Some(batch) if batch.layer == layer && batch.material == item.material => {
                     batch.instances.end = index + 1;
@@ -236,6 +264,7 @@ impl DrawList {
     fn push(
         &mut self,
         entity: Entity,
+        screen: Option<&ScreenSpace>,
         layer: Option<&Layer>,
         material: Material,
         index: u32,
@@ -243,7 +272,13 @@ impl DrawList {
     ) {
         let layer = layer.copied().unwrap_or_default().0;
         self.items.push(Item {
-            key: (layer, material.rank(), entity.id(), index),
+            key: (
+                space_rank(screen),
+                layer,
+                material.rank(),
+                entity.id(),
+                index,
+            ),
             material,
             instance,
         });
@@ -260,17 +295,29 @@ impl DrawList {
         skip_when_full: bool,
     ) -> Result<(), super::atlas::AtlasFull> {
         let atlas_size = atlas.size() as f32;
-        for (entity, transform, text, layer) in world
-            .query::<Without<(Entity, &Transform2D, &Text, Option<&Layer>), &Hidden>>()
+        for (entity, transform, text, layer, screen) in world
+            .query::<Without<
+                (
+                    Entity,
+                    &Transform2D,
+                    &Text,
+                    Option<&Layer>,
+                    Option<&ScreenSpace>,
+                ),
+                &Hidden,
+            >>()
             .iter()
         {
             let Some(font) = fonts.get(text.font) else {
                 continue;
             };
-            let Some(placement) = TextPlacement::new(view, transform, text.size) else {
+            let Some(placement) =
+                TextPlacement::new(view, &view.projection(screen), transform, text.size)
+            else {
                 continue;
             };
             let key_base = (
+                space_rank(screen),
                 layer.copied().unwrap_or_default().0,
                 Material::Glyphs.rank(),
                 entity.id(),
@@ -297,7 +344,7 @@ impl DrawList {
                     ];
                     let clip_from_local = placement.glyph_matrix(glyph.position, (w, h));
                     items.push(Item {
-                        key: (key_base.0, key_base.1, key_base.2, index),
+                        key: (key_base.0, key_base.1, key_base.2, key_base.3, index),
                         material: Material::Glyphs,
                         instance: Instance::from_matrix(
                             &clip_from_local,
@@ -337,12 +384,17 @@ struct TextPlacement {
 impl TextPlacement {
     /// `None` if the text would be invisible (zero scale, empty viewport) or
     /// too large to rasterize.
-    fn new(view: &View, transform: &Transform2D, size: f32) -> Option<Self> {
+    fn new(
+        view: &View,
+        view_projection: &Mat4,
+        transform: &Transform2D,
+        size: f32,
+    ) -> Option<Self> {
         let half = view.physical_size * 0.5;
         if !(half.x > 0.0 && half.y > 0.0) {
             return None;
         }
-        let clip_from_text = view.view_projection * transform.to_mat4();
+        let clip_from_text = *view_projection * transform.to_mat4();
         // Length of each local axis in physical pixels.
         let axis_px = |axis: glam::Vec4| Vec2::new(axis.x * half.x, axis.y * half.y).length();
         let pixels_per_unit = axis_px(clip_from_text.x_axis).max(axis_px(clip_from_text.y_axis));
@@ -390,6 +442,7 @@ impl View {
     pub(crate) fn flat(view_projection: Mat4) -> Self {
         Self {
             view_projection,
+            logical_size: Vec2::new(200.0, 100.0),
             physical_size: Vec2::new(200.0, 100.0),
             target_is_srgb: false,
         }
@@ -608,6 +661,7 @@ mod tests {
         let size = Vec2::new(256.0, 128.0);
         View {
             view_projection: camera.view_projection(size),
+            logical_size: size,
             physical_size: size,
             target_is_srgb: false,
         }
@@ -746,6 +800,7 @@ mod tests {
             let logical = Vec2::new(256.0, 128.0);
             let view = View {
                 view_projection: super::super::Camera2D::default().view_projection(logical),
+                logical_size: logical,
                 physical_size: logical * scale,
                 target_is_srgb: false,
             };
@@ -963,5 +1018,78 @@ mod tests {
             )
             .expect("entity exists");
         assert!(uv(&world).is_empty());
+    }
+
+    #[test]
+    fn screen_space_is_drawn_after_all_world_content_and_ignores_the_camera() {
+        use super::super::{Camera2D, ScreenSpace};
+        let mut world = World::new();
+        world.spawn((Transform2D::default(), quad(0x000001), Layer(100)));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(10.0, -10.0)),
+            Quad::new(Vec2::new(20.0, 20.0), Color::hex(0x000002)),
+            Layer(-5),
+            ScreenSpace::TOP_LEFT,
+        ));
+        world.spawn((Transform2D::default(), quad(0x000003), Layer(-100)));
+        for camera in [
+            Camera2D::default(),
+            Camera2D::new(Vec2::new(300.0, -40.0), 3.0),
+        ] {
+            let view = text_view(camera);
+            let list = built_with_text(&world, &view, &Fonts::default(), &mut GlyphAtlas::new(16));
+            assert_eq!(
+                colors(&list),
+                [0x000003, 0x000001, 0x000002],
+                "screen space on top"
+            );
+            // The 20×20 square's corners are window pixels (0, 0) and (20, 20), whatever the camera.
+            let [l, t, r, b] = pixel_rect(&list.instances()[2], &view);
+            for (got, want) in [l, t, r, b].into_iter().zip([0.0, 0.0, 20.0, 20.0]) {
+                assert!((got - want).abs() < 1e-3, "{camera:?}: {got} vs {want}");
+            }
+        }
+    }
+
+    #[test]
+    fn screen_space_text_is_pixel_aligned_from_its_anchor() {
+        use super::super::ScreenSpace;
+        let (fonts, font) = super::super::font::tests::poppins();
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-20.3, 15.6)),
+            Text::new("Hi", font, 16.0),
+            ScreenSpace::BOTTOM_RIGHT,
+        ));
+        let view = text_view(super::super::Camera2D::new(Vec2::new(77.0, 5.0), 2.5));
+        let mut atlas = GlyphAtlas::new(256);
+        let list = built_with_text(&world, &view, &fonts, &mut atlas);
+        let mut expected = Vec::new();
+        text::layout(
+            "Hi",
+            font,
+            fonts.get(font).expect("font"),
+            16.0,
+            crate::render::TextAnchor::BASELINE_LEFT,
+            &mut atlas,
+            false,
+            &mut Vec::new(),
+            |g| expected.push(g),
+        )
+        .expect("fits");
+        // Origin: 20.3 px left of and 15.6 px above the bottom-right corner (256, 128), rounded.
+        let origin = Vec2::new((256.0_f32 - 20.3).round(), (128.0_f32 - 15.6).round());
+        assert_eq!(list.instances().len(), 2);
+        for (instance, glyph) in list.instances().iter().zip(&expected) {
+            let [l, t, ..] = pixel_rect(instance, &view);
+            assert!(
+                (l - (origin.x + glyph.position.0 as f32)).abs() < 1e-3,
+                "{l}"
+            );
+            assert!(
+                (t - (origin.y + glyph.position.1 as f32)).abs() < 1e-3,
+                "{t}"
+            );
+        }
     }
 }

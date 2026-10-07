@@ -210,6 +210,7 @@ impl Renderer {
         let logical_size = physical_size / self.scale_factor as f32;
         let view = View {
             view_projection: camera.view_projection(logical_size),
+            logical_size,
             physical_size,
             target_is_srgb: self.config.format.is_srgb(),
         };
@@ -353,6 +354,7 @@ mod tests {
         let physical_size = Vec2::new(WIDTH as f32, HEIGHT as f32);
         let view = View {
             view_projection: camera.view_projection(physical_size),
+            logical_size: physical_size,
             physical_size,
             target_is_srgb: format.is_srgb(),
         };
@@ -698,6 +700,54 @@ mod tests {
                         [pixels[i], pixels[i + 1], pixels[i + 2]],
                         want,
                         "frame {frame}, pixel ({px}, {py})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A screen-space square covers the same window pixels whatever the camera
+    /// does, and is drawn over a world quad on a much higher layer.
+    #[test]
+    #[ignore = "needs a GPU adapter; run with `cargo test -- --ignored`"]
+    fn screen_space_draws_on_top_at_fixed_window_pixels() {
+        use super::super::{Layer, Quad, ScreenSpace};
+        let (fonts, _) = super::super::font::tests::poppins();
+        let mut world = World::new();
+        world.spawn((
+            Transform2D::default(),
+            Quad::new(Vec2::splat(10_000.0), Color::rgb(0.0, 0.0, 1.0)),
+            Layer(100),
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-12.0, 8.0)),
+            Quad::new(Vec2::new(16.0, 8.0), Color::rgb(1.0, 0.0, 0.0)),
+            Layer(-5),
+            ScreenSpace::BOTTOM_RIGHT,
+        ));
+        for camera in [
+            Camera2D::default(),
+            Camera2D::new(Vec2::new(500.0, -300.0), 0.25),
+        ] {
+            let mut atlas = GlyphAtlas::new(64);
+            let pixels = render_offscreen(
+                &world,
+                &Textures::default(),
+                &fonts,
+                &camera,
+                wgpu::TextureFormat::Rgba8Unorm,
+                &mut atlas,
+            );
+            // Square centred 12 px left of / 8 px above the bottom-right corner: x 236..252, y 116..124.
+            for y in 0..HEIGHT {
+                for x in 0..WIDTH {
+                    let i = ((y * WIDTH + x) * 4) as usize;
+                    let inside = (236..252).contains(&x) && (116..124).contains(&y);
+                    let want = if inside { [255, 0, 0] } else { [0, 0, 255] };
+                    assert_eq!(
+                        [pixels[i], pixels[i + 1], pixels[i + 2]],
+                        want,
+                        "{camera:?} ({x}, {y})"
                     );
                 }
             }

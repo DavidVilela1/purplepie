@@ -220,7 +220,7 @@ it is next.
 | Phase | Goal | Planned items (in order) | Status |
 |---|---|---|---|
 | **P1 Text** | Games can show text | PP-018a fonts + glyph atlas + `Text` (ADR-027) ✅; PP-018b anchors/alignment, `measure_text`, Breakout HUD as text ✅ | ✅ Complete (2026-10-06) |
-| **P2 Runtime essentials** | Enough for a typical small 2D game | PP-019 sprite sheets / sub-rectangles (reusing `uv_rect`) ✅, then PP-020 frame animation ✅; per-texture sampling (F9); audio (a third asset kind → generic handles, PD-06); in-game UI basics: **PP-021** a screen-space layer that ignores the camera, then panels, buttons and labels driven by mouse input | In progress (PP-019 ✅, PP-020 ✅, PP-021 next) |
+| **P2 Runtime essentials** | Enough for a typical small 2D game | PP-019 sprite sheets / sub-rectangles (reusing `uv_rect`) ✅, then PP-020 frame animation ✅; per-texture sampling (F9); **PP-022** audio (a third asset kind → generic handles, PD-06); in-game UI basics: PP-021 a screen-space layer that ignores the camera ✅, then panels, buttons and labels driven by mouse input | In progress (PP-019 ✅, PP-020 ✅, PP-021 ✅, PP-022 next) |
 | **P3 Editor foundations** | Data the engine and an editor can share | Scene files (serialize entities and components), a component registry/reflection, asset hot reload, and the workspace split ADR-026 anticipated (engine core vs. editor crates) | Not started |
 | **P4 Debug overlay** | Inspect a running game | An immediate-mode overlay (e.g. egui, behind a feature) showing entities, components, camera and timings | Not started |
 | **P5 Scene editor** | Build levels without code | Editor app on the engine: viewport with pan/zoom, entity list and inspector, placing sprites, saving scenes | Not started |

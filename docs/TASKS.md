@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-021: Screen-space drawing for HUD/UI (ignores the camera)** · P1 · TODO ← **next task**
+- [ ] **PP-022: Audio, part 1: decision + play sound effects** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -44,6 +44,7 @@ _None._
 - [x] **PP-018b: Text anchors/alignment, `measure_text`, Breakout HUD text** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-019: Sprite sheets: `Sprite` regions + `SpriteGrid`** · DONE (2026-10-06; verified on Linux)
 - [x] **PP-020: Sprite frame animation (ADR-028)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-021: Screen-space drawing for HUD/UI (ADR-029)** · DONE (2026-10-07; verified on Linux)
 
 ## Future
 
@@ -239,14 +240,22 @@ console. Split when started because the decision, the atlas and the drawing path
 | Scope (as built) | ADR-028. New `src/render/animation.rs`: public `SpriteAnimation` (grid, `first`, `last` (reverse when smaller), `fps`, `mode`; `new`, `once`, `frame`, `region`, `len`, `is_finished`, `restart`, `advance`), `AnimationMode { Loop, Once }` and the system `advance_animations(&mut World, dt)` the game calls from `fixed_update`. Playback state = frame step + `f64` seconds in frame, with a 1 µs boundary slack. The draw list queries `Option<&SpriteAnimation>` and draws its current frame instead of `Sprite::region`. Sandbox: an animated cell (all 8 sheet frames, 4 fps) at (580, −250); the timed exit prints its frame. No new dependencies. |
 | Acceptance criteria | ✅ 1. Unit tests (10 + 1 draw list): exact frame switching for 8 step-rate/fps pairs over 20 loops (fails without the slack at 50 Hz/25 fps: checked), no drift over 8 loops, sub-ranges, reverse, once/finished/restart, one long step = many short steps, huge `dt`, invalid fps/dt, single frame, `advance_animations` over several entities, draw list uses the current frame and skips frames outside the grid. ✅ 2. Xvfb: the animated cell equals exactly one sheet frame in each screenshot (frame 1 at zoom 1, frame 4 at zoom 2; all other frames 1,008 / 4,032 px off); rest of the frame 0 mismatches (cursor marker aside). ✅ 3. Timed runs: frame 7 after 119 steps, 2 after 399, 2 after 630 = ⌊steps/15⌋ mod 8. ✅ 4. Regressions: Breakout autoplay unchanged, lose screen pixel-identical to PP-019; GPU tests 9/9; window-destroy fault test clean. |
 
-### PP-021: Screen-space drawing for HUD/UI ← NEXT
+### PP-021: Screen-space drawing for HUD/UI
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · TODO |
-| Dependencies | PP-018b (anchored text), PP-020 (DONE) |
-| Why now | First step towards the owner's in-game UI goal and a known limitation: HUDs live in world space, so they move and scale with the camera (Breakout re-fits its camera every frame to keep its HUD in place). Every UI widget later needs a camera-independent space. |
-| Scope | A marker component (or equivalent) that draws an entity's quad/sprite/text in **screen space**: logical pixels with an anchor to a window corner/edge/centre, unaffected by `Camera2D`, drawn after (above) world content; pixel-exact at any DPI; cursor ↔ screen-space helpers if needed for hit testing. Decide the ordering rule against `Layer` in an ADR. Breakout or the sandbox shows one HUD element in screen space. |
-| Acceptance criteria | Unit tests for the screen-space projection (corners, DPI 1/1.25/2, resize); Xvfb pixel check that a screen-space element stays at the same window pixels while the camera pans/zooms; world rendering unchanged. |
+| Stage | Post-portfolio phase P2 (in-game UI basics) · Priority P1 · **DONE** (2026-10-07) |
+| Dependencies | PP-018b, PP-020 (DONE) |
+| Scope (as built) | ADR-029. New `src/render/screen.rs`: public `ScreenSpace { anchor }` (9 constants, default `CENTER`; `anchor_point`, `from_window`, `to_window`) and `ScreenAnchor`. `View` gains `logical_size`; quads, sprites and text with `ScreenSpace` use an anchor-origin orthographic projection in logical pixels (+Y up); `TextPlacement` takes the projection, so screen text stays pixel-aligned. Sort key `(space, layer, material, entity, glyph)`: screen space after all world content. Sandbox: a top-left HUD panel with text and a bottom-right square. Breakout unchanged (its world-space HUD still works; moving it is optional future polish). No new dependencies. |
+| Acceptance criteria | ✅ 1. Unit tests: 9 anchors (projection, `to_window`, `from_window`), resize, DPI 1/1.25/2, `CENTER` = default camera, order (screen above world layer 100), camera independence, pixel-aligned screen text. ✅ 2. GPU (`--ignored`): a `BOTTOM_RIGHT` square covers exactly x 236..252, y 116..124 over a layer-100 world quad with two cameras (all 32,768 pixels checked); all three screen-space tests fail when the projection is ignored (mutation check). ✅ 3. Xvfb: HUD crops pixel-identical at cameras (0,0)×1, (450,−250)×2, (−600,300)×0.5; panel border and corner square exact; after resizing to 900×500 the square is at exactly (850..889, 450..489); world model unchanged (0 mismatches apart from the cursor marker). ✅ 4. Breakout autoplay unchanged, lose screen pixel-identical to PP-020; window-destroy fault test clean. |
+
+### PP-022: Audio, part 1 ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P2 (runtime essentials) · Priority P1 · TODO |
+| Dependencies | none (independent of rendering) |
+| Why now | The largest remaining gap for a typical small game: PurplePie has no sound at all. It is also the third asset kind, which ROADMAP and PD-06 tie to generic asset handles. |
+| Scope | Split first if needed. Part 1: an ADR choosing the audio stack (verify current crates and their cost per ADR-013, e.g. `rodio`/`cpal`, `kira`; Linux needs ALSA at build time — check CI impact), load sound files through the asset root (`Error::Asset` on failure), play one-shot sound effects with volume through `Context`, a silent/no-device fallback that never crashes the game. Music, streaming and spatial audio later. Decide PD-06 (generic handles) or explicitly defer it again. |
+| Acceptance criteria | Unit tests for loading/decoding and the no-device path; a headless check that playback is requested/mixed (Cowork has no speakers); CI still green on Linux/Windows/macOS; Breakout plays sounds on hits (verified by the owner on Windows). |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

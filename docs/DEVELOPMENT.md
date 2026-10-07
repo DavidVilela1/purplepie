@@ -205,6 +205,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
 - **Sprite animation (PP-020+, ADR-028):** the fifth cell at (580, −250) plays all 8 sheet frames at 4 fps. In a
   screenshot it must equal exactly one frame (exclude it from the static model and compare it with each frame). The
   timed exit prints `animated cell shows frame Some(n)`; expect n = ⌊fixed steps / 15⌋ mod 8.
+- **Screen space (PP-021+, ADR-029):** the sandbox's HUD panel covers window pixels x 10..269, y 10..49 (`#1D3557`
+  around its text) and the corner square x W−50..W−11, y H−50..H−11 (`#FF006E`). Screenshot at several cameras: both
+  crops must be pixel-identical; after `xdotool windowsize` the square follows the bottom-right corner. Exclude these
+  rectangles from the world model. The exact check is the ignored GPU test `screen_space_draws_on_top_at_fixed_window_pixels`.
 - **Text (PP-018a+, ADR-027):** the exact check is the ignored GPU test
   `gpu_text_matches_the_cpu_rasterization_pixel_for_pixel` (offscreen render read back and compared with the CPU
   rasterization, ≤ 1/255 per pixel). In the sandbox, the help label's baseline starts at world (−600, −300), 20 units em;

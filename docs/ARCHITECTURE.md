@@ -1,6 +1,6 @@
 # PurplePie Architecture
 
-Last reviewed: **2026-10-07** against the repository after PP-020 (sprite animation).
+Last reviewed: **2026-10-07** against the repository after PP-021 (screen-space drawing).
 
 Every section separates **Current** (exists and is validated in the repository)
 from **Planned** (decided in [DECISIONS.md](DECISIONS.md), not yet built).
@@ -25,12 +25,12 @@ window, event loop, time, ECS world, input state and GPU renderer.
 `EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `load_font`, `measure_text`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
 (`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
-(`Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextAnchor`, `TextMetrics`, `TextureId`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `FontId`, `Layer`, `Hidden`; the `advance_animations` system). Every frame the engine clears the window and draws each entity
+(`Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextAnchor`, `TextMetrics`, `TextureId`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `ScreenSpace`, `FontId`, `Layer`, `Hidden`; the `advance_animations` system). Every frame the engine clears the window and draws each entity
 that has `Transform2D` + `Quad` (solid colour, ADR-019), `Transform2D` + `Sprite` (textured, ADR-020) or `Transform2D` +
 `Text` (glyphs from a font atlas, ADR-027), sorted by `Layer` and batched by texture (ADR-021), as seen through the one engine-owned `Camera2D` (ADR-022; default view ADR-018). The `sandbox` game shows reference quads (one moving,
 two overlapping the sprite to show draw order) and two sprites from one PNG (one tinted and spinning); its camera can be
 set with an env var, and the arrow keys, `=` / `-` and the mouse wheel pan and zoom it; a marker follows the cursor and clicks stamp squares
-(ADR-024: keyboard and mouse); a text label lists the controls (ADR-027); four sprite-sheet cells, one mirrored, show texture regions (PP-019), and a fifth cell is animated (PP-020).
+(ADR-024: keyboard and mouse); a text label lists the controls (ADR-027); four sprite-sheet cells, one mirrored, show texture regions (PP-019), and a fifth cell is animated (PP-020); a screen-space HUD panel and corner square ignore the camera (PP-021).
 
 ---
 
@@ -71,7 +71,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
-| `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `AnimationMode`, `advance_animations`, `Text`, `TextAnchor`, `HorizontalAnchor`, `VerticalAnchor`, `TextMetrics`, `TextureId`, `FontId`, `Layer`, `Hidden`; crate-private `Renderer`, `Textures`, `Fonts`, `measure_text` | VERIFIED |
+| `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `AnimationMode`, `advance_animations`, `ScreenSpace`, `ScreenAnchor`, `Text`, `TextAnchor`, `HorizontalAnchor`, `VerticalAnchor`, `TextMetrics`, `TextureId`, `FontId`, `Layer`, `Hidden`; crate-private `Renderer`, `Textures`, `Fonts`, `measure_text` | VERIFIED |
 | `src/render/camera.rs` | Public `Camera2D { position, zoom }`: `IDENTITY`, `fit`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection` (ADR-018, ADR-022) | VERIFIED (7 unit tests + doctest, Xvfb whole-frame checks) |
 | `src/render/draw.rs` | Public `Layer(i32)` and `Hidden` components (hidden entities are skipped). Crate-private `View`, `DrawList` (collect quads + sprites + text glyphs, sort by (layer, material, entity, glyph), build `Batch` runs; atlas full → one reset and re-layout), `TextPlacement` (on-screen glyph size, pixel-snapped origin) and `Material` (`Color`, `Texture`, `Glyphs`; ADR-021, ADR-027) | VERIFIED (13 unit tests + doctests, Xvfb checks) |
 | `src/render/quad.rs` | Public `Quad { size, color }` component. Crate-private `QuadPipeline` (`bind`), `rect_pipeline` (pipeline builder shared with sprites; ADR-019) | VERIFIED (unit tests, 2 ignored GPU tests, Xvfb pixel checks) |
@@ -79,6 +79,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/render/font.rs` | Public `FontId`. Crate-private `Fonts` store (parsed `ab_glyph::FontArc` in load order, path → id cache; owned by the runner) and `decode_font` (ADR-027) | VERIFIED (unit tests) |
 | `src/render/text.rs` | Public `Text { content, font, size, color, anchor }` component, `TextAnchor` (+ `HorizontalAnchor`, `VerticalAnchor`), `TextMetrics` (+ `bounds`). Crate-private `walk` (shared pen logic), `layout` (anchored, whole-pixel glyph positions, newlines, kerning), `measure` (world-unit metrics for `Context::measure_text`) and `MAX_EM_PIXELS` (ADR-027) | VERIFIED (unit tests, 3 GPU readback tests, Xvfb) |
 | `src/render/atlas.rs` | Crate-private `GlyphAtlas`: 1024² RGBA shelf-packed glyph cache (white + coverage alpha, 1-texel border, per-size cache, dirty rows, reset when full) and `px_scale` (em → ab_glyph scale) (ADR-027) | VERIFIED (unit tests) |
+| `src/render/screen.rs` | Public `ScreenSpace { anchor }` component (9 constants; `anchor_point`, `from_window`, `to_window`) and `ScreenAnchor`; crate-private `view_projection(anchor, logical viewport)` (ADR-029) | VERIFIED (4 unit tests + doctest, 1 GPU test, Xvfb) |
 | `src/render/animation.rs` | Public `SpriteAnimation` component (grid, frame range, fps, `AnimationMode` loop/once; `advance`, `frame`, `region`, `is_finished`, `restart`) and the `advance_animations(&mut World, dt)` system the game calls from `fixed_update` (ADR-028) | VERIFIED (10 unit tests + 2 doctests, Xvfb + timed runs) |
 | `src/render/region.rs` | Public `TextureRegion { x, y, width, height }` (texels, rows down; `size`; crate-private `uv_rect` cut to the texture) and `SpriteGrid` (`cell`, `frame`, margin/spacing; ADR-020 extension, PP-019) | VERIFIED (4 unit tests + 2 doctests, GPU readback test, Xvfb) |
 | `src/render/texture.rs` | Public `TextureId`. Crate-private `Textures` store (decoded RGBA8 in load order, path → id cache; owned by the runner) and `decode_png` (ADR-020) | VERIFIED (unit tests) |
@@ -106,7 +107,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
 | `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
-| `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, screen-space UI layer (PP-021), text wrapping | 4–7, P2 |
+| `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, UI widgets, several cameras, text wrapping | 4–7, P2 |
 | `input` | `Input` state (pressed / just_pressed / just_released, cursor, wheel), `KeyCode`, `MouseButton` | `math` | `winit` (translation lives in `app`), `render` | gamepad, text input, action mapping | 8 |
 | `assets` | Today: `AssetRoot` (where relative asset paths resolve, ADR-025), used by `app` for textures and fonts. Later (PD-06): `Handle<T>`, store, unloading | `error`, `std::fs` | `render`, `input`, `winit`, `wgpu` | hot reload, async loading, embedded assets | 9 |
 
@@ -324,9 +325,10 @@ game:  ctx.measure_text(&text) → TextMetrics (world units, unrounded; camera-i
 ### Draw order and batching (Stage 6, ADR-021)
 
 ```text
-key per drawable = (Layer (default 0), material rank (quad = 0, sprite = 1 + TextureId, text = u32::MAX), entity index, glyph index)
+key per drawable = (space (world 0, ScreenSpace 1; ADR-029), Layer (default 0), material rank (quad = 0, sprite = 1 + TextureId, text = u32::MAX), entity index, glyph index)
 DrawList::build(world, view, &Textures (sizes for regions), &Fonts, &mut GlyphAtlas):
-                 query (Entity, Transform2D, Quad | Sprite (+ Option<SpriteAnimation>) | Text, Option<Layer>), each Without<Hidden>
+                 query (Entity, Transform2D, Quad | Sprite (+ Option<SpriteAnimation>) | Text, Option<Layer>, Option<ScreenSpace>), each Without<Hidden>
+                 projection per entity: world → Camera2D view-projection; ScreenSpace → anchor-origin orthographic (logical px)
                  → sort_unstable_by_key (keys are unique → deterministic) → instances in draw order
                  → batches = runs of equal (layer, material)
 record_batches:  one shared instance buffer bound once; pipeline switched only when the material kind changes;
@@ -391,8 +393,8 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets` | pure unit tests + doctests | ✅ 159 unit tests + 23 doctests (PP-020) |
-| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text and sprite-sheet rendering read back and compared with the CPU rasterization / texels) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 9 ignored tests pass under lavapipe |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets` | pure unit tests + doctests | ✅ 165 unit tests + 24 doctests (PP-021) |
+| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text and sprite-sheet rendering read back and compared with the CPU rasterization / texels) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 10 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
 | `input` state | pure unit tests, no window/GPU; Xvfb XTEST key, click, move and wheel runs | ✅ keyboard (PP-010) + mouse (PP-016) |

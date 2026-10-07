@@ -41,6 +41,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-026 | API review after Breakout: keep `Game` + `Context` and a single crate; add `Hidden`, `Camera2D::fit`, `Context::set_window_title`; `missing_docs` enforced | Accepted | Yes (Stage 10, PP-017) |
 | ADR-027 | Text: `ab_glyph` rasterizes outline fonts into one glyph atlas drawn by the sprite pipeline; `Text` component (with `TextAnchor`); `FontId` handles; `Context::measure_text`; Poppins shipped (OFL) | Accepted (extended by PP-018b) | Yes (PP-018a: fonts, atlas, `Text`; PP-018b: anchors, measuring, Breakout HUD) |
 | ADR-028 | Sprite animation: `SpriteAnimation` component (grid + frame range + fps + loop/once) advanced by the game-called `render::advance_animations`; the draw list shows its current frame | Accepted | Yes (PP-020) |
+| ADR-029 | Screen space: a `ScreenSpace { anchor }` component draws quads, sprites and text in logical window pixels from a window anchor, ignoring the camera, after all world content | Accepted | Yes (PP-021) |
 
 ---
 
@@ -1429,6 +1430,55 @@ Smallest API that removes the repeated timer code, keeps scheduling in the game,
 ## Revisit Conditions
 Variable frame durations, animation events (e.g. "footstep on frame 3"), blending between clips, or many animated
 entities showing up in profiles.
+
+---
+
+# ADR-029: Screen space: a `ScreenSpace` component draws in window pixels from an anchor, after all world content
+
+## Status
+Accepted (2026-10-07, PP-021). Extends ADR-021 (draw order) and ADR-022 (camera); first step of the in-game UI plan
+(ROADMAP P2).
+
+## Context
+Everything was drawn through the one `Camera2D`, so a HUD moves and scales with the camera. Breakout works around it by
+fitting its camera so that the HUD stays put; a game that scrolls or zooms cannot. Every UI element (panels, buttons,
+menus) needs a camera-independent space first.
+
+## Decision
+- **`render::ScreenSpace { anchor: ScreenAnchor }`** (marker-like component; constants `TOP_LEFT` … `BOTTOM_RIGHT`,
+  default `CENTER`). An entity with it has its `Transform2D` read as **logical pixels from that window point**, with the
+  world's axes (**+X right, +Y up**), so rotation, scale, `TextAnchor` and every drawable behave exactly as in the world.
+  `ScreenSpace::CENTER` is, by construction, the default camera's view (unit-tested equality).
+- **Projection:** per entity, `orthographic` over the logical viewport with the anchor as origin (same convention as
+  `Camera2D::view_projection`); text keeps its pixel snapping because `TextPlacement` takes the projection as input.
+- **Order:** the sort key gains a leading space bucket (world 0, screen 1): screen-space content is drawn after **all**
+  world content, regardless of `Layer`; within screen space, `Layer` orders as usual. Batching is unchanged.
+- **Helpers for UI hit tests:** `anchor_point(viewport)`, `from_window(window_pos, viewport)` and `to_window(pos,
+  viewport)` convert between window coordinates (`Input::cursor_position`, top-left origin, +Y down) and the space.
+
+## Alternatives Considered
+- **+Y down screen coordinates** (common in UI toolkits): would make transforms, rotation and text anchors behave
+  differently from the world; anchoring to corners already gives natural offsets.
+- **A second camera / a `RenderLayer` with per-layer cameras:** more general (minimaps, split screen) but more API than
+  a HUD needs; can be added later and `ScreenSpace` mapped onto it.
+- **Ordering screen space by `Layer` together with the world:** a HUD would need huge layer numbers to stay on top.
+
+## Rationale
+The smallest change that gives UI a stable coordinate system, reuses every existing drawable unchanged, and keeps the
+draw list single-pass.
+
+## Consequences
+### Positive
+- Verified: unit tests (all 9 anchors, resize, DPI 1/1.25/2, order, camera independence, pixel-aligned screen text); a
+  GPU test (a screen-space square covers exactly its window pixels over a layer-100 world quad, with two cameras;
+  fails when screen space is ignored); Xvfb: the sandbox HUD crops are pixel-identical at three cameras and the corner
+  square follows a resize.
+### Negative
+- Screen-space content cannot be placed between world layers (always on top).
+- No UI widgets yet (hit testing is the game's job via the helpers).
+
+## Revisit Conditions
+Minimaps or split screen (several cameras), world-anchored UI (labels following entities), or a UI widget layer.
 
 ---
 

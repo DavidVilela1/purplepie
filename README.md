@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets and animation done; screen-space UI next).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope (text, sprite sheets, animation and screen-space HUD done; audio next).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -14,14 +14,14 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
 - **ECS:** one `hecs::World` for your entities and components; you call your own systems.
 - **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint, sprite-sheet regions via `SpriteGrid`, frame animation via `SpriteAnimation`) and `Text` (TrueType/OpenType fonts, rasterized
-  sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, batched into instanced draw calls, seen
+  sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, drawable in screen space for HUDs (`ScreenSpace`), batched into instanced draw calls, seen
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
   once per callback regardless of frame rate.
 - **Assets:** textures and fonts loaded by paths relative to an `assets/` folder found next to the executable or in the
   project folder. One font ships with the engine: `assets/fonts/Poppins-Regular.ttf` (SIL Open Font License).
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
-- Not included (yet): text wrapping and shaping, audio, in-game UI widgets, physics,
+- Not included (yet): audio, text wrapping and shaping, in-game UI widgets, physics,
   scenes, an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started

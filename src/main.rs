@@ -6,7 +6,8 @@
 //! Controls: arrow keys pan the camera, `=` / `-` or the mouse wheel zoom in / out,
 //! left click stamps a square at the cursor, Escape quits. A green marker follows the cursor.
 //! A text label at the bottom left lists these controls; four sprite-sheet cells
-//! (one mirrored) and one animated cell sit at the bottom right.
+//! (one mirrored) and one animated cell sit at the bottom right. A screen-space
+//! HUD panel (top-left) and square (bottom-right corner) ignore the camera.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -23,7 +24,8 @@ use purplepie::ecs::{self, Entity, Velocity};
 use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{
-    self, Camera2D, Color, Layer, Quad, Sprite, SpriteAnimation, SpriteGrid, Text,
+    self, Camera2D, Color, Layer, Quad, ScreenSpace, Sprite, SpriteAnimation, SpriteGrid, Text,
+    TextAnchor,
 };
 use purplepie::{Context, Engine, EngineConfig, Game};
 
@@ -151,6 +153,25 @@ impl Game for Sandbox {
                 ));
             }
         }
+        // Screen space (ADR-029): window pixels from an anchor, unaffected by the camera.
+        world.spawn((
+            Transform2D::from_position(Vec2::new(140.0, -30.0)),
+            Quad::new(Vec2::new(260.0, 40.0), Color::hex(0x1D3557)),
+            ScreenSpace::TOP_LEFT,
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(22.0, -30.0)),
+            Text::new("Screen-space HUD", font, 20.0)
+                .with_color(Color::hex(0xF1FAEE))
+                .with_anchor(TextAnchor::CENTER_LEFT),
+            ScreenSpace::TOP_LEFT,
+            Layer(1),
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(-30.0, 30.0)),
+            Quad::new(Vec2::splat(40.0), Color::hex(0xFF006E)),
+            ScreenSpace::BOTTOM_RIGHT,
+        ));
         self.animated = Some(world.spawn((
             Transform2D::from_position(Vec2::new(580.0, -250.0)),
             Sprite::new(sheet, Vec2::splat(32.0)),
