@@ -129,6 +129,10 @@ cargo build
 cargo run            # sandbox
 ```
 
+The repository root is also a Cargo workspace root (ADR-038), with the engine as its only member, so these commands
+are unchanged. Once a crate exists under `crates/`, run the gates with `--workspace` (and update CI the same way); tests
+in such crates must build asset paths from the workspace root, not their own `CARGO_MANIFEST_DIR`.
+
 Cowork has clippy 1.95, but the owner and CI use the latest stable, whose `clippy::chunks_exact_to_as_chunks` rejects
 `chunks_exact(4)`-style calls with a constant size (R-19). Before delivering, this must print nothing; use
 `as_chunks::<N>()` / `as_chunks_mut::<N>()` instead:

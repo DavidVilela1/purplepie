@@ -131,7 +131,7 @@ CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows
 
 ```text
 PurplePie/
-├── Cargo.toml / Cargo.lock
+├── Cargo.toml / Cargo.lock   the `purplepie` package, also the workspace root (future crates go in `crates/`, ADR-038)
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API

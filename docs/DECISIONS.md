@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-038 | Workspace layout: no split yet; the root package is also the Cargo workspace root (`[workspace] members = []`); future crates (debug overlay, editor) go under `crates/`, the engine and `assets/` stay at the root | Accepted | Yes (PP-030) |
 | ADR-037 | Asset hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed textures, fonts and sounds are replaced under the same id (texture revision → GPU re-upload; font revision → glyph atlas cleared; sounds: new `Arc`, running voices keep the old); broken or oversized files keep the old asset | Accepted | Yes (PP-028 textures, PP-029 fonts + sounds) |
 | ADR-036 | Game components in scenes: `Context::register_scene_component::<T>(name)` with `serde` bounds (serde enters the public API through this one bound); values stored as plain RON under stable names; unknown names are load errors; no entity references | Accepted | Yes (PP-027) |
 | ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; all engine components (animation with playback position, velocity, buttons since PP-026b); game components later | Accepted | Yes (PP-026a, PP-026b) |
@@ -92,7 +93,8 @@ Never for the engine core. Scripting languages may be added on top later.
 # ADR-002: Single package with an engine library and a `sandbox` binary
 
 ## Status
-Accepted (2026-09-30). Implemented: `src/lib.rs` + `src/main.rs`, `[[bin]] name = "sandbox"`.
+Accepted (2026-09-30). Implemented: `src/lib.rs` + `src/main.rs`, `[[bin]] name = "sandbox"`. Still one package
+since ADR-038 (PP-030), which only declares it the root of a workspace that other crates can join later.
 
 ## Context
 Engine code and game code must stay separate, and the separation should be
@@ -2020,6 +2022,63 @@ events (e.g. to refresh thumbnails).
   nothing (one warning), restoring the file restored the original pixels; through ALSA's `file` plugin, a click before
   replacing `blip.wav` with `hit.wav` played exactly `blip.wav` and a click after it played exactly `hit.wav` (both
   max diff 0 against the mixer model).
+
+---
+
+# ADR-038: Workspace layout: keep the engine at the root, declare the workspace, split later
+
+## Status
+Accepted (2026-10-08, PP-030). Closes the P3 "workspace split" item. Refines ADR-002 and ADR-026 (single package).
+
+## Context
+ADR-026 kept one crate until a second consumer needs its own. P4 (debug overlay) and P5 (editor) will add crates, and
+P3.5 (guide, outside-crate trial, 0.1.0) will document how games depend on PurplePie, so the layout should be settled
+before P3.5. A trial in a scratch copy measured what moving the engine into `crates/purplepie/` (virtual workspace,
+`assets/` and `docs/` at the root) would cost **today**: the library no longer compiled (3 `include_bytes!` of shared
+assets), 25 test sites build asset paths from `CARGO_MANIFEST_DIR` across 7 files, and after the obvious path rewrite
+8 tests still failed (paths written other ways); `cargo run` for the sandbox would need `-p`, CI commands and the
+owner's PowerShell block would change, and the asset root would have to be found from a different working directory.
+None of that buys anything while there is only one crate.
+
+## Decision
+- **No move.** The `purplepie` package stays at the repository root with its `sandbox` binary, `examples/` and
+  `assets/`. Game-facing API, paths and commands are unchanged.
+- **Declare the workspace now:** `[workspace]` with `members = []` in the root `Cargo.toml`. The root package is the
+  workspace's only (and default) member, so `cargo run/test/build` behave exactly as before and `Cargo.lock` is
+  unchanged. Verified benefit: when the project sits inside a folder that has its own Cargo workspace, Cargo used to
+  refuse to build ("current package believes it's in a workspace when it's not"); with the declaration it builds.
+- **Future crates go under `crates/<name>`** (e.g. `crates/purplepie-overlay`, `crates/purplepie-editor`) and are added
+  to `members`. They depend on the engine by path (`purplepie = { path = "../.." }`), use the shared root `assets/`, and
+  find it the same way games do (asset root next to the executable or in the working directory, ADR-025); their tests
+  must build asset paths from the workspace root, not from their own manifest directory.
+- **What would trigger moving the engine itself** into `crates/`: a second engine-level crate that the engine depends
+  on (e.g. splitting rendering out), or publishing several crates from one repository.
+
+## Alternatives Considered
+- **Virtual workspace now (`crates/purplepie`, `crates/sandbox`):** the conventional layout, but the measured churn
+  above, changed commands, and nothing to put next to the engine yet.
+- **Leave `Cargo.toml` untouched:** equivalent today, but the parent-workspace failure is real for a project kept in
+  nested folders (as the owner's is), and the declaration documents where new crates go.
+- **Debug overlay as a feature of the engine crate instead of a crate:** still possible (ADR for P4); this ADR only
+  fixes where crates go if P4/P5 need them.
+
+## Rationale
+Settle the layout before P3.5 documents it, at zero cost to games and to the owner's workflow, without paying for a
+move that has no beneficiary yet.
+
+## Consequences
+### Positive
+- Verified: `cargo check/test/clippy/doc/build` (also with `--workspace`) behave as before with an unchanged
+  `Cargo.lock`; `cargo metadata` reports the repository root as the workspace root with `purplepie` as the only and
+  default member; the nested-workspace build failure reproduced without the declaration and disappeared with it; all
+  runtime regressions (sandbox, Breakout, scene example) unchanged.
+### Negative
+- The engine sits next to future member crates instead of beside them in `crates/`; a later move would still cost the
+  path fixes measured above.
+
+## Revisit Conditions
+A second engine-level crate, publishing multiple crates, or the first `crates/` member (then check that CI runs with
+`--workspace`).
 
 ---
 

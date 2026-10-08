@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-030: Workspace split: engine core vs. editor-to-be crates (ADR)** · P1 · TODO ← **next task**
+- [ ] **PP-031: Outside-crate trial: a fresh game crate built from the README alone (phase P3.5)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -55,6 +55,7 @@ _None._
 - [x] **PP-027: Scene files, part 2: game components through a registry (ADR-036)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-028: Asset hot reload, part 1: textures (ADR-037)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-029: Asset hot reload, part 2: fonts and sounds (ADR-037 extension)** · DONE (2026-10-08; verified on Linux)
+- [x] **PP-030: Workspace layout decision (ADR-038; phase P3 complete)** · DONE (2026-10-08; verified on Linux)
 
 ## Future
 
@@ -371,14 +372,25 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-037 extension. New crate-private `src/assets/watch.rs` (`FileWatch`, `ReloadReport<Id>`, `reload_if_changed`; the texture store now uses it too). `Fonts::reload_changed` + store `revision`; the renderer clears the glyph atlas when it changes (new `GlyphAtlas::clear`, not counted as full). `Sounds::reload_changed` (new `Arc` per changed sound; sounds not from a file are skipped). The runner polls all three stores every 0.5 s. No new dependencies; no public API change. |
 | Result | ✅ 1. Unit tests (+4): shared watcher, font reload, sound reload (playing copy keeps old samples), atlas clear. ✅ 2. Xvfb: swapping the sandbox font for DejaVu Sans changed the help label and HUD text; a broken font file changed nothing (1 warning); restoring the file restored the original pixels exactly. ✅ 3. ALSA capture: click → exactly `blip.wav`; after replacing it with `hit.wav`, the next click → exactly `hit.wav` (max diff 0, L = R). ✅ 4. Regressions: GPU tests 12/12; sandbox model 0 mismatches, label IoU unchanged (0.767); Breakout autoplay unchanged, lose screen identical; fault test clean. All test assets restored byte-for-byte. |
 
-### PP-030: Workspace split ← NEXT
+### PP-030: Workspace split (decision: declare the workspace, no move)
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 (workspace split item, the last P3 item) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 (workspace split item, the last P3 item) · Priority P1 · **DONE** (2026-10-08; verified on Linux). Phase P3 complete. |
 | Dependencies | PP-029 (DONE) |
 | Why now | ADR-026 kept one crate until an editor or another consumer needs a separate one; P4 (debug overlay, likely egui behind a feature) and P5 (editor app) will, and P3.5's guide and release must describe the final crate layout. Doing the split last in P3 lets P3.5 document a stable structure. |
 | Scope | ADR first: target layout (e.g. a Cargo workspace with the `purplepie` engine crate unchanged for games, examples and the sandbox as before, and room for `purplepie-editor` later), what moves (probably nothing in the engine API; sandbox/examples placement; shared `assets/`), CI and `cargo run` commands, Windows paths in the owner's command block. Then perform the move with no behaviour change. If the ADR concludes a split brings nothing yet, record that and close the item instead. |
 | Acceptance criteria | `cargo test --workspace`, clippy, docs and all examples build and pass; sandbox/Breakout/scene example behave identically (existing Xvfb regressions); asset root still found from the new layout; CI updated; game-facing API unchanged. |
+| Scope (as built) | ADR-038. A scratch trial of moving the engine to `crates/purplepie` measured the cost (library stops compiling: 3 `include_bytes!`; 25 `CARGO_MANIFEST_DIR` asset paths in 7 files; 8 tests still failing after a naive rewrite; changed run commands). Decision: no move; the root `Cargo.toml` gains `[workspace] members = []` (engine stays the only, default member; future crates under `crates/`). No source, API, dependency, `Cargo.lock` or CI change. |
+| Result | ✅ 1. Gates unchanged with and without `--workspace`; `Cargo.lock` byte-identical; `cargo metadata`: workspace root = repository root, single default member `purplepie`. ✅ 2. A copy nested inside a folder with its own `[workspace]` failed to build before ("believes it's in a workspace when it's not") and builds after. ✅ 3. Regressions: GPU tests 12/12; sandbox model 0 mismatches and asset root found at `assets/`; scene example identical to PP-027's frame; Breakout autoplay unchanged, lose screen identical. |
+
+### PP-031: Outside-crate trial ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3.5 (Usability and first release), item 1 · Priority P1 · TODO |
+| Dependencies | PP-030 (DONE; phase P3 complete) |
+| Why now | First item of P3.5: every feature so far was built and tested from inside the repository. A game crate outside it, written only from the README and the API docs, shows what a newcomer actually runs into; its findings shape the guide (item 2) and the API review (item 4). |
+| Scope | Create a new binary crate outside the PurplePie package (in a scratch folder, depending on `purplepie` by path, as an outsider would by path or git) and build a small game from the README and `cargo doc` alone: window, sprites, text, input, a sound, a scene file, shipping its `assets/`. Log every snag (missing step, confusing name, error message, asset-path surprise, build issue) in a findings list (new `docs/USABILITY.md`), classify each (doc fix / API issue / missing feature), fix the trivial README/doc ones in this task, and turn the rest into P3.5 tasks. No engine API changes in this task. |
+| Acceptance criteria | The trial crate builds and runs under Xvfb (screenshot checked) using only what the docs describe; `docs/USABILITY.md` lists the findings with classification; README fixes applied and re-checked by repeating the affected steps; follow-up tasks recorded; CI green. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

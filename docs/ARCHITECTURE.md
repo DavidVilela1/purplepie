@@ -58,6 +58,7 @@ compilability → clear architecture → maintainability → extensibility → p
 
 | Path | Responsibility | Status |
 |---|---|---|
+| `Cargo.toml` | The single `purplepie` package (library + `sandbox` binary + `examples/`; ADR-002) and, since PP-030, the root of a Cargo workspace with `members = []`: future crates (debug overlay, editor) go under `crates/<name>` and depend on the engine by path; the engine, `assets/` and all commands stay at the root (ADR-038) | VERIFIED |
 | `src/lib.rs` | Crate root: re-exports the public API, `VERSION` | VERIFIED |
 | `src/error.rs` | `Error` (`#[non_exhaustive]`: `InvalidConfig`, `EventLoop`, `Window`, `Surface`, `Adapter`, `Device`, `SurfaceUnsupported`, `Render`, `Asset { path, source }`, `Save { path, source }` (PP-026a), `Game`), `BoxError`, `Result`. winit/wgpu/image errors are boxed sources, not public types. | VERIFIED |
 | `src/app/mod.rs` | `Engine::new` (validates config, creates the `EventLoop`) and `Engine::run` (runs the runner, returns the first error) | VERIFIED (Linux; Windows lifecycle confirmed by the owner) |

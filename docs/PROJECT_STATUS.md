@@ -15,10 +15,10 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 **Post-portfolio phase P2 (runtime essentials): complete** (2026-10-07, verified on Linux): PP-019 sprite sheets,
 PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-023 UI buttons, PP-024a playback
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
-earlier. **Phase P3 (editor foundations) in progress:** PP-026a/b scene files (ADR-035), PP-027 game components in scenes
-(ADR-036), PP-028 texture hot reload (ADR-037) and PP-029 font and sound hot reload done; **PP-030** (workspace split,
-the last P3 item) is next. After P3 comes the new phase **P3.5 Usability and first release** (outside-crate trial, guide,
-Windows/macOS checks, API review, 0.1.0, a second game), inserted on 2026-10-08. The long-term plan (in-game UI and an editor) is in
+earlier. **Phase P3 (editor foundations): complete** (2026-10-08): scene files (PP-026a/b, ADR-035), game components in
+scenes (PP-027, ADR-036), asset hot reload for textures, fonts and sounds (PP-028/029, ADR-037) and the workspace layout
+decision (PP-030, ADR-038). **Next: phase P3.5 Usability and first release**, starting with **PP-031**, an outside-crate
+trial. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -99,6 +99,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-030: workspace layout: root `Cargo.toml` declares the workspace; the engine stays at the root; future crates under `crates/` (ADR-038). Phase P3 complete.
 - PP-029: font and sound hot reload: shared `assets::watch`, glyph atlas cleared on font change, sounds swapped for new plays (ADR-037 extension).
 - PP-028: texture hot reload: opt-in `EngineConfig::hot_reload`, 0.5 s polling of file stamps, same `TextureId`, GPU re-upload (ADR-037).
 - PP-027: scene files, part 2: game components via `Context::register_scene_component` (serde bound), stored by name (ADR-036).
@@ -111,7 +112,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-030: Workspace split** (last phase-P3 item). See [TASKS.md](TASKS.md#pp-030-workspace-split--next).
+- **PP-031: Outside-crate trial** (phase P3.5, item 1). See [TASKS.md](TASKS.md#pp-031-outside-crate-trial--next).
 
 ## Blocked
 
@@ -148,6 +149,9 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-08: PP-030 Workspace layout (phase P3 complete).**
+  - ADR-038: a scratch trial measured what moving the engine into `crates/purplepie` would break (3 `include_bytes!`, 25 asset paths in tests, commands); decision: no move. The root `Cargo.toml` now declares `[workspace] members = []`, so later crates (debug overlay, editor) can join under `crates/`, and the project no longer fails to build when nested inside another Cargo workspace. No source, API, `Cargo.lock` or command change.
 
 - **2026-10-08: PP-029 Asset hot reload, part 2: fonts and sounds.**
   - File-change detection moved to the shared crate-private `assets::watch` (also used by textures). Fonts reload under the same `FontId` and the renderer clears the glyph atlas; sounds reload under the same `SoundId` for new plays (ADR-037 extension). No public API change, no new dependencies.
@@ -334,7 +338,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-029 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-030 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -343,6 +347,7 @@ after the final PP-029 change (CI additionally runs the latest stable clippy and
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` | ✅ PASS: 216 unit tests + 30 doctests, 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Workspace declaration (PP-030) | ✅ `cargo check/test` also with `--workspace`; `Cargo.lock` byte-identical; `cargo metadata` workspace root = repo root, sole default member `purplepie`; a copy nested in a folder with its own `[workspace]` failed to build before and builds after |
 | Font hot reload end to end (sandbox, Xvfb) | ✅ replacing `Poppins-Regular.ttf` with DejaVu Sans changed the help label and HUD text within 1.5 s; a broken font file changed nothing (one warning); restoring the file restored the exact original pixels |
 | Sound hot reload end to end (sandbox, ALSA `file` plugin) | ✅ the click before replacing `blip.wav` with `hit.wav` played exactly `blip.wav`, the click after it exactly `hit.wav` (max diff 0 against the mixer model; L = R) |
 | `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` (R-19 guard) | ✅ no matches |
@@ -361,4 +366,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-08. PP-029 done (font and sound hot reload; ADR-037 extension). PP-030 (workspace split) is next.
+2026-10-08. PP-030 done (workspace layout; ADR-038); phase P3 complete. PP-031 (outside-crate trial, phase P3.5) is next.

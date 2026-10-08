@@ -50,6 +50,13 @@ lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.r
 ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
 
+# PP-030 (ADR-038): this package is also the root of a Cargo workspace. The engine stays at the
+# repository root (paths, commands and `assets/` unchanged); future crates (debug overlay, editor)
+# go under `crates/` and are listed in `members`. Declaring the workspace also keeps Cargo from
+# attaching this project to a workspace in a parent folder.
+[workspace]
+members = []
+
 [lints.rust]
 unsafe_code = "forbid"
 
