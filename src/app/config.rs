@@ -51,6 +51,15 @@ pub struct EngineConfig {
     /// ADR-030). With `false`, or when no device is available, sounds load
     /// normally but [`Context::play_sound`](crate::Context::play_sound) plays nothing.
     pub audio: bool,
+    /// Watch loaded textures for changes on disk and reload them while the
+    /// game runs (default `false`; ADR-037). Every half second the engine
+    /// checks each texture file's modification time and size; a changed PNG
+    /// replaces the texture's pixels under the same
+    /// [`TextureId`](crate::render::TextureId) before the next frame is drawn.
+    /// A file that is broken at that moment (e.g. half-written) is logged and
+    /// the old pixels stay. Meant for development: turn it off in shipped
+    /// games.
+    pub hot_reload: bool,
 }
 
 impl EngineConfig {
@@ -79,6 +88,7 @@ impl EngineConfig {
             clear_color: Color::PURPLEPIE,
             asset_root: None,
             audio: true,
+            hot_reload: false,
         }
     }
 
@@ -148,6 +158,14 @@ impl EngineConfig {
         self
     }
 
+    /// Turns texture hot reload on or off (default off; see
+    /// [`hot_reload`](Self::hot_reload)).
+    #[must_use]
+    pub fn with_hot_reload(mut self, hot_reload: bool) -> Self {
+        self.hot_reload = hot_reload;
+        self
+    }
+
     /// Checks the configuration for values the engine cannot use.
     pub(crate) fn validate(&self) -> Result<()> {
         if self.width == 0 {
@@ -203,6 +221,8 @@ mod tests {
         assert_eq!(config.max_frame_dt, 0.25);
         assert_eq!(config.max_fixed_steps, 5);
         assert_eq!(config.clear_color, Color::PURPLEPIE);
+        assert!(config.audio);
+        assert!(!config.hot_reload, "hot reload is opt-in");
     }
 
     #[test]
@@ -219,7 +239,9 @@ mod tests {
             .with_fixed_dt(0.5)
             .with_max_frame_dt(2.0)
             .with_max_fixed_steps(3)
-            .with_clear_color(Color::BLACK);
+            .with_clear_color(Color::BLACK)
+            .with_hot_reload(true);
+        assert!(config.hot_reload);
         assert_eq!(config.clear_color, Color::BLACK);
         assert_eq!(
             (config.fixed_dt, config.max_frame_dt, config.max_fixed_steps),

@@ -95,6 +95,8 @@ impl Sprite {
 /// A texture on the GPU. The bind group keeps the texture view alive.
 struct GpuTexture {
     bind_group: wgpu::BindGroup,
+    /// The store revision these pixels came from (hot reload, ADR-037).
+    revision: u32,
 }
 
 /// The GPU copy of the glyph atlas (ADR-027).
@@ -291,19 +293,60 @@ impl SpritePipeline {
         queue: &wgpu::Queue,
         store: &Textures,
     ) -> Result<()> {
+        // Hot reload (ADR-037): textures whose pixels changed since they were
+        // uploaded get a new GPU texture and bind group under the same id. A
+        // replacement the GPU cannot take (too large) keeps the old one.
+        for (id, data) in store.since(0).take(self.textures.len()) {
+            if self.textures[id.index()].revision == data.revision {
+                continue;
+            }
+            let upload = Self::upload_texture(
+                device,
+                queue,
+                data,
+                &self.bind_group_layout,
+                self.texture_format,
+                self.sampler(data.filter),
+            );
+            let gpu = &mut self.textures[id.index()];
+            match upload {
+                Ok(new) => *gpu = new,
+                Err(error) => {
+                    log::warn!("reloaded texture {id:?} kept its previous pixels: {error}");
+                    gpu.revision = data.revision;
+                }
+            }
+        }
         for (id, data) in store.since(self.textures.len()) {
             debug_assert_eq!(id.index(), self.textures.len());
-            let gpu = self.upload_texture(device, queue, data)?;
+            let gpu = Self::upload_texture(
+                device,
+                queue,
+                data,
+                &self.bind_group_layout,
+                self.texture_format,
+                self.sampler(data.filter),
+            )?;
             self.textures.push(gpu);
         }
         Ok(())
     }
 
+    /// The sampler for `filter` (ADR-034).
+    fn sampler(&self, filter: TextureFilter) -> &wgpu::Sampler {
+        match filter {
+            TextureFilter::Nearest => &self.nearest_sampler,
+            TextureFilter::Linear => &self.linear_sampler,
+        }
+    }
+
     fn upload_texture(
-        &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         data: &TextureData,
+        layout: &wgpu::BindGroupLayout,
+        texture_format: wgpu::TextureFormat,
+        sampler: &wgpu::Sampler,
     ) -> Result<GpuTexture> {
         let max = device.limits().max_texture_dimension_2d;
         if data.width > max || data.height > max {
@@ -329,7 +372,7 @@ impl SpritePipeline {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.texture_format,
+                format: texture_format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
@@ -337,13 +380,9 @@ impl SpritePipeline {
             &data.pixels,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = match data.filter {
-            TextureFilter::Nearest => &self.nearest_sampler,
-            TextureFilter::Linear => &self.linear_sampler,
-        };
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&label),
-            layout: &self.bind_group_layout,
+            layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -355,7 +394,10 @@ impl SpritePipeline {
                 },
             ],
         });
-        Ok(GpuTexture { bind_group })
+        Ok(GpuTexture {
+            bind_group,
+            revision: data.revision,
+        })
     }
 
     /// Selects this pipeline for the following draws.
@@ -382,6 +424,12 @@ impl SpritePipeline {
     #[cfg(test)]
     pub(crate) fn texture_count(&self) -> usize {
         self.textures.len()
+    }
+
+    /// The store revision of the pixels uploaded for `id`.
+    #[cfg(test)]
+    pub(crate) fn uploaded_revision(&self, id: TextureId) -> Option<u32> {
+        self.textures.get(id.index()).map(|gpu| gpu.revision)
     }
 }
 
@@ -442,6 +490,67 @@ mod tests {
                 .abs_diff_eq(Vec2::new(0.7, 0.2), 1e-6)
         );
         assert_eq!(instance.color, [1.0, 0.5, 0.0, 0.25]);
+    }
+
+    /// Hot reload (ADR-037): a texture whose store revision changed is
+    /// uploaded again under the same id; one the GPU cannot take (too large)
+    /// keeps its previous GPU copy instead of failing the frame.
+    #[test]
+    #[ignore = "needs a GPU adapter; run with `cargo test -- --ignored`"]
+    fn reloaded_textures_are_uploaded_again_and_oversized_ones_are_kept() {
+        let (device, queue, faults) = headless_device_and_queue();
+        let path =
+            std::env::temp_dir().join(format!("purplepie-{}-gpu-reload.png", std::process::id()));
+        std::fs::write(&path, encode_png(2, 2, &[255; 16])).expect("write");
+        let mut textures = Textures::default();
+        let id = textures
+            .load(&path, super::super::TextureOptions::NEAREST)
+            .expect("load");
+        let mut sprites = SpritePipeline::new(&device, wgpu::TextureFormat::Rgba8Unorm, 64);
+        sprites
+            .sync_textures(&device, &queue, &textures)
+            .expect("sync");
+        assert_eq!(sprites.uploaded_revision(id), Some(0));
+
+        let bump = |seconds| {
+            let file = std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .expect("open");
+            file.set_modified(
+                std::time::SystemTime::now() + std::time::Duration::from_secs(seconds),
+            )
+            .expect("mtime");
+        };
+        std::fs::write(&path, encode_png(4, 3, &[7; 48])).expect("write");
+        bump(10);
+        assert_eq!(textures.reload_changed().reloaded, [id]);
+        sprites
+            .sync_textures(&device, &queue, &textures)
+            .expect("re-upload");
+        assert_eq!(
+            (sprites.texture_count(), sprites.uploaded_revision(id)),
+            (1, Some(1))
+        );
+
+        let too_wide = device.limits().max_texture_dimension_2d + 1;
+        std::fs::write(
+            &path,
+            encode_png(too_wide, 1, &vec![9; too_wide as usize * 4]),
+        )
+        .expect("write");
+        bump(20);
+        assert_eq!(textures.reload_changed().reloaded, [id]);
+        sprites
+            .sync_textures(&device, &queue, &textures)
+            .expect("an oversized reload is not fatal");
+        assert_eq!(
+            sprites.uploaded_revision(id),
+            Some(2),
+            "not retried every frame"
+        );
+        assert!(faults.take().is_none(), "no GPU errors");
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

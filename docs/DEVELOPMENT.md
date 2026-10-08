@@ -220,6 +220,12 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Since PP-027 the example registers `Spin` and `Visits`; the unit test that reads `assets/scenes/demo.ron` registers
   copies of them under the same names, so change both together. Unfrozen, the two rotated squares must turn after a
   `load` (compare two screenshots 1 s apart; the static text must not change).
+- **Texture hot reload (PP-028+, ADR-037):** the sandbox runs with `with_hot_reload(true)`. Under Xvfb with
+  `PURPLEPIE_LOG=info`: screenshot, overwrite `assets/textures/sandbox_quadrants.png` with a changed image (e.g. RGB
+  inverted, same alpha), wait 1.5 s, screenshot: the sprite at window (W/2, H/2 − 120) must change and stderr must show
+  `reloaded texture …`; write garbage into the file: the picture must not change and one `could not be reloaded` warning
+  appears; restore the original (**always restore it**, keep a copy first) and expect the first screenshot's pixels.
+  With hot reload off (e.g. `examples/scene`), the same overwrite must change nothing.
 - **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.
   In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
   centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;

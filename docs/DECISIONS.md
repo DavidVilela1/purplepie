@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-037 | Texture hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed PNGs replace pixels under the same `TextureId` (revision bump → GPU re-upload); broken or oversized files keep the old texture | Accepted | Yes (PP-028) |
 | ADR-036 | Game components in scenes: `Context::register_scene_component::<T>(name)` with `serde` bounds (serde enters the public API through this one bound); values stored as plain RON under stable names; unknown names are load errors; no entity references | Accepted | Yes (PP-027) |
 | ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; all engine components (animation with playback position, velocity, buttons since PP-026b); game components later | Accepted | Yes (PP-026a, PP-026b) |
 | ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
@@ -1938,6 +1939,66 @@ optional field, so existing files are untouched.
 ## Revisit Conditions
 An editor that must open files without every game type (keep unknown values raw), components with entity references
 (file-local ids), or many components per entity (pretty-printed values).
+
+---
+
+# ADR-037: Texture hot reload by polling, opt-in, same handle
+
+## Status
+Accepted (2026-10-08, PP-028). First part of the P3 "asset hot reload" item; fonts and sounds follow (PP-029).
+
+## Context
+Iterating on art means saving a PNG and wanting to see it in the running game; the editor (P5) needs the same. Textures
+already have a CPU store keyed by path and a GPU upload path that runs before every frame (`sync_textures`), and game
+code only holds `TextureId`s.
+
+## Decision
+- **Opt-in:** `EngineConfig::hot_reload` (default `false`, builder `with_hot_reload`). Shipped games do not touch the
+  file system each frame. The sandbox turns it on.
+- **Detection by polling:** at most every **0.5 s**, after `update` and before drawing, the runner calls
+  `Textures::reload_changed`, which compares each texture file's **modification time and length** with the values seen
+  when it was last read. No file-watcher crate: `notify` 8.2.0 measured **+7 crates on Linux (142 → 149), +9 Windows
+  (115 → 124), +5 macOS (117 → 122)** and brings OS-specific event handling; a few `metadata` calls per half second are
+  negligible for tens or hundreds of textures.
+- **Same handle:** a changed PNG is decoded again and replaces the entry's pixels and size under the **same
+  `TextureId`**, keeping its filter (and re-applying `Linear` edge bleeding, ADR-034). Every entry loaded from that file
+  (e.g. both a `Nearest` and a `Linear` copy) reloads. A `revision` counter on the entry is bumped; the sprite pipeline
+  re-creates the GPU texture and bind group of any entry whose revision differs from the one it uploaded. Sprites,
+  regions and animations keep working without game code (a region outside a smaller new image is cut as usual).
+- **Failures keep the old texture:** a file that cannot be read or decoded (typically half-written while an editor
+  saves) is logged once (`warn`) and retried only when its stamp changes again; a missing file is ignored; a
+  replacement too large for the GPU keeps the previous GPU copy (logged) instead of ending the game, unlike a too-large
+  texture at first load (still `Error::Asset`, ADR-020). The file is stamped *before* reading, so a write that lands
+  during the read is seen on the next poll.
+
+## Alternatives Considered
+- **`notify` file watcher:** instant and no polling, but +5…+9 crates and platform event quirks (editors that save via
+  rename, network drives); can replace the poll later behind the same `reload_changed` call if needed.
+- **Reload on demand only (`Context::reload_textures`)**: simplest, but the point is not to touch the game.
+- **New `TextureId` per reload:** would force games to re-point every sprite.
+- **On by default in debug builds:** convenient but surprising (file access in tests and examples); explicit is clearer.
+
+## Rationale
+Zero new dependencies, reuses the existing upload path, and games need no changes beyond one config flag.
+
+## Consequences
+### Positive
+- Verified: unit tests reload a changed file under the same id (new size and pixels, both filters, bleeding re-applied,
+  revision bumped), report a broken file once and keep the old pixels, recover when it is fixed, and ignore a deleted
+  file; an ignored GPU test re-uploads a reloaded texture under the same id and keeps the old copy (without failing or
+  retrying) when the replacement exceeds `max_texture_dimension_2d`. End to end under Xvfb, overwriting
+  `sandbox_quadrants.png` while the sandbox ran inverted the sprite's colours within 1.5 s, a half-written file left the
+  picture unchanged (one warning), and restoring the file restored the original pixels exactly; with hot reload off
+  (scene example) the same overwrite changed nothing.
+### Negative
+- Up to ~0.5 s delay plus a frame; two saves within the file system's time resolution *and* with the same length could
+  be missed (rare; the next save is seen).
+- Each poll costs one `metadata` call per loaded texture; a game with thousands of textures should keep it off.
+- Only textures so far (fonts, sounds: PP-029; scenes: undecided).
+
+## Revisit Conditions
+Thousands of watched files, a need for instant reload (switch the detection to `notify`), or an editor that needs reload
+events (e.g. to refresh thumbnails).
 
 ---
 

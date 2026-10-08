@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-028: Asset hot reload, part 1: reload changed textures while the game runs** · P1 · TODO ← **next task**
+- [ ] **PP-029: Asset hot reload, part 2: fonts and sounds** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -53,6 +53,7 @@ _None._
 - [x] **PP-026a: Scene files, part 1a: format decision + drawing components (ADR-035)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons (ADR-035 extension)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-027: Scene files, part 2: game components through a registry (ADR-036)** · DONE (2026-10-07; verified on Linux)
+- [x] **PP-028: Asset hot reload, part 1: textures (ADR-037)** · DONE (2026-10-08; verified on Linux)
 
 ## Future
 
@@ -347,14 +348,25 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-036. New `Context::register_scene_component::<T>(name)` (`T: hecs::Component + Serialize + DeserializeOwned`; serde enters the public API via this bound). New crate-private `src/scene/registry.rs` (`Registry` in `EngineState`: name + monomorphised has/save/load fns; clash rules → `Error::InvalidConfig`). Scene version 1 gains the optional `components: { "name": <RON> }` field (`ron::value::RawValue`, trimmed on parse); entities with a registered component are saved; unknown names / bad values → `Error::Asset` before anything loads or spawns. No new dependencies (no crate-count change). Example: `Spin` (two rotating squares) and `Visits` (an entity with nothing drawn, counted on load) registered; `demo.ron` regenerated (19 entities). |
 | Result | ✅ 1. Unit tests (+4, one replaced): round trip of structs/enums/options/vecs/unit/newtype components incl. a game-only entity, back to identical text; unregistered dropped/skipped; unknown name and bad value errors spawn nothing; PP-026a fixture still loads; registration rules; `Context` registration + `InvalidConfig` + save/load. Mutation (skip inserting decoded components) fails 3 tests. ✅ 2. Xvfb: frozen `save`/`build`/`load` pixel-identical (and identical to PP-026b's frame); unfrozen, the loaded squares rotate and the text does not change; the example prints "demo scene loaded 1 time(s)" and "2 spinning sprites". ✅ 3. Regressions: GPU tests 11/11; sandbox model 0 mismatches; Breakout autoplay unchanged, lose screen identical; fault test clean. |
 
-### PP-028: Asset hot reload, part 1: textures ← NEXT
+### PP-028: Asset hot reload, part 1: textures
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · **DONE** (2026-10-08; verified on Linux) |
 | Dependencies | PP-027 (DONE) |
 | Why now | The next P3 item. An editor (P5) and fast iteration on art both need changed files to show up without restarting the game; textures are the most common case and already have a CPU store and a GPU re-upload path (`sync_textures`, renderer recreation). |
 | Scope | ADR first: how changes are detected (polling modification times on a timer vs. a file-watcher dependency such as `notify`, measured per ADR-013), whether reload is opt-in (`EngineConfig`) or a `Context` call, and what happens on a broken file (keep the old pixels, log). Then reload a changed PNG under the same `TextureId` (same size or not; filter kept, `Linear` bleeding re-applied) and re-upload it. Fonts, sounds and scenes are later parts. |
 | Acceptance criteria | Unit tests for change detection and replacement (same id, new pixels/size, broken file keeps the old texture); an Xvfb run where overwriting a PNG while the sandbox runs changes the picture without a restart; no change in behaviour when reload is off; CI green. |
+| Scope (as built) | ADR-037. `EngineConfig::hot_reload` / `with_hot_reload` (default off; the sandbox turns it on). `Textures::reload_changed` (file stamp = mtime + length per entry, stamped before reading; same id, filter and bleeding; `revision` bump; broken file logged once and kept; missing file ignored) called by the runner every 0.5 s before drawing. `SpritePipeline::sync_textures` re-uploads entries whose revision changed; an oversized replacement keeps the old GPU copy. `notify` measured (+7/+9/+5 crates) and rejected: no new dependencies. Also: ROADMAP gains phase **P3.5 Usability and first release** between P3 and P4 (owner decision). |
+| Result | ✅ 1. Unit tests (+1, two extended): reload with new size/pixels under the same id for a Nearest and a Linear copy, bleeding re-applied, revision bumps; broken file reported once, old pixels kept; fixed file reloads; deleted file ignored; config default/builder. ✅ 2. Ignored GPU test: re-upload under the same id; oversized replacement kept without error or retry. ✅ 3. Xvfb: overwriting `sandbox_quadrants.png` in the running sandbox inverted the sprite (sample (230,57,70) → (25,198,185)), a half-written file changed nothing (1 warning), restoring the file restored the original pixels exactly; with hot reload off (scene example) nothing changed and nothing was logged. ✅ 4. Regressions: GPU tests 12/12; sandbox model 0 mismatches; Breakout autoplay unchanged, lose screen identical; fault test clean. |
+
+### PP-029: Asset hot reload, part 2: fonts and sounds ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · TODO |
+| Dependencies | PP-028 (DONE) |
+| Why now | Completes hot reload for every asset kind the engine loads (scenes are spawned data, not handles, and stay out). Same mechanism as ADR-037, so it is a small, contained step before the workspace split. |
+| Scope | Extend the ADR-037 poll to the font and sound stores: a changed font file replaces the parsed font under the same `FontId` and drops that font's glyphs from the atlas cache so text is re-rasterized; a changed sound replaces the decoded samples under the same `SoundId` (voices already playing keep the old samples via their `Arc`; new plays use the new ones). Broken files keep the old asset, logged once. Share the stamp/poll code with textures rather than copying it. |
+| Acceptance criteria | Unit tests per store (same id, new data, broken file kept, reported once); a glyph-cache test showing the old font's glyphs are not reused; an Xvfb run where replacing the sandbox font file changes the help label; a capture run where replacing `blip.wav` changes the next click's sound; CI green. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

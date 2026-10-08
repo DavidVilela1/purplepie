@@ -161,6 +161,51 @@ pub(crate) struct TextureData {
     pub(crate) pixels: Vec<u8>,
     /// How the renderer samples it.
     pub(crate) filter: TextureFilter,
+    /// Bumped each time hot reload replaces the pixels (ADR-037); the renderer
+    /// re-uploads a texture whose revision differs from the one it uploaded.
+    pub(crate) revision: u32,
+}
+
+/// What a file looked like when it was last read: modification time and
+/// length (the length catches two writes within the file system's time
+/// resolution).
+type FileStamp = (std::time::SystemTime, u64);
+
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// Hot-reload bookkeeping for one texture (ADR-037).
+#[derive(Debug, Default, Clone, Copy)]
+struct Watch {
+    /// The file as last loaded successfully.
+    loaded: Option<FileStamp>,
+    /// The file as last seen broken, so a broken file is reported once.
+    failed: Option<FileStamp>,
+}
+
+/// What one [`Textures::reload_changed`] call did.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ReloadReport {
+    /// Textures whose file changed and now has new pixels.
+    pub(crate) reloaded: Vec<TextureId>,
+    /// Textures whose file changed but could not be read or decoded; they
+    /// keep their previous pixels.
+    pub(crate) failed: Vec<TextureId>,
+}
+
+/// Reads and decodes `path` for a texture sampled with `filter`.
+fn read_texture(
+    path: &Path,
+    filter: TextureFilter,
+) -> std::result::Result<(u32, u32, Vec<u8>), BoxError> {
+    let bytes = std::fs::read(path)?;
+    let (width, height, mut pixels) = decode_png(&bytes)?;
+    if filter == TextureFilter::Linear {
+        bleed_transparent_texels(width, height, &mut pixels);
+    }
+    Ok((width, height, pixels))
 }
 
 /// Decodes a PNG file's bytes into RGBA8. Any PNG colour type and bit depth is
@@ -185,6 +230,8 @@ pub(crate) struct Textures {
     /// (Path, options) → id, so loading the same path with the same options
     /// twice returns the same texture.
     by_path: HashMap<(PathBuf, TextureOptions), TextureId>,
+    /// Parallel to `entries`: file stamps for hot reload.
+    watches: Vec<Watch>,
 }
 
 impl Textures {
@@ -202,17 +249,21 @@ impl Textures {
             path: path.to_path_buf(),
             source,
         };
-        let bytes = std::fs::read(path).map_err(|e| asset_error(Box::new(e)))?;
-        let (width, height, mut pixels) = decode_png(&bytes).map_err(asset_error)?;
-        if options.filter == TextureFilter::Linear {
-            bleed_transparent_texels(width, height, &mut pixels);
-        }
+        // Stamp before reading: a write that lands during the read shows up
+        // as a change on the next poll instead of being missed.
+        let stamp = file_stamp(path);
+        let (width, height, pixels) = read_texture(path, options.filter).map_err(asset_error)?;
         let id = self.push(TextureData {
             source: path.to_path_buf(),
             width,
             height,
             pixels,
             filter: options.filter,
+            revision: 0,
+        });
+        self.watches.push(Watch {
+            loaded: stamp,
+            failed: None,
         });
         self.by_path.insert(key, id);
         log::debug!(
@@ -242,6 +293,51 @@ impl Textures {
     pub(crate) fn size(&self, id: TextureId) -> Option<Vec2> {
         self.get(id)
             .map(|t| Vec2::new(t.width as f32, t.height as f32))
+    }
+
+    /// Re-reads every texture whose file changed since it was last read
+    /// (modification time or length), keeping its [`TextureId`], filter and
+    /// `Linear` bleeding; bumps its revision so the renderer re-uploads it. A
+    /// file that cannot be read or decoded leaves the texture as it was and is
+    /// reported once until it changes again. Missing files are ignored (an
+    /// editor may be replacing them). Used by hot reload (ADR-037).
+    pub(crate) fn reload_changed(&mut self) -> ReloadReport {
+        let mut report = ReloadReport::default();
+        for (index, (data, watch)) in self.entries.iter_mut().zip(&mut self.watches).enumerate() {
+            let id = TextureId(u32::try_from(index).unwrap_or(u32::MAX));
+            let Some(stamp) = file_stamp(&data.source) else {
+                continue;
+            };
+            if Some(stamp) == watch.loaded || Some(stamp) == watch.failed {
+                continue;
+            }
+            match read_texture(&data.source, data.filter) {
+                Ok((width, height, pixels)) => {
+                    data.width = width;
+                    data.height = height;
+                    data.pixels = pixels;
+                    data.revision = data.revision.wrapping_add(1);
+                    *watch = Watch {
+                        loaded: Some(stamp),
+                        failed: None,
+                    };
+                    log::info!(
+                        "reloaded texture {} ({width}×{height}) as {id:?}",
+                        data.source.display()
+                    );
+                    report.reloaded.push(id);
+                }
+                Err(error) => {
+                    watch.failed = Some(stamp);
+                    log::warn!(
+                        "texture {} changed but could not be reloaded (keeping the old one): {error}",
+                        data.source.display()
+                    );
+                    report.failed.push(id);
+                }
+            }
+        }
+        report
     }
 
     /// Entries from position `start` on, with their ids (the renderer's pending uploads).
@@ -454,6 +550,79 @@ pub(crate) mod tests {
         );
         let alpha_after: Vec<u8> = pixels.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
         assert_eq!(alpha_after, alpha_before, "coverage is untouched");
+    }
+
+    /// Writes `bytes` to `path` and moves its modification time `seconds`
+    /// into the future, so the change is seen even on coarse file systems.
+    fn write_changed(path: &Path, bytes: &[u8], seconds: u64) {
+        std::fs::write(path, bytes).expect("write");
+        let file = std::fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("open");
+        let time = std::time::SystemTime::now() + std::time::Duration::from_secs(seconds);
+        file.set_modified(time).expect("set mtime");
+    }
+
+    #[test]
+    fn changed_files_are_reloaded_under_the_same_id() {
+        let path = temp_path("reload.png");
+        std::fs::write(&path, encode_png(2, 2, &PIXELS_2X2)).expect("write");
+        let mut textures = Textures::default();
+        let nearest = textures.load(&path, TextureOptions::NEAREST).expect("load");
+        let linear = textures.load(&path, TextureOptions::LINEAR).expect("load");
+        assert_eq!(
+            textures.reload_changed(),
+            ReloadReport::default(),
+            "unchanged"
+        );
+
+        // A different size and colour: both textures reload, ids and filters kept.
+        let three = [10, 20, 30, 255, 0, 0, 0, 0, 40, 50, 60, 255];
+        write_changed(&path, &encode_png(3, 1, &three), 10);
+        let report = textures.reload_changed();
+        assert_eq!(report.reloaded, [nearest, linear]);
+        assert!(report.failed.is_empty());
+        let n = textures.get(nearest).expect("nearest");
+        assert_eq!((n.width, n.height, n.revision), (3, 1, 1));
+        assert_eq!(n.pixels, three);
+        assert_eq!(textures.size(nearest), Some(Vec2::new(3.0, 1.0)));
+        let l = textures.get(linear).expect("linear");
+        assert_eq!((l.filter, l.revision), (TextureFilter::Linear, 1));
+        assert_eq!(
+            l.pixels[4..8],
+            [25, 35, 45, 0],
+            "Linear bleeding is applied again"
+        );
+        assert_eq!(
+            textures.reload_changed(),
+            ReloadReport::default(),
+            "seen once"
+        );
+
+        // A broken file keeps the old pixels and is reported once.
+        write_changed(&path, b"half-written", 20);
+        let report = textures.reload_changed();
+        assert_eq!(report.failed, [nearest, linear]);
+        assert!(report.reloaded.is_empty());
+        assert_eq!(textures.get(nearest).expect("kept").pixels, three);
+        assert_eq!(textures.get(nearest).expect("kept").revision, 1);
+        assert_eq!(
+            textures.reload_changed(),
+            ReloadReport::default(),
+            "reported once"
+        );
+
+        // Fixing it reloads; deleting it is ignored.
+        write_changed(&path, &encode_png(1, 1, &[1, 2, 3, 255]), 30);
+        assert_eq!(textures.reload_changed().reloaded, [nearest, linear]);
+        assert_eq!(textures.get(nearest).expect("fixed").revision, 2);
+        std::fs::remove_file(&path).expect("remove");
+        assert_eq!(textures.reload_changed(), ReloadReport::default());
+        assert_eq!(
+            textures.get(nearest).expect("still there").pixels,
+            [1, 2, 3, 255]
+        );
     }
 
     #[test]

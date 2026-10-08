@@ -3,7 +3,7 @@
 //! This is the only place in the engine that handles winit events.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -22,6 +22,9 @@ use crate::audio::AudioOutput;
 use crate::error::{Error, Result};
 use crate::render::Renderer;
 use crate::time::FixedTimestep;
+
+/// How often hot reload checks texture files for changes (ADR-037).
+const RELOAD_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Owns the game and all engine state for the lifetime of the event loop.
 pub(crate) struct Runner<G: Game> {
@@ -44,6 +47,8 @@ pub(crate) struct Runner<G: Game> {
     last_frame: Option<Instant>,
     /// First error raised inside a callback, returned by `Engine::run`.
     error: Option<Error>,
+    /// When hot reload last checked the texture files (ADR-037).
+    last_reload_check: Option<Instant>,
 }
 
 impl<G: Game> Runner<G> {
@@ -72,6 +77,7 @@ impl<G: Game> Runner<G> {
             scale_factor: 1.0,
             last_frame: None,
             error: None,
+            last_reload_check: None,
             config,
         }
     }
@@ -235,8 +241,25 @@ impl<G: Game> Runner<G> {
         if self.state.exit_requested {
             event_loop.exit();
         } else {
+            self.reload_changed_assets(now);
             self.render(event_loop);
         }
+    }
+
+    /// Hot reload (ADR-037): at most every [`RELOAD_INTERVAL`], re-read the
+    /// textures whose files changed; the renderer re-uploads them this frame.
+    fn reload_changed_assets(&mut self, now: Instant) {
+        if !self.config.hot_reload {
+            return;
+        }
+        if self
+            .last_reload_check
+            .is_some_and(|last| now.duration_since(last) < RELOAD_INTERVAL)
+        {
+            return;
+        }
+        self.last_reload_check = Some(now);
+        self.state.textures.reload_changed();
     }
 }
 
