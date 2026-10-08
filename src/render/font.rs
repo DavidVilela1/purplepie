@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use ab_glyph::{Font as _, FontArc};
 
+use crate::assets::watch::{FileWatch, ReloadReport, reload_if_changed};
 use crate::error::{BoxError, Error, Result};
 
 /// Identifies a font loaded with [`Context::load_font`](crate::Context::load_font).
@@ -63,6 +64,11 @@ pub(crate) struct Fonts {
     entries: Vec<FontData>,
     /// Path → id, so loading the same path twice returns the same font.
     by_path: HashMap<PathBuf, FontId>,
+    /// Parallel to `entries`: file stamps for hot reload (ADR-037).
+    watches: Vec<FileWatch>,
+    /// Bumped whenever hot reload replaces any font; the renderer then clears
+    /// the glyph atlas so no glyph of the old font is drawn again.
+    revision: u32,
 }
 
 impl Fonts {
@@ -77,12 +83,16 @@ impl Fonts {
             path: path.to_path_buf(),
             source,
         };
+        let watch = FileWatch::before_read(path);
         let bytes = std::fs::read(path).map_err(|e| asset_error(Box::new(e)))?;
         let font = decode_font(bytes).map_err(asset_error)?;
         let id = self.push(FontData {
             source: path.to_path_buf(),
             font,
         });
+        if let Some(slot) = self.watches.get_mut(id.index()) {
+            *slot = watch;
+        }
         self.by_path.insert(path.to_path_buf(), id);
         log::debug!("loaded font {} as {id:?}", path.display());
         Ok(id)
@@ -92,7 +102,32 @@ impl Fonts {
     pub(crate) fn push(&mut self, data: FontData) -> FontId {
         let index = u32::try_from(self.entries.len()).unwrap_or(u32::MAX);
         self.entries.push(data);
+        self.watches.push(FileWatch::default());
         FontId(index)
+    }
+
+    /// Re-reads every font whose file changed (ADR-037), keeping its
+    /// [`FontId`]; a broken file keeps the old font and is reported once.
+    /// Bumps [`revision`](Self::revision) if anything was replaced.
+    pub(crate) fn reload_changed(&mut self) -> ReloadReport<FontId> {
+        let mut report = ReloadReport::default();
+        for (index, (data, watch)) in self.entries.iter_mut().zip(&mut self.watches).enumerate() {
+            let id = FontId(u32::try_from(index).unwrap_or(u32::MAX));
+            let source = data.source.clone();
+            reload_if_changed(&source, watch, id, "font", &mut report, || {
+                data.font = decode_font(std::fs::read(&source)?)?;
+                Ok(format!("{} glyphs", data.font.glyph_count()))
+            });
+        }
+        if !report.reloaded.is_empty() {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        report
+    }
+
+    /// Changes whenever hot reload replaced a font.
+    pub(crate) fn revision(&self) -> u32 {
+        self.revision
     }
 
     /// Number of fonts loaded so far.
@@ -125,6 +160,50 @@ pub(crate) mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("purplepie-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn changed_font_files_are_reloaded_under_the_same_id() {
+        use crate::assets::watch::tests::write_changed;
+        let path = temp_path("reload.ttf");
+        std::fs::write(&path, POPPINS).expect("write");
+        let mut fonts = Fonts::default();
+        // A font that did not come from a file is never reloaded.
+        let pushed = fonts.push(FontData {
+            source: PathBuf::from("not-on-disk.ttf"),
+            font: decode_font(POPPINS.to_vec()).expect("parses"),
+        });
+        let id = fonts.load(&path).expect("load");
+        assert_eq!(fonts.reload_changed(), ReloadReport::default(), "unchanged");
+        assert_eq!(fonts.revision(), 0);
+
+        write_changed(&path, b"not a font", 10);
+        let report = fonts.reload_changed();
+        assert_eq!(
+            (report.reloaded.len(), report.failed.as_slice()),
+            (0, [id].as_slice())
+        );
+        assert_eq!(fonts.revision(), 0, "a broken file changes nothing");
+        assert!(fonts.get(id).expect("kept").font.glyph_count() > 0);
+        assert_eq!(
+            fonts.reload_changed(),
+            ReloadReport::default(),
+            "reported once"
+        );
+
+        write_changed(&path, POPPINS, 20);
+        assert_eq!(fonts.reload_changed().reloaded, [id]);
+        assert_eq!(
+            fonts.revision(),
+            1,
+            "the renderer will clear the glyph atlas"
+        );
+        assert_eq!(fonts.len(), 2, "same id, no new entry");
+        assert_eq!(
+            fonts.get(pushed).expect("pushed").source,
+            PathBuf::from("not-on-disk.ttf")
+        );
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

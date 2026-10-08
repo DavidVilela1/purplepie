@@ -247,7 +247,8 @@ impl<G: Game> Runner<G> {
     }
 
     /// Hot reload (ADR-037): at most every [`RELOAD_INTERVAL`], re-read the
-    /// textures whose files changed; the renderer re-uploads them this frame.
+    /// textures, fonts and sounds whose files changed; the renderer re-uploads
+    /// textures and clears the glyph atlas for fonts this frame.
     fn reload_changed_assets(&mut self, now: Instant) {
         if !self.config.hot_reload {
             return;
@@ -260,6 +261,8 @@ impl<G: Game> Runner<G> {
         }
         self.last_reload_check = Some(now);
         self.state.textures.reload_changed();
+        self.state.fonts.reload_changed();
+        self.state.sounds.reload_changed();
     }
 }
 

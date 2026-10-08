@@ -226,6 +226,11 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   `reloaded texture …`; write garbage into the file: the picture must not change and one `could not be reloaded` warning
   appears; restore the original (**always restore it**, keep a copy first) and expect the first screenshot's pixels.
   With hot reload off (e.g. `examples/scene`), the same overwrite must change nothing.
+  Fonts and sounds (PP-029+): replace `assets/fonts/Poppins-Regular.ttf` with another TTF (e.g.
+  `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`): the help label and HUD text must change, then match the first
+  screenshot again after restoring. For sound, with the ALSA `file` plugin: click, replace `assets/sounds/blip.wav` with
+  `hit.wav`, wait 1.2 s, click again; the two captured segments must match `blip.wav` and `hit.wav` × 0.8 exactly
+  (mixer model). Keep copies and restore every file you overwrite.
 - **Sprite sheets (PP-019+):** the exact check is the ignored GPU test `sprite_regions_show_exactly_their_texels`.
   In the sandbox, four cells of `assets/textures/sandbox_sheet.png` (frames 0, 5, 6 mirrored, 3) are 32×32 world units
   centred at x = 400, 440, 480, 520, y = −250; add them to the whole-frame camera model (texel = 4×4 world units;

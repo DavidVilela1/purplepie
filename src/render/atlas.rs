@@ -101,15 +101,22 @@ impl GlyphAtlas {
         self.size
     }
 
-    /// Empties the atlas (all cached glyphs are forgotten).
+    /// Empties the atlas because it is full (all cached glyphs are
+    /// forgotten) and counts it in [`resets`](Self::resets).
     pub(crate) fn reset(&mut self) {
+        self.clear();
+        self.resets = self.resets.saturating_add(1);
+    }
+
+    /// Empties the atlas without counting it as full, e.g. because a font
+    /// was hot-reloaded and its old glyphs must not be drawn again (ADR-037).
+    pub(crate) fn clear(&mut self) {
         // `pixels` is RGBA8, so its length is a multiple of 4 (no remainder).
         self.pixels.as_chunks_mut::<4>().0.fill(CLEAR_TEXEL);
         self.cache.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.dirty = Some(0..self.size);
-        self.resets = self.resets.saturating_add(1);
     }
 
     /// How many times the atlas has been cleared because it was full.
@@ -295,6 +302,26 @@ mod tests {
         assert_ne!(a.map(|i| i.texel), bigger.map(|i| i.texel));
         assert!(bigger.expect("outline").size.1 > a.expect("outline").size.1);
         assert_eq!(atlas.glyph(id, font, glyph_of(' '), 20.0), Ok(None));
+    }
+
+    #[test]
+    fn clearing_forgets_glyphs_without_counting_as_full() {
+        let (fonts, id) = poppins();
+        let font = fonts.get(id).expect("font");
+        let mut atlas = GlyphAtlas::new(256);
+        let first = atlas.glyph(id, font, glyph_of('g'), 30.0).expect("room");
+        assert!(atlas.take_dirty_rows().is_some());
+        atlas.clear();
+        assert_eq!(atlas.resets(), 0, "a hot-reload clear is not a full atlas");
+        let (rows, _) = atlas
+            .take_dirty_rows()
+            .expect("the whole atlas is re-uploaded");
+        assert_eq!(rows, 0..256);
+        assert!((0..256).all(|y| (0..256).all(|x| atlas.texel(x, y)[3] == 0)));
+        // The glyph is rasterized again (not served from a forgotten cache entry).
+        let again = atlas.glyph(id, font, glyph_of('g'), 30.0).expect("room");
+        assert_eq!(again, first, "same font, same place in an empty atlas");
+        assert!(atlas.take_dirty_rows().is_some(), "new pixels were written");
     }
 
     #[test]

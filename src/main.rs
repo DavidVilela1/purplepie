@@ -10,8 +10,8 @@
 //! (one mirrored) and one animated cell sit at the bottom right. A screen-space
 //! HUD panel (top-left) and square (bottom-right corner) ignore the camera; a
 //! "Reset camera" button (top-right) resets pan and zoom (clicks on it do not stamp).
-//! Texture hot reload is on: saving a changed PNG in `assets/textures/` updates
-//! the picture while the sandbox runs.
+//! Asset hot reload is on: saving a changed texture, font or sound under
+//! `assets/` takes effect while the sandbox runs.
 //!
 //! Environment variables:
 //! - `PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES=N`: request exit after N frames
@@ -482,8 +482,8 @@ fn main() -> ExitCode {
         marker: None,
         left_clicks: (0, 0),
     };
-    // Hot reload (ADR-037): edit a PNG under assets/textures while the sandbox
-    // runs and the change shows up within about half a second.
+    // Hot reload (ADR-037): edit a texture, font or sound under assets/ while
+    // the sandbox runs and the change shows up within about half a second.
     let config = EngineConfig::new("PurplePie Sandbox").with_hot_reload(true);
     let result = Engine::new(config).and_then(|e| e.run(game));
 

@@ -16,8 +16,8 @@ A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 h
 PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-023 UI buttons, PP-024a playback
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
 earlier. **Phase P3 (editor foundations) in progress:** PP-026a/b scene files (ADR-035), PP-027 game components in scenes
-(ADR-036) and PP-028 texture hot reload (ADR-037) done; **PP-029** (hot reload of fonts and sounds) is next, then the
-workspace split. After P3 comes the new phase **P3.5 Usability and first release** (outside-crate trial, guide,
+(ADR-036), PP-028 texture hot reload (ADR-037) and PP-029 font and sound hot reload done; **PP-030** (workspace split,
+the last P3 item) is next. After P3 comes the new phase **P3.5 Usability and first release** (outside-crate trial, guide,
 Windows/macOS checks, API review, 0.1.0, a second game), inserted on 2026-10-08. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -99,6 +99,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-029: font and sound hot reload: shared `assets::watch`, glyph atlas cleared on font change, sounds swapped for new plays (ADR-037 extension).
 - PP-028: texture hot reload: opt-in `EngineConfig::hot_reload`, 0.5 s polling of file stamps, same `TextureId`, GPU re-upload (ADR-037).
 - PP-027: scene files, part 2: game components via `Context::register_scene_component` (serde bound), stored by name (ADR-036).
 - PP-026b: scene files, part 1b: `SpriteAnimation` (with playback position), `Velocity`, `ui::Button` in scenes; PP-026a files still load (fixture).
@@ -110,7 +111,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-029: Asset hot reload, part 2: fonts and sounds** (phase P3). See [TASKS.md](TASKS.md#pp-029-asset-hot-reload-part-2-fonts-and-sounds--next).
+- **PP-030: Workspace split** (last phase-P3 item). See [TASKS.md](TASKS.md#pp-030-workspace-split--next).
 
 ## Blocked
 
@@ -142,11 +143,14 @@ executable, else `assets/` in the working directory (ADR-025).
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
-- Hot reload (PP-028): textures only (fonts and sounds: PP-029); off by default; changes appear after up to ~0.5 s; a replacement too large for the GPU keeps the old texture.
+- Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
 - Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-08: PP-029 Asset hot reload, part 2: fonts and sounds.**
+  - File-change detection moved to the shared crate-private `assets::watch` (also used by textures). Fonts reload under the same `FontId` and the renderer clears the glyph atlas; sounds reload under the same `SoundId` for new plays (ADR-037 extension). No public API change, no new dependencies.
 
 - **2026-10-08: PP-028 Asset hot reload, part 1: textures.**
   - New `EngineConfig::hot_reload` / `with_hot_reload` (default off; ADR-037). The runner checks texture files' modification time and size every 0.5 s and reloads changed PNGs under the same `TextureId`; the renderer re-uploads them. Broken files keep the old texture (one warning). No new dependencies (`notify` measured and rejected).
@@ -330,16 +334,17 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-028 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-029 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 212 unit tests + 30 doctests, 12 ignored (GPU) |
-| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 (incl. the new hot-reload re-upload test) |
-| Hot reload end to end (sandbox, Xvfb) | ✅ overwriting `sandbox_quadrants.png` inverted the sprite within 1.5 s; a half-written file changed nothing (one warning); restoring the file restored the exact original pixels; with hot reload off (scene example) nothing changed |
+| `cargo test --locked` | ✅ PASS: 216 unit tests + 30 doctests, 12 ignored (GPU) |
+| `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Font hot reload end to end (sandbox, Xvfb) | ✅ replacing `Poppins-Regular.ttf` with DejaVu Sans changed the help label and HUD text within 1.5 s; a broken font file changed nothing (one warning); restoring the file restored the exact original pixels |
+| Sound hot reload end to end (sandbox, ALSA `file` plugin) | ✅ the click before replacing `blip.wav` with `hit.wav` played exactly `blip.wav`, the click after it exactly `hit.wav` (max diff 0 against the mixer model; L = R) |
 | `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` (R-19 guard) | ✅ no matches |
 | Scene example (`PURPLEPIE_SCENE_FREEZE=1`, modes `save`, `build`, `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical, and identical to PP-026b's frame; `save` wrote `assets/scenes/demo.ron` (19 entities, 2 game component types), which the unit tests read back byte-for-byte |
 | Scene example unfrozen (load) | ✅ the two squares loaded with `Spin` rotate between screenshots, the static text does not; prints `demo scene loaded 1 time(s)` and `2 spinning sprites` |
@@ -356,4 +361,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-08. PP-028 done (texture hot reload; ADR-037); phase P3.5 added to the roadmap. PP-029 (font and sound hot reload) is next.
+2026-10-08. PP-029 done (font and sound hot reload; ADR-037 extension). PP-030 (workspace split) is next.

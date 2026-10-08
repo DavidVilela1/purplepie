@@ -51,14 +51,15 @@ pub struct EngineConfig {
     /// ADR-030). With `false`, or when no device is available, sounds load
     /// normally but [`Context::play_sound`](crate::Context::play_sound) plays nothing.
     pub audio: bool,
-    /// Watch loaded textures for changes on disk and reload them while the
-    /// game runs (default `false`; ADR-037). Every half second the engine
-    /// checks each texture file's modification time and size; a changed PNG
-    /// replaces the texture's pixels under the same
-    /// [`TextureId`](crate::render::TextureId) before the next frame is drawn.
-    /// A file that is broken at that moment (e.g. half-written) is logged and
-    /// the old pixels stay. Meant for development: turn it off in shipped
-    /// games.
+    /// Watch loaded textures, fonts and sounds for changes on disk and reload
+    /// them while the game runs (default `false`; ADR-037). Every half second
+    /// the engine checks each file's modification time and size; a changed
+    /// file replaces the asset under the same id
+    /// ([`TextureId`](crate::render::TextureId), [`FontId`](crate::render::FontId),
+    /// [`SoundId`](crate::audio::SoundId)) before the next frame is drawn.
+    /// Sounds already playing finish with their old samples. A file that is
+    /// broken at that moment (e.g. half-written) is logged and the old asset
+    /// stays. Meant for development: turn it off in shipped games.
     pub hot_reload: bool,
 }
 
@@ -158,7 +159,7 @@ impl EngineConfig {
         self
     }
 
-    /// Turns texture hot reload on or off (default off; see
+    /// Turns asset hot reload on or off (default off; see
     /// [`hot_reload`](Self::hot_reload)).
     #[must_use]
     pub fn with_hot_reload(mut self, hot_reload: bool) -> Self {

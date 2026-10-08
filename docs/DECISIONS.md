@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-037 | Texture hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed PNGs replace pixels under the same `TextureId` (revision bump → GPU re-upload); broken or oversized files keep the old texture | Accepted | Yes (PP-028) |
+| ADR-037 | Asset hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed textures, fonts and sounds are replaced under the same id (texture revision → GPU re-upload; font revision → glyph atlas cleared; sounds: new `Arc`, running voices keep the old); broken or oversized files keep the old asset | Accepted | Yes (PP-028 textures, PP-029 fonts + sounds) |
 | ADR-036 | Game components in scenes: `Context::register_scene_component::<T>(name)` with `serde` bounds (serde enters the public API through this one bound); values stored as plain RON under stable names; unknown names are load errors; no entity references | Accepted | Yes (PP-027) |
 | ADR-035 | Scene files: RON text via `serde` mirror types in a crate-private `scene` module; `Context::save_scene` / `load_scene`; assets by asset-root-relative path; versioned; all engine components (animation with playback position, velocity, buttons since PP-026b); game components later | Accepted | Yes (PP-026a, PP-026b) |
 | ADR-034 | Per-texture sampling: `TextureFilter` (`Nearest` default, `Linear`) chosen at load via `Context::load_texture_with(path, TextureOptions)`; one sampler per filter; transparent texels bled on load for `Linear` | Accepted | Yes (PP-025) |
@@ -1999,6 +1999,27 @@ Zero new dependencies, reuses the existing upload path, and games need no change
 ## Revisit Conditions
 Thousands of watched files, a need for instant reload (switch the detection to `notify`), or an editor that needs reload
 events (e.g. to refresh thumbnails).
+
+## Extension (PP-029, 2026-10-08): fonts and sounds
+- **Shared detection:** the stamp logic moved to the crate-private `assets::watch` module (`FileWatch`, generic
+  `ReloadReport<Id>`, `reload_if_changed`), used by the texture, font and sound stores alike; the runner's 0.5 s poll
+  now covers all three.
+- **Fonts:** a changed font file is parsed again and replaces the font under the same `FontId`. The font store keeps a
+  `revision` counter; when it changes, the renderer **clears the glyph atlas** (`GlyphAtlas::clear`, which unlike
+  `reset` is not counted as "atlas full"), so no glyph of the old font is drawn again and all text is re-rasterized
+  next frame. `measure_text` uses the new font immediately.
+- **Sounds:** a changed WAV/OGG is decoded again and its entry replaced by a new `Arc<SoundData>` under the same
+  `SoundId`. Voices already playing keep the `Arc` they were started with and finish with the old samples; the next
+  `play_sound`/`loop_sound` uses the new ones. Loops keep the old sound until restarted.
+- **Scenes** are not reloaded: they are spawned data, not handles (reloading would mean despawning game entities).
+- **Verified:** unit tests for the shared watcher (one read per change, broken file reported once, missing file
+  ignored), font reload (same id, broken file kept, revision bump only on success, non-file fonts ignored), sound
+  reload (same id, new samples, a playing copy keeps the old ones, broken file kept) and `GlyphAtlas::clear`
+  (everything forgotten and re-uploaded, not counted as full). End to end in the sandbox: replacing
+  `Poppins-Regular.ttf` with another font changed the help label and HUD text within 1.5 s, a broken font changed
+  nothing (one warning), restoring the file restored the original pixels; through ALSA's `file` plugin, a click before
+  replacing `blip.wav` with `hit.wav` played exactly `blip.wav` and a click after it played exactly `hit.wav` (both
+  max diff 0 against the mixer model).
 
 ---
 

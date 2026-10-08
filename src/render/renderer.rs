@@ -41,6 +41,9 @@ pub(crate) struct Renderer {
     instances: InstanceBuffer,
     /// Rasterized glyphs (CPU copy; the GPU copy lives in `sprites`, ADR-027).
     glyph_atlas: GlyphAtlas,
+    /// The font store revision the atlas was filled from; when hot reload
+    /// replaces a font the atlas is cleared (ADR-037).
+    font_revision: u32,
 }
 
 impl Renderer {
@@ -125,6 +128,7 @@ impl Renderer {
             draw_list: DrawList::default(),
             instances: InstanceBuffer::new("purplepie instances"),
             glyph_atlas,
+            font_revision: 0,
         })
     }
 
@@ -214,6 +218,10 @@ impl Renderer {
             physical_size,
             target_is_srgb: self.config.format.is_srgb(),
         };
+        if fonts.revision() != self.font_revision {
+            self.glyph_atlas.clear();
+            self.font_revision = fonts.revision();
+        }
         self.draw_list
             .build(world, &view, textures, fonts, &mut self.glyph_atlas);
         self.sprites

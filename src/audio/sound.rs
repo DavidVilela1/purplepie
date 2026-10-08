@@ -9,6 +9,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::assets::watch::{FileWatch, ReloadReport, reload_if_changed};
 use crate::error::{BoxError, Error, Result};
 
 /// Identifies a sound loaded with [`Context::load_sound`](crate::Context::load_sound).
@@ -136,6 +137,9 @@ pub(crate) struct Sounds {
     entries: Vec<Arc<SoundData>>,
     /// Path → id, so loading the same path twice returns the same sound.
     by_path: HashMap<PathBuf, SoundId>,
+    /// Parallel to `entries`: the file each sound came from and its stamp, for
+    /// hot reload (ADR-037). `None` for sounds not loaded from a file.
+    watches: Vec<Option<(PathBuf, FileWatch)>>,
 }
 
 impl Sounds {
@@ -150,9 +154,13 @@ impl Sounds {
             path: path.to_path_buf(),
             source,
         };
+        let watch = FileWatch::before_read(path);
         let bytes = std::fs::read(path).map_err(|e| asset_error(Box::new(e)))?;
         let data = decode(bytes).map_err(asset_error)?;
         let id = self.push(data);
+        if let Some(slot) = self.watches.get_mut(id.index()) {
+            *slot = Some((path.to_path_buf(), watch));
+        }
         self.by_path.insert(path.to_path_buf(), id);
         log::debug!("loaded sound {} as {id:?}", path.display());
         Ok(id)
@@ -161,7 +169,34 @@ impl Sounds {
     pub(crate) fn push(&mut self, data: SoundData) -> SoundId {
         let index = u32::try_from(self.entries.len()).unwrap_or(u32::MAX);
         self.entries.push(Arc::new(data));
+        self.watches.push(None);
         SoundId(index)
+    }
+
+    /// Re-reads every sound whose file changed (ADR-037), keeping its
+    /// [`SoundId`]. Playbacks already running keep the old samples (they hold
+    /// their own `Arc`); the next `play_sound` uses the new ones. A broken file
+    /// keeps the old sound and is reported once.
+    pub(crate) fn reload_changed(&mut self) -> ReloadReport<SoundId> {
+        let mut report = ReloadReport::default();
+        for (index, (entry, watch)) in self.entries.iter_mut().zip(&mut self.watches).enumerate() {
+            let Some((path, watch)) = watch else {
+                continue;
+            };
+            let id = SoundId(u32::try_from(index).unwrap_or(u32::MAX));
+            reload_if_changed(path, watch, id, "sound", &mut report, || {
+                let data = decode(std::fs::read(&*path)?)?;
+                let detail = format!(
+                    "{} frames, {} channel(s) at {} Hz",
+                    data.frames(),
+                    data.channels,
+                    data.sample_rate
+                );
+                *entry = Arc::new(data);
+                Ok(detail)
+            });
+        }
+        report
     }
 
     /// Number of sounds loaded so far.
@@ -321,6 +356,55 @@ pub(crate) mod tests {
         assert!(
             matches!(&err, Error::Asset { path: p, .. } if *p == path),
             "{err}"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn changed_sound_files_are_reloaded_and_playing_copies_keep_the_old_samples() {
+        use crate::assets::watch::tests::write_changed;
+        let path = temp_path("reload.wav");
+        std::fs::write(&path, encode_wav(spec(1, 16), &[16_384, 16_384])).expect("write");
+        let mut sounds = Sounds::default();
+        let pushed = sounds.push(SoundData {
+            channels: 1,
+            sample_rate: 8_000,
+            samples: vec![0.0],
+        });
+        let id = sounds.load(&path).expect("load");
+        let playing = Arc::clone(sounds.get(id).expect("entry")); // as a voice would hold it
+        assert_eq!(
+            sounds.reload_changed(),
+            ReloadReport::default(),
+            "unchanged"
+        );
+
+        write_changed(
+            &path,
+            &encode_wav(spec(2, 16), &[0, 0, -16_384, -16_384, 0, 0]),
+            10,
+        );
+        assert_eq!(sounds.reload_changed().reloaded, [id]);
+        let new = sounds.get(id).expect("entry");
+        assert_eq!((new.channels, new.frames(), new.samples[2]), (2, 3, -0.5));
+        assert_eq!(
+            playing.samples,
+            [0.5, 0.5],
+            "a running playback keeps its samples"
+        );
+        assert_eq!(
+            sounds.get(pushed).expect("pushed").samples,
+            [0.0],
+            "not file-backed"
+        );
+
+        write_changed(&path, b"RIFF but broken", 20);
+        assert_eq!(sounds.reload_changed().failed, [id]);
+        assert_eq!(sounds.get(id).expect("kept").frames(), 3);
+        assert_eq!(
+            sounds.reload_changed(),
+            ReloadReport::default(),
+            "reported once"
         );
         std::fs::remove_file(&path).ok();
     }

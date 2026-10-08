@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::assets::watch::{FileWatch, ReloadReport, reload_if_changed};
 use crate::error::{BoxError, Error, Result};
 use crate::math::Vec2;
 
@@ -166,35 +167,6 @@ pub(crate) struct TextureData {
     pub(crate) revision: u32,
 }
 
-/// What a file looked like when it was last read: modification time and
-/// length (the length catches two writes within the file system's time
-/// resolution).
-type FileStamp = (std::time::SystemTime, u64);
-
-fn file_stamp(path: &Path) -> Option<FileStamp> {
-    let meta = std::fs::metadata(path).ok()?;
-    Some((meta.modified().ok()?, meta.len()))
-}
-
-/// Hot-reload bookkeeping for one texture (ADR-037).
-#[derive(Debug, Default, Clone, Copy)]
-struct Watch {
-    /// The file as last loaded successfully.
-    loaded: Option<FileStamp>,
-    /// The file as last seen broken, so a broken file is reported once.
-    failed: Option<FileStamp>,
-}
-
-/// What one [`Textures::reload_changed`] call did.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct ReloadReport {
-    /// Textures whose file changed and now has new pixels.
-    pub(crate) reloaded: Vec<TextureId>,
-    /// Textures whose file changed but could not be read or decoded; they
-    /// keep their previous pixels.
-    pub(crate) failed: Vec<TextureId>,
-}
-
 /// Reads and decodes `path` for a texture sampled with `filter`.
 fn read_texture(
     path: &Path,
@@ -231,7 +203,7 @@ pub(crate) struct Textures {
     /// twice returns the same texture.
     by_path: HashMap<(PathBuf, TextureOptions), TextureId>,
     /// Parallel to `entries`: file stamps for hot reload.
-    watches: Vec<Watch>,
+    watches: Vec<FileWatch>,
 }
 
 impl Textures {
@@ -251,7 +223,7 @@ impl Textures {
         };
         // Stamp before reading: a write that lands during the read shows up
         // as a change on the next poll instead of being missed.
-        let stamp = file_stamp(path);
+        let watch = FileWatch::before_read(path);
         let (width, height, pixels) = read_texture(path, options.filter).map_err(asset_error)?;
         let id = self.push(TextureData {
             source: path.to_path_buf(),
@@ -261,10 +233,7 @@ impl Textures {
             filter: options.filter,
             revision: 0,
         });
-        self.watches.push(Watch {
-            loaded: stamp,
-            failed: None,
-        });
+        self.watches.push(watch);
         self.by_path.insert(key, id);
         log::debug!(
             "loaded texture {} ({width}×{height}, {:?}) as {id:?}",
@@ -301,41 +270,19 @@ impl Textures {
     /// file that cannot be read or decoded leaves the texture as it was and is
     /// reported once until it changes again. Missing files are ignored (an
     /// editor may be replacing them). Used by hot reload (ADR-037).
-    pub(crate) fn reload_changed(&mut self) -> ReloadReport {
+    pub(crate) fn reload_changed(&mut self) -> ReloadReport<TextureId> {
         let mut report = ReloadReport::default();
         for (index, (data, watch)) in self.entries.iter_mut().zip(&mut self.watches).enumerate() {
             let id = TextureId(u32::try_from(index).unwrap_or(u32::MAX));
-            let Some(stamp) = file_stamp(&data.source) else {
-                continue;
-            };
-            if Some(stamp) == watch.loaded || Some(stamp) == watch.failed {
-                continue;
-            }
-            match read_texture(&data.source, data.filter) {
-                Ok((width, height, pixels)) => {
-                    data.width = width;
-                    data.height = height;
-                    data.pixels = pixels;
-                    data.revision = data.revision.wrapping_add(1);
-                    *watch = Watch {
-                        loaded: Some(stamp),
-                        failed: None,
-                    };
-                    log::info!(
-                        "reloaded texture {} ({width}×{height}) as {id:?}",
-                        data.source.display()
-                    );
-                    report.reloaded.push(id);
-                }
-                Err(error) => {
-                    watch.failed = Some(stamp);
-                    log::warn!(
-                        "texture {} changed but could not be reloaded (keeping the old one): {error}",
-                        data.source.display()
-                    );
-                    report.failed.push(id);
-                }
-            }
+            let source = data.source.clone();
+            reload_if_changed(&source, watch, id, "texture", &mut report, || {
+                let (width, height, pixels) = read_texture(&source, data.filter)?;
+                data.width = width;
+                data.height = height;
+                data.pixels = pixels;
+                data.revision = data.revision.wrapping_add(1);
+                Ok(format!("{width}×{height}"))
+            });
         }
         report
     }
@@ -552,17 +499,7 @@ pub(crate) mod tests {
         assert_eq!(alpha_after, alpha_before, "coverage is untouched");
     }
 
-    /// Writes `bytes` to `path` and moves its modification time `seconds`
-    /// into the future, so the change is seen even on coarse file systems.
-    fn write_changed(path: &Path, bytes: &[u8], seconds: u64) {
-        std::fs::write(path, bytes).expect("write");
-        let file = std::fs::File::options()
-            .write(true)
-            .open(path)
-            .expect("open");
-        let time = std::time::SystemTime::now() + std::time::Duration::from_secs(seconds);
-        file.set_modified(time).expect("set mtime");
-    }
+    use crate::assets::watch::tests::write_changed;
 
     #[test]
     fn changed_files_are_reloaded_under_the_same_id() {

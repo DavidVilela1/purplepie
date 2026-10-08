@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-029: Asset hot reload, part 2: fonts and sounds** · P1 · TODO ← **next task**
+- [ ] **PP-030: Workspace split: engine core vs. editor-to-be crates (ADR)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -54,6 +54,7 @@ _None._
 - [x] **PP-026b: Scene files, part 1b: animation, velocity and UI buttons (ADR-035 extension)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-027: Scene files, part 2: game components through a registry (ADR-036)** · DONE (2026-10-07; verified on Linux)
 - [x] **PP-028: Asset hot reload, part 1: textures (ADR-037)** · DONE (2026-10-08; verified on Linux)
+- [x] **PP-029: Asset hot reload, part 2: fonts and sounds (ADR-037 extension)** · DONE (2026-10-08; verified on Linux)
 
 ## Future
 
@@ -359,14 +360,25 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-037. `EngineConfig::hot_reload` / `with_hot_reload` (default off; the sandbox turns it on). `Textures::reload_changed` (file stamp = mtime + length per entry, stamped before reading; same id, filter and bleeding; `revision` bump; broken file logged once and kept; missing file ignored) called by the runner every 0.5 s before drawing. `SpritePipeline::sync_textures` re-uploads entries whose revision changed; an oversized replacement keeps the old GPU copy. `notify` measured (+7/+9/+5 crates) and rejected: no new dependencies. Also: ROADMAP gains phase **P3.5 Usability and first release** between P3 and P4 (owner decision). |
 | Result | ✅ 1. Unit tests (+1, two extended): reload with new size/pixels under the same id for a Nearest and a Linear copy, bleeding re-applied, revision bumps; broken file reported once, old pixels kept; fixed file reloads; deleted file ignored; config default/builder. ✅ 2. Ignored GPU test: re-upload under the same id; oversized replacement kept without error or retry. ✅ 3. Xvfb: overwriting `sandbox_quadrants.png` in the running sandbox inverted the sprite (sample (230,57,70) → (25,198,185)), a half-written file changed nothing (1 warning), restoring the file restored the original pixels exactly; with hot reload off (scene example) nothing changed and nothing was logged. ✅ 4. Regressions: GPU tests 12/12; sandbox model 0 mismatches; Breakout autoplay unchanged, lose screen identical; fault test clean. |
 
-### PP-029: Asset hot reload, part 2: fonts and sounds ← NEXT
+### PP-029: Asset hot reload, part 2: fonts and sounds
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3 (asset hot reload item) · Priority P1 · **DONE** (2026-10-08; verified on Linux) |
 | Dependencies | PP-028 (DONE) |
 | Why now | Completes hot reload for every asset kind the engine loads (scenes are spawned data, not handles, and stay out). Same mechanism as ADR-037, so it is a small, contained step before the workspace split. |
 | Scope | Extend the ADR-037 poll to the font and sound stores: a changed font file replaces the parsed font under the same `FontId` and drops that font's glyphs from the atlas cache so text is re-rasterized; a changed sound replaces the decoded samples under the same `SoundId` (voices already playing keep the old samples via their `Arc`; new plays use the new ones). Broken files keep the old asset, logged once. Share the stamp/poll code with textures rather than copying it. |
 | Acceptance criteria | Unit tests per store (same id, new data, broken file kept, reported once); a glyph-cache test showing the old font's glyphs are not reused; an Xvfb run where replacing the sandbox font file changes the help label; a capture run where replacing `blip.wav` changes the next click's sound; CI green. |
+| Scope (as built) | ADR-037 extension. New crate-private `src/assets/watch.rs` (`FileWatch`, `ReloadReport<Id>`, `reload_if_changed`; the texture store now uses it too). `Fonts::reload_changed` + store `revision`; the renderer clears the glyph atlas when it changes (new `GlyphAtlas::clear`, not counted as full). `Sounds::reload_changed` (new `Arc` per changed sound; sounds not from a file are skipped). The runner polls all three stores every 0.5 s. No new dependencies; no public API change. |
+| Result | ✅ 1. Unit tests (+4): shared watcher, font reload, sound reload (playing copy keeps old samples), atlas clear. ✅ 2. Xvfb: swapping the sandbox font for DejaVu Sans changed the help label and HUD text; a broken font file changed nothing (1 warning); restoring the file restored the original pixels exactly. ✅ 3. ALSA capture: click → exactly `blip.wav`; after replacing it with `hit.wav`, the next click → exactly `hit.wav` (max diff 0, L = R). ✅ 4. Regressions: GPU tests 12/12; sandbox model 0 mismatches, label IoU unchanged (0.767); Breakout autoplay unchanged, lose screen identical; fault test clean. All test assets restored byte-for-byte. |
+
+### PP-030: Workspace split ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3 (workspace split item, the last P3 item) · Priority P1 · TODO |
+| Dependencies | PP-029 (DONE) |
+| Why now | ADR-026 kept one crate until an editor or another consumer needs a separate one; P4 (debug overlay, likely egui behind a feature) and P5 (editor app) will, and P3.5's guide and release must describe the final crate layout. Doing the split last in P3 lets P3.5 document a stable structure. |
+| Scope | ADR first: target layout (e.g. a Cargo workspace with the `purplepie` engine crate unchanged for games, examples and the sandbox as before, and room for `purplepie-editor` later), what moves (probably nothing in the engine API; sandbox/examples placement; shared `assets/`), CI and `cargo run` commands, Windows paths in the owner's command block. Then perform the move with no behaviour change. If the ADR concludes a split brings nothing yet, record that and close the item instead. |
+| Acceptance criteria | `cargo test --workspace`, clippy, docs and all examples build and pass; sandbox/Breakout/scene example behave identically (existing Xvfb regressions); asset root still found from the new layout; CI updated; game-facing API unchanged. |
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

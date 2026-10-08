@@ -15,6 +15,8 @@
 //!
 //! Absolute paths are used as they are.
 
+pub(crate) mod watch;
+
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
