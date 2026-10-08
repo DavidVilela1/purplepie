@@ -35,6 +35,9 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 
 ## Getting started
 
+**New here? Read the [guide](docs/GUIDE.md)**: it goes from an empty folder to a shipped game, one feature per
+section, and every code block in it is compiled by `cargo test`.
+
 ### A new game crate
 
 PurplePie is not on crates.io yet; a game depends on it by path (or by git). Create the game next to your
@@ -189,6 +192,7 @@ PurplePie/
     ├── ROADMAP.md        Stages 0–10, milestones M0–M10
     ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
+    ├── GUIDE.md          newcomer guide: from `cargo new` to a shipped game (compiled by `cargo test`)
     ├── USABILITY.md      what newcomers run into (outside-crate trials), and which task fixes it
     └── spikes/           Stage 0 compatibility spike (reference only)
 ```

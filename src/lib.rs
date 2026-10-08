@@ -30,7 +30,9 @@
 //! "A new game crate" in the README) and keeps its own `assets/` folder:
 //! asset paths such as `"textures/player.png"` are relative to it. Everything
 //! a game calls goes through [`Context`]: assets, scenes, sound, input, the
-//! camera and exiting. [`ecs`] shows how to query entities.
+//! camera and exiting. [`ecs`] shows how to query entities. The guide
+//! (`docs/GUIDE.md` in the repository) walks from an empty folder to a shipped
+//! game, one feature per section.
 //!
 //! Current status, architecture and roadmap: `docs/PROJECT_STATUS.md`,
 //! `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`.
@@ -52,6 +54,12 @@ pub mod ui;
 pub use app::{Context, Engine, EngineConfig, Game};
 pub use error::{BoxError, Error, Result};
 pub use time::Time;
+
+/// Compiles and runs every Rust block in `docs/GUIDE.md` with `cargo test`,
+/// so the guide cannot drift from the API.
+#[cfg(doctest)]
+#[doc = include_str!("../docs/GUIDE.md")]
+mod guide {}
 
 /// The PurplePie crate version, taken from `Cargo.toml`.
 ///

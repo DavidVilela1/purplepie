@@ -285,6 +285,10 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Set `CARGO_TARGET_DIR` to a scratch target directory shared by trials, so the dependency tree compiles once
   (about 2 min debug, 4 min release). Never put the trial crate inside the package: it would join the workspace
   (ADR-038). Record what goes wrong in `docs/USABILITY.md`. Logs need a logger in the trial (`env_logger`, `RUST_LOG`).
+- **Guide (PP-032a+):** every Rust block in `docs/GUIDE.md` is a doctest (`cargo test --doc guide`). Blocks that
+  open a window are `rust no_run` (compiled only); the others define functions and run trivially. Non-Rust blocks need a
+  language tag (`text`, `toml`), or rustdoc compiles them as Rust. After changing the guide's final game, rebuild it as
+  an outside crate and play it under Xvfb (the outside-crate check above).
 
 The owner confirms every windowed stage on Windows with `cargo test` and `cargo run`.
 

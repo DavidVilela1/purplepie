@@ -19,7 +19,8 @@ earlier. **Phase P3 (editor foundations): complete** (2026-10-08): scene files (
 scenes (PP-027, ADR-036), asset hot reload for textures, fonts and sounds (PP-028/029, ADR-037) and the workspace layout
 decision (PP-030, ADR-038). **Phase P3.5 (usability and first release): in progress.** PP-031, the outside-crate
 trial, is done: a small game built from the README alone worked after three README gaps were fixed, and its 17
-findings are in [USABILITY.md](USABILITY.md). Next: **PP-032**, the getting-started guide. The long-term plan (in-game UI and an editor) is in
+findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
+`cargo test`. Next: **PP-032b**, module docs for game authors. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -100,6 +101,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-032a: newcomer guide `docs/GUIDE.md` (14 sections, every Rust block a doctest); checked as an outside crate (phase P3.5 item 2, part 1).
 - PP-031: outside-crate trial: a game crate outside the package built from the README alone; findings in `docs/USABILITY.md`; README, crate-page and `ecs` docs fixed (phase P3.5 item 1).
 - PP-030: workspace layout: root `Cargo.toml` declares the workspace; the engine stays at the root; future crates under `crates/` (ADR-038). Phase P3 complete.
 - PP-029: font and sound hot reload: shared `assets::watch`, glyph atlas cleared on font change, sounds swapped for new plays (ADR-037 extension).
@@ -114,7 +116,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-032: Getting-started guide and focused examples** (phase P3.5, item 2). See [TASKS.md](TASKS.md#pp-032-getting-started-guide-and-focused-examples--next).
+- **PP-032b: Module docs for game authors + starter-template decision** (phase P3.5, item 2, part 2). See [TASKS.md](TASKS.md#pp-032b-module-docs-for-game-authors--starter-template-decision--next).
 
 ## Blocked
 
@@ -151,6 +153,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-08: PP-032a Newcomer guide.**
+  - New `docs/GUIDE.md`: 14 short sections from `cargo new` to shipping, ending with a complete small game ("Collector"); it uses only assets copied from PurplePie's `assets/`.
+  - `src/lib.rs` includes the guide into a `#[cfg(doctest)]` module, so `cargo test` compiles all 12 Rust blocks (doctests 31 → 43); the guide cannot drift from the API. No public API change.
+  - README links the guide (Getting started, layout); the crate page mentions it. PP-032 split into PP-032a (done) and PP-032b (module docs, next).
 
 - **2026-10-08: PP-031 Outside-crate trial (phase P3.5 started).**
   - A scratch game crate (`pie_catch`: catch falling pies; sprites, text, keyboard, a sound, a scene file with two registered game components) was written outside the package from the README and API docs only. It ran under Xvfb and shipped as a release build with its own `assets/`.
@@ -347,15 +354,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-031 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-032a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 216 unit tests + 31 doctests, 12 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 216 unit tests + 43 doctests (12 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Guide (PP-032a) | ✅ `cargo test --doc guide`: 12/12; a deliberate `KeyCode::KeyA` in the guide fails its block; CRLF copy of the guide also passes. Fresh outside crate following the guide word for word (section 1 `Cargo.toml` + asset folders, section 14 game): no warnings, clippy clean; Xvfb: first frame correct, a brick collected (score 1, blip in ALSA capture), Restart click reset score and position |
 | Outside-crate trial (PP-031) | ✅ README example copied verbatim into a fresh crate: built with no warnings, failed only on the two assets the README did not mention (now documented); trial game `pie_catch` (path dependency, own `assets/`): scene save + load (5 entities, 2 registered components), autoplay frame (score 5), game over and Enter restart frames checked, catch sounds present in an ALSA `file` capture; release build + `assets/` copied to a new folder ran from working directory `/` |
 | README re-check (PP-031) | ✅ fresh `cargo new my_game` beside a PurplePie folder, following the fixed README word for word: builds and runs (sprite, bar and text in the screenshot); `cargo doc -p purplepie --no-deps` 1 min from a cold target directory |
 | Workspace declaration (PP-030) | ✅ `cargo check/test` also with `--workspace`; `Cargo.lock` byte-identical; `cargo metadata` workspace root = repo root, sole default member `purplepie`; a copy nested in a folder with its own `[workspace]` failed to build before and builds after |
@@ -377,4 +385,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-08. PP-031 done (outside-crate trial; findings in USABILITY.md); phase P3.5 in progress. PP-032 (getting-started guide) is next.
+2026-10-08. PP-032a done (newcomer guide, compiled by `cargo test`); phase P3.5 in progress. PP-032b (module docs for game authors) is next.

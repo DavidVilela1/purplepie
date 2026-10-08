@@ -44,8 +44,8 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-04 | doc fix | Scene components need `serde` (with `derive`) in the game's own `Cargo.toml`. The `register_scene_component` docs said so, but the README did not. `save_scene` also needs its folder to exist; the API docs said so, but the README did not. | **Fixed:** README dependency snippet and Scenes bullet. |
 | U-05 | doc fix | hecs 0.11 queries yield only the components. To get the entity (for example to despawn it) `Entity` goes into the query, and nothing in the `ecs` docs showed that. | **Fixed:** new `ecs` module doctest covering `query::<(Entity, …)>()`, collecting before despawning, and `query_mut`. |
 | U-06 | doc fix | `cargo doc` documents all of the roughly 140 dependencies, which took 6 minutes here. | **Fixed:** the README gives `cargo doc -p purplepie --no-deps --open` (1 min from cold). |
-| U-07 | doc fix | The crate page pointed only to repository-internal docs. Module pages are written for engine developers: they describe crate-private parts (mixer, sound store) and cite ADR numbers. Only `ecs` and `ui` have examples; `audio`, `input`, `math` and `render` have none. | **Partly fixed:** the crate page now explains the game-crate layout and points to `Context` and `ecs`. The rest goes to **PP-032** (guide and examples). |
-| U-08 | doc fix | Coming from winit, the first guess for letter keys is `KeyCode::KeyA`; PurplePie names them `KeyCode::A`. The compiler error does not suggest the right name. | **PP-032:** the guide lists the input names. |
+| U-07 | doc fix | The crate page pointed only to repository-internal docs. Module pages are written for engine developers: they describe crate-private parts (mixer, sound store) and cite ADR numbers. Only `ecs` and `ui` have examples; `audio`, `input`, `math` and `render` have none. | **Partly fixed:** the crate page now explains the game-crate layout and points to `Context` and `ecs`. The guide (`docs/GUIDE.md`, PP-032a) now covers every feature with compiled examples. The module-page rewrite goes to **PP-032b**. |
+| U-08 | doc fix | Coming from winit, the first guess for letter keys is `KeyCode::KeyA`; PurplePie names them `KeyCode::A`. The compiler error does not suggest the right name. | **Fixed in PP-032a:** GUIDE.md section 8 lists the key names. |
 | U-09 | API issue | `ScreenSpace::TOP` / `BOTTOM` / `LEFT` / `RIGHT` versus `TextAnchor::TOP_CENTER` / `BOTTOM_CENTER`. The natural guess `ScreenSpace::TOP_CENTER` does not exist, and the compiler suggests `CENTER`, which is wrong. | **PP-034** (API review). |
 | U-10 | API issue | `Error::Save` shows the path as given (`"scenes/level.ron"`), while `Error::Asset` shows the resolved full path. When the folder is missing, the user cannot see where the save was attempted. | **PP-034.** |
 | U-11 | API issue | `fn main() -> purplepie::Result<()>` prints errors in `Debug` form (`Error: Asset { path: …, source: Os { code: 2, kind: NotFound, … } }`). It is readable, but raw for a player-facing failure. | **PP-034:** decide between a documented `main` pattern and a helper that prints the `Display` form. |
@@ -59,3 +59,23 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 **What worked without help:** the `Game` / `Context` / `EngineConfig` shape; sprites, quads, text and layers;
 `ScreenSpace` HUD text; keyboard input; `play_sound`; `save_scene` / `load_scene` with two registered components
 (one of them a unit struct); and shipping with `assets/` next to the executable. The game needed no engine changes.
+
+## PP-032a: guide check (2026-10-08)
+
+`docs/GUIDE.md` was written for newcomers: 14 sections from `cargo new` to shipping, with every Rust block compiled
+by `cargo test` (12 blocks). It was then checked the way a newcomer would use it:
+
+- A fresh `cargo new my_game` beside a PurplePie folder.
+- `Cargo.toml` lines copied from section 1, and the three asset folders copied as section 1 says.
+- The section 14 game pasted into `src/main.rs`.
+
+Results:
+
+- **Build:** with no warnings, and clippy was clean.
+- **Under Xvfb:** the first frame showed the arena, three bricks, the HUD score, the Restart button and the animated corner sprite.
+- **Play:** moving into a brick raised the score to 1, respawned the brick, and played the blip (captured through ALSA).
+- **Restart:** clicking Restart reset the score to 0 and centred the ball.
+- **Mutation check:** changing `KeyCode::A` to `KeyCode::KeyA` in the guide made `cargo test` fail on that block.
+
+No new findings. The guide names its own workarounds: the game writes its own random numbers (U-14) and its own
+rectangle overlap (U-15), and section 12 shows a `Display`-printing `main` (U-11).

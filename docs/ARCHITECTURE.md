@@ -419,9 +419,10 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 211 unit tests + 30 doctests (PP-027) |
-| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text, sprite-sheet and texture-filter rendering read back and compared with the CPU rasterization / texels / bilinear model) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 11 ignored tests pass under lavapipe |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 216 unit tests + 43 doctests: 31 in the code, 12 in the guide (PP-032a) |
+| GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text, sprite-sheet and texture-filter rendering read back and compared with the CPU rasterization / texels / bilinear model) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 12 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
+| Newcomer guide (`docs/GUIDE.md`) | every Rust block is a doctest: `src/lib.rs` includes the file into a `#[cfg(doctest)]` module, so `cargo test` compiles each block (and runs those that are not `no_run`) | ✅ 12 blocks (PP-032a); the final game was also built and played as an outside crate |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
 | `input` state | pure unit tests, no window/GPU; Xvfb XTEST key, click, move and wheel runs | ✅ keyboard (PP-010) + mouse (PP-016) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |
