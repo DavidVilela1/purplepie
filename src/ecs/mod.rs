@@ -20,6 +20,39 @@
 //! let t = world.get::<&Transform2D>(ball).expect("ball exists");
 //! assert_eq!(t.position, Vec2::new(1.0, 0.0));
 //! ```
+//!
+//! Queries yield the components only; put [`Entity`] in the query to get the
+//! entity too. Collect entities first and despawn after the loop (or use
+//! `hecs::CommandBuffer`), because the world cannot change while it is borrowed:
+//!
+//! ```
+//! use purplepie::ecs::{Entity, World};
+//! use purplepie::math::{Transform2D, Vec2};
+//!
+//! /// A game's own marker component: any `'static + Send + Sync` type works.
+//! struct Pie;
+//!
+//! let mut world = World::new();
+//! world.spawn((Transform2D::from_position(Vec2::new(0.0, -5.0)), Pie));
+//! world.spawn((Transform2D::from_position(Vec2::new(0.0, 5.0)), Pie));
+//!
+//! // Read-only, through `&World` (`ctx.world()` in a game).
+//! let below: Vec<Entity> = world
+//!     .query::<(Entity, &Transform2D, &Pie)>()
+//!     .iter()
+//!     .filter(|(_, t, _)| t.position.y < 0.0)
+//!     .map(|(e, _, _)| e)
+//!     .collect();
+//! for e in below {
+//!     world.despawn(e).expect("still alive");
+//! }
+//!
+//! // Mutable, through `&mut World` (`ctx.world_mut()` in a game).
+//! for (t, _) in world.query_mut::<(&mut Transform2D, &Pie)>() {
+//!     t.position.y -= 1.0;
+//! }
+//! assert_eq!(world.len(), 1);
+//! ```
 
 pub use hecs::{Entity, World};
 

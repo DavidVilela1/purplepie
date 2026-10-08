@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-031: Outside-crate trial: a fresh game crate built from the README alone (phase P3.5)** · P1 · TODO ← **next task**
+- [ ] **PP-032: Getting-started guide and focused examples (phase P3.5, item 2)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -56,9 +56,14 @@ _None._
 - [x] **PP-028: Asset hot reload, part 1: textures (ADR-037)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-029: Asset hot reload, part 2: fonts and sounds (ADR-037 extension)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-030: Workspace layout decision (ADR-038; phase P3 complete)** · DONE (2026-10-08; verified on Linux)
+- [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 
 ## Future
 
+- [ ] **PP-033: Windows/macOS verification checklist (phase P3.5, item 3; owner)** · P2 · TODO
+- [ ] **PP-034: Second public API review (phase P3.5, item 4)** · P2 · TODO
+- [ ] **PP-035: Release 0.1.0 (phase P3.5, item 5)** · P2 · TODO
+- [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6)** · P2 · TODO
 
 ---
 
@@ -383,14 +388,50 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-038. A scratch trial of moving the engine to `crates/purplepie` measured the cost (library stops compiling: 3 `include_bytes!`; 25 `CARGO_MANIFEST_DIR` asset paths in 7 files; 8 tests still failing after a naive rewrite; changed run commands). Decision: no move; the root `Cargo.toml` gains `[workspace] members = []` (engine stays the only, default member; future crates under `crates/`). No source, API, dependency, `Cargo.lock` or CI change. |
 | Result | ✅ 1. Gates unchanged with and without `--workspace`; `Cargo.lock` byte-identical; `cargo metadata`: workspace root = repository root, single default member `purplepie`. ✅ 2. A copy nested inside a folder with its own `[workspace]` failed to build before ("believes it's in a workspace when it's not") and builds after. ✅ 3. Regressions: GPU tests 12/12; sandbox model 0 mismatches and asset root found at `assets/`; scene example identical to PP-027's frame; Breakout autoplay unchanged, lose screen identical. |
 
-### PP-031: Outside-crate trial ← NEXT
+### PP-032: Getting-started guide and focused examples ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3.5 (Usability and first release), item 1 · Priority P1 · TODO |
+| Stage | Post-portfolio phase P3.5 (Usability and first release), item 2 · Priority P1 · TODO |
+| Dependencies | PP-031 (DONE; findings in [USABILITY.md](USABILITY.md)) |
+| Why now | The trial showed the README is enough to start but not to keep going: module docs are written for engine developers, four of six public modules have no example, and key names, asset layout and scene setup are spread over API pages (U-07, U-08). |
+| Scope | A newcomer's guide (new `docs/GUIDE.md`, linked from the README and the crate page) that walks from `cargo new` to a shipped game: crate setup and assets, the `Game`/`Context` loop, entities and queries, sprites/sheets/animation, text, input names, sound, HUD and buttons, scenes with game components, hot reload, shipping. Rewrite the module-level docs of `audio`, `input`, `math` and `render` for game authors, each with a short example (doctests); move engine-internal notes to item docs or ARCHITECTURE. Decide whether a starter template (the PP-031 `pie_catch` shape) ships with the repository (it must stay buildable outside the package, ADR-038). No engine API changes (those are PP-034). |
+| Acceptance criteria | GUIDE.md exists and every code block in it is compiled (doctest or example); each public module page starts with a game-author paragraph and an example; a fresh outside crate built from GUIDE.md alone runs under Xvfb (screenshot checked); U-07 and U-08 marked fixed in USABILITY.md; CI green. |
+
+### PP-031: Outside-crate trial
+| Field | Value |
+|---|---|
+| Stage | Post-portfolio phase P3.5 (Usability and first release), item 1 · Priority P1 · **DONE** (2026-10-08; verified on Linux) |
 | Dependencies | PP-030 (DONE; phase P3 complete) |
-| Why now | First item of P3.5: every feature so far was built and tested from inside the repository. A game crate outside it, written only from the README and the API docs, shows what a newcomer actually runs into; its findings shape the guide (item 2) and the API review (item 4). |
-| Scope | Create a new binary crate outside the PurplePie package (in a scratch folder, depending on `purplepie` by path, as an outsider would by path or git) and build a small game from the README and `cargo doc` alone: window, sprites, text, input, a sound, a scene file, shipping its `assets/`. Log every snag (missing step, confusing name, error message, asset-path surprise, build issue) in a findings list (new `docs/USABILITY.md`), classify each (doc fix / API issue / missing feature), fix the trivial README/doc ones in this task, and turn the rest into P3.5 tasks. No engine API changes in this task. |
-| Acceptance criteria | The trial crate builds and runs under Xvfb (screenshot checked) using only what the docs describe; `docs/USABILITY.md` lists the findings with classification; README fixes applied and re-checked by repeating the affected steps; follow-up tasks recorded; CI green. |
+| Acceptance criteria | ✅ A trial crate `pie_catch` outside the package (path dependency, own `assets/`) built from the README and API docs alone: sprites, text, keyboard, a sound, a scene file with two registered game components; ran under Xvfb (screenshots checked: play, game over, restart; sound captured), and its release build ran shipped with `assets/` from another working directory. ✅ `docs/USABILITY.md` lists 17 findings (U-01…U-17) with class and owner task. ✅ README ("A new game crate", font copying, serde, scene folder, `cargo doc --no-deps`), crate-page and `ecs` docs fixed (new doctest); re-checked by a fresh `cargo new` crate following the README word for word. ✅ Follow-ups recorded (PP-032…PP-036). No engine API change. |
+
+### PP-033: Windows/macOS verification checklist (owner)
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 3 · Priority P2 · TODO · owner-run |
+| Dependencies | PP-032 (the guide's steps are part of the checklist) |
+| Scope | A short checklist the owner runs on Windows (and macOS if available): sandbox, Breakout, scene example, sound, hot reload, a fresh crate from the guide; results recorded in PROJECT_STATUS. Closes the "Stages 5–10 not seen on Windows" limitation. |
+
+### PP-034: Second public API review
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 4 · Priority P2 · TODO |
+| Dependencies | PP-032 |
+| Scope | Review everything public since ADR-026 (text, sheets, animation, screen space, audio, buttons, sampling, scenes, hot reload) like PP-017 did, including the trial's API findings: U-09 (`ScreenSpace::TOP` vs `TextAnchor::TOP_CENTER` naming), U-10 (`Error::Save` path not resolved), U-11 (errors from `main` print in `Debug` form), U-12 (registered components written compact in scene files), U-13 (a built-in console logger, so games and examples show engine warnings without adding a logging crate). Changes recorded in an ADR. |
+
+### PP-035: Release 0.1.0
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 5 · Priority P2 · TODO |
+| Dependencies | PP-034 |
+| Scope | Version 0.1.0, CHANGELOG, tag, compatibility policy; `repository` field in `Cargo.toml` (owner gives the URL, U-17) so the docs can show the git dependency; a CI job that builds and tests against the latest compatible dependencies, as a fresh outside crate gets them (U-16). |
+
+### PP-036: A second game as an outside crate
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6 · Priority P2 · TODO (split when current) |
+| Dependencies | PP-035 |
+| Scope | A second, different game written as an outside crate, adding only the engine features it needs. Candidates from the trial: random numbers (U-14) and rectangle-overlap helpers (U-15); from the roadmap: world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad. |
+
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |
 |---|---|

@@ -26,6 +26,12 @@
 //! }
 //! ```
 //!
+//! A game is its own crate that depends on `purplepie` (by path or git; see
+//! "A new game crate" in the README) and keeps its own `assets/` folder:
+//! asset paths such as `"textures/player.png"` are relative to it. Everything
+//! a game calls goes through [`Context`]: assets, scenes, sound, input, the
+//! camera and exiting. [`ecs`] shows how to query entities.
+//!
 //! Current status, architecture and roadmap: `docs/PROJECT_STATUS.md`,
 //! `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`.
 

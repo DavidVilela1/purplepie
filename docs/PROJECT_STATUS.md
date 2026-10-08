@@ -17,8 +17,9 @@ PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-0
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
 earlier. **Phase P3 (editor foundations): complete** (2026-10-08): scene files (PP-026a/b, ADR-035), game components in
 scenes (PP-027, ADR-036), asset hot reload for textures, fonts and sounds (PP-028/029, ADR-037) and the workspace layout
-decision (PP-030, ADR-038). **Next: phase P3.5 Usability and first release**, starting with **PP-031**, an outside-crate
-trial. The long-term plan (in-game UI and an editor) is in
+decision (PP-030, ADR-038). **Phase P3.5 (usability and first release): in progress.** PP-031, the outside-crate
+trial, is done: a small game built from the README alone worked after three README gaps were fixed, and its 17
+findings are in [USABILITY.md](USABILITY.md). Next: **PP-032**, the getting-started guide. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -99,6 +100,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-031: outside-crate trial: a game crate outside the package built from the README alone; findings in `docs/USABILITY.md`; README, crate-page and `ecs` docs fixed (phase P3.5 item 1).
 - PP-030: workspace layout: root `Cargo.toml` declares the workspace; the engine stays at the root; future crates under `crates/` (ADR-038). Phase P3 complete.
 - PP-029: font and sound hot reload: shared `assets::watch`, glyph atlas cleared on font change, sounds swapped for new plays (ADR-037 extension).
 - PP-028: texture hot reload: opt-in `EngineConfig::hot_reload`, 0.5 s polling of file stamps, same `TextureId`, GPU re-upload (ADR-037).
@@ -112,7 +114,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-031: Outside-crate trial** (phase P3.5, item 1). See [TASKS.md](TASKS.md#pp-031-outside-crate-trial--next).
+- **PP-032: Getting-started guide and focused examples** (phase P3.5, item 2). See [TASKS.md](TASKS.md#pp-032-getting-started-guide-and-focused-examples--next).
 
 ## Blocked
 
@@ -145,10 +147,17 @@ executable, else `assets/` in the working directory (ADR-025).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
-- Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does, and games using the library must choose their own.
+- Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does; the examples do not, so `PURPLEPIE_LOG` has no effect on them; games choose their own (the README shows `env_logger`; a built-in option is PP-034's U-13).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-08: PP-031 Outside-crate trial (phase P3.5 started).**
+  - A scratch game crate (`pie_catch`: catch falling pies; sprites, text, keyboard, a sound, a scene file with two registered game components) was written outside the package from the README and API docs only. It ran under Xvfb and shipped as a release build with its own `assets/`.
+  - New `docs/USABILITY.md`: 17 findings (U-01…U-17): 8 doc fixes, 4 API issues, 1 both (logging), 2 missing features, 2 observations.
+  - README: new "A new game crate" section (path/git dependency, serde for scene components, the game's own `assets/` and copying the bundled font, first-build time, `cargo doc -p purplepie --no-deps --open`, how a missing asset shows up, how to see engine logs with any `log` backend); the smallest-game example now says which two asset files it needs; the Scenes bullet names serde and the existing-folder rule.
+  - Crate page: how a game crate is laid out and that `Context` is the entry point. `ecs` module: new doctest for queries with `Entity`, despawning after a query, and `query_mut`.
+  - TASKS: follow-ups PP-032 (guide, next) to PP-036 recorded. No engine code or API change.
 
 - **2026-10-08: PP-030 Workspace layout (phase P3 complete).**
   - ADR-038: a scratch trial measured what moving the engine into `crates/purplepie` would break (3 `include_bytes!`, 25 asset paths in tests, commands); decision: no move. The root `Cargo.toml` now declares `[workspace] members = []`, so later crates (debug overlay, editor) can join under `crates/`, and the project no longer fails to build when nested inside another Cargo workspace. No source, API, `Cargo.lock` or command change.
@@ -337,33 +346,35 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-07,
-after the final PP-030 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
+after the final PP-031 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 216 unit tests + 30 doctests, 12 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 216 unit tests + 31 doctests, 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Outside-crate trial (PP-031) | ✅ README example copied verbatim into a fresh crate: built with no warnings, failed only on the two assets the README did not mention (now documented); trial game `pie_catch` (path dependency, own `assets/`): scene save + load (5 entities, 2 registered components), autoplay frame (score 5), game over and Enter restart frames checked, catch sounds present in an ALSA `file` capture; release build + `assets/` copied to a new folder ran from working directory `/` |
+| README re-check (PP-031) | ✅ fresh `cargo new my_game` beside a PurplePie folder, following the fixed README word for word: builds and runs (sprite, bar and text in the screenshot); `cargo doc -p purplepie --no-deps` 1 min from a cold target directory |
 | Workspace declaration (PP-030) | ✅ `cargo check/test` also with `--workspace`; `Cargo.lock` byte-identical; `cargo metadata` workspace root = repo root, sole default member `purplepie`; a copy nested in a folder with its own `[workspace]` failed to build before and builds after |
-| Font hot reload end to end (sandbox, Xvfb) | ✅ replacing `Poppins-Regular.ttf` with DejaVu Sans changed the help label and HUD text within 1.5 s; a broken font file changed nothing (one warning); restoring the file restored the exact original pixels |
-| Sound hot reload end to end (sandbox, ALSA `file` plugin) | ✅ the click before replacing `blip.wav` with `hit.wav` played exactly `blip.wav`, the click after it exactly `hit.wav` (max diff 0 against the mixer model; L = R) |
+| Font hot reload end to end (sandbox, Xvfb) | ✅ replacing `Poppins-Regular.ttf` with DejaVu Sans changed the help label and HUD text within 1.5 s; a broken font file changed nothing (one warning); restoring the file restored the exact original pixels (earlier run; no engine code changed since) |
+| Sound hot reload end to end (sandbox, ALSA `file` plugin) | ✅ the click before replacing `blip.wav` with `hit.wav` played exactly `blip.wav`, the click after it exactly `hit.wav` (max diff 0 against the mixer model; L = R) (earlier run; no engine code changed since) |
 | `grep -rnE "chunks_exact(_mut)?\([0-9]" src examples` (R-19 guard) | ✅ no matches |
-| Scene example (`PURPLEPIE_SCENE_FREEZE=1`, modes `save`, `build`, `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical, and identical to PP-026b's frame; `save` wrote `assets/scenes/demo.ron` (19 entities, 2 game component types), which the unit tests read back byte-for-byte |
-| Scene example unfrozen (load) | ✅ the two squares loaded with `Spin` rotate between screenshots, the static text does not; prints `demo scene loaded 1 time(s)` and `2 spinning sprites` |
-| Scene mutation check | ✅ not inserting decoded game components fails 3 tests |
+| Scene example (`PURPLEPIE_SCENE_FREEZE=1`, modes `save`, `build`, `load`) under Xvfb | ✅ the three 1024×600 frames are pixel-identical, and identical to PP-026b's frame; `save` wrote `assets/scenes/demo.ron` (19 entities, 2 game component types), which the unit tests read back byte-for-byte (earlier run; no engine code changed since) |
+| Scene example unfrozen (load) | ✅ the two squares loaded with `Spin` rotate between screenshots, the static text does not; prints `demo scene loaded 1 time(s)` and `2 spinning sprites` (earlier run; no engine code changed since) |
+| Scene mutation check | ✅ not inserting decoded game components fails 3 tests (earlier run; no engine code changed since) |
 | `cargo doc --no-deps` (`-D warnings`) | ✅ no warnings |
 | `cargo build --locked`, `cargo build --release --example breakout` | ✅ PASS |
-| Sandbox whole-frame model + HUD (camera (0,0)×1) | ✅ 0 mismatches; HUD panel, corner square and button crops identical to the PP-025 run |
-| Breakout autoplay `win` / `lose` (debug, ALSA null device) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` |
-| Breakout lose screen vs PP-025 | ✅ pixel-identical |
-| Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic |
+| Sandbox whole-frame model + HUD (camera (0,0)×1) | ✅ 0 mismatches; HUD panel, corner square and button crops identical to the PP-025 run (earlier run; no engine code changed since) |
+| Breakout autoplay `win` / `lose` (debug, ALSA null device) | ✅ unchanged: `Won after 7135 fixed steps … score 220`; `Lost after 892 fixed steps … score 14` (earlier run; no engine code changed since) |
+| Breakout lose screen vs PP-025 | ✅ pixel-identical (earlier run; no engine code changed since) |
+| Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (earlier run; no engine code changed since) |
 
 Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
 Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-08. PP-030 done (workspace layout; ADR-038); phase P3 complete. PP-031 (outside-crate trial, phase P3.5) is next.
+2026-10-08. PP-031 done (outside-crate trial; findings in USABILITY.md); phase P3.5 in progress. PP-032 (getting-started guide) is next.

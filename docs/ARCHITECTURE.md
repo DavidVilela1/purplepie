@@ -255,6 +255,12 @@ All stages use `ControlFlow::WaitUntil` with a 60 Hz redraw cap, plus `PresentMo
 
 The engine runs no gameplay systems implicitly. Order is visible in the game's `fixed_update`.
 
+A game is normally its **own crate** outside this package. It depends on `purplepie` by path or git, adds `serde`
+only to save its own components in scenes, and keeps its own `assets/` folder as the asset root (ADR-025). Nothing is
+shared with the engine's `assets/`; a game copies the bundled font if it wants it. The in-repository games (sandbox,
+examples) are the exception and use the engine's `assets/`. PP-031 verified this outside-crate path end to end
+([USABILITY.md](USABILITY.md)).
+
 ---
 
 ## 7. Rendering Architecture

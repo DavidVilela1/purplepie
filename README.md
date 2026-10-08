@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope: runtime essentials done (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops and UI buttons); editor foundations started (scene files).**
+> **Status: Stages 0–10 complete; growing past the portfolio scope: runtime essentials done (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops and UI buttons); editor foundations done (scene files, hot reload); now making it usable from outside (usability and first release).**
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -26,16 +26,58 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   about half a second.
 - **Scenes:** `Context::save_scene` / `load_scene` write and read entities with all engine components (transforms,
   quads, sprites, text, layers, hidden, screen space, animations mid-play, velocity, buttons) and the game's own
-  components registered with `Context::register_scene_component` (serde types) as human-readable RON, with textures and
-  fonts referenced by asset path.
+  components registered with `Context::register_scene_component` (serde types; the game adds `serde` with the
+  `derive` feature) as human-readable RON, with textures and fonts referenced by asset path. The folder a scene is
+  saved into (e.g. `assets/scenes/`) must exist.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Getting started
 
+### A new game crate
+
+PurplePie is not on crates.io yet; a game depends on it by path (or by git). Create the game next to your
+PurplePie checkout and add it to the game's `Cargo.toml`:
+
+```text
+cargo new my_game        # next to the PurplePie folder
+```
+
+```toml
+[dependencies]
+purplepie = { path = "../PurplePie" }   # or: purplepie = { git = "<PurplePie repository URL>" }
+# Only if you save your own components in scene files (Context::register_scene_component):
+serde = { version = "1", features = ["derive"] }
+```
+
+```text
+my_game/
+├── Cargo.toml
+├── src/main.rs
+└── assets/              your game's asset root: textures/, fonts/, sounds/, scenes/
+```
+
+- **Assets are your game's own.** Paths like `"textures/player.png"` are looked up in `my_game/assets/`, not in
+  PurplePie's folder. To use the bundled font, copy `assets/fonts/Poppins-Regular.ttf` and `assets/fonts/OFL.txt`
+  from PurplePie into `my_game/assets/fonts/`.
+- **First build:** about 140 crates (a few minutes; on Linux install the ALSA headers first, see [Build](#build)).
+  Later builds take seconds.
+- **API docs:** `cargo doc -p purplepie --no-deps --open` (without `--no-deps` every dependency is documented too,
+  which takes several minutes). Start at `Context`: it lists everything a game calls (loading assets, scenes, sound,
+  input, camera, exit).
+- **Logs:** PurplePie reports through the [`log`](https://docs.rs/log) crate (asset root, GPU, audio device,
+  hot-reload results, warnings), which prints nothing until the game installs a logger. For example add
+  `env_logger = "0.11"`, call `env_logger::init();` first thing in `main`, and run with `RUST_LOG=info`
+  (PowerShell: `$env:RUST_LOG="info"; cargo run`). `PURPLEPIE_LOG` below is the sandbox's own setting.
+- **Errors:** a missing asset ends the game with `Error: Asset { path: ".../assets/textures/player.png", ... }`;
+  the path shows where PurplePie looked.
+
+### The smallest useful game
+
 `examples/breakout.rs` is a complete game and the best reference. The smallest useful game looks like this
-(game code never touches `wgpu` or `winit`):
+(game code never touches `wgpu` or `winit`). It needs two files in `my_game/assets/`: any PNG saved as
+`textures/player.png`, and the font copied as described above.
 
 ```rust
 // Coordinates: +X right, +Y up, origin at the window centre,
@@ -52,7 +94,7 @@ impl Game for MyGame {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
         // PNG only. A missing or broken file returns Error::Asset right here.
         // Relative to the asset root: `assets/` next to the executable, else
-        // `assets/` in the working directory (ADR-025).
+        // `assets/` in the working directory, i.e. `my_game/assets/` under `cargo run` (ADR-025).
         let player = ctx.load_texture("textures/player.png")?;
         ctx.world_mut().spawn((
             Transform2D::from_position(Vec2::new(0.0, 100.0)),
@@ -115,7 +157,7 @@ cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/
 # PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
 cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_EXAMPLE=build|save: build in code / write it)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
-# PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details
+# PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox only)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets
@@ -147,6 +189,7 @@ PurplePie/
     ├── ROADMAP.md        Stages 0–10, milestones M0–M10
     ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
+    ├── USABILITY.md      what newcomers run into (outside-crate trials), and which task fixes it
     └── spikes/           Stage 0 compatibility spike (reference only)
 ```
 
