@@ -10,8 +10,12 @@
 #   No GPU or display is needed: the tests are pure logic, and window-opening
 #   examples are compile-only doctests.
 #
+# - `msrv` builds with the declared minimum Rust version (`rust-version` in
+#   Cargo.toml, 1.90): the promise of docs/RELEASING.md (R-19).
+#
 # The toolchain comes from the rustup preinstalled on GitHub-hosted runners.
 # `--locked` makes CI fail if Cargo.lock is out of date with Cargo.toml.
+# The newest compatible dependencies are tested by latest-deps.yml.
 
 name: CI
 
@@ -87,3 +91,22 @@ jobs:
 
       - name: Test
         run: cargo test --locked --all-features
+
+  msrv:
+    name: Minimum Rust version (1.90)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keep in sync with `rust-version` in Cargo.toml.
+      - name: Install Rust 1.90
+        run: |
+          rustup toolchain install 1.90 --profile minimal
+          rustc +1.90 --version
+
+      - name: Install ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+
+      - name: Check with the minimum version
+        run: cargo +1.90 check --locked --all-targets --all-features

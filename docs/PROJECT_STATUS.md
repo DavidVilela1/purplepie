@@ -24,7 +24,9 @@ findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [
 PP-033a wrote the Windows/macOS [CHECKLIST.md](CHECKLIST.md) and ran it on Linux; the owner's run (PP-033b)
 is in progress (owner-reported so far: steps 1–3 on Windows, see Validation). PP-034a/b, the second API review (ADR-040), renamed the
 edge anchors, made errors print readably, marked growing types `#[non_exhaustive]`, formatted game components in
-scene files and added the opt-in console logger (item 4 complete). Next: **PP-035a**, release preparation. The long-term plan (in-game UI and an editor) is in
+scene files and added the opt-in console logger (item 4 complete). PP-035a prepared the release (compatibility
+policy in [RELEASING.md](RELEASING.md), `CHANGELOG.md`, CI jobs for the minimum Rust version and the latest
+dependencies); the release itself (PP-035b) waits on the owner. Next: **PP-036a**, specifying the second game. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -105,6 +107,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-035a: release preparation: `docs/RELEASING.md` (distribution by git tag, 0.x compatibility policy, procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` workflow.
 - PP-034b: game components in scene files written as one spaced line; opt-in `EngineConfig::console_log` (stderr logger, level from `PURPLEPIE_LOG`), used by the sandbox and both examples.
 - PP-034a: second API review (ADR-040): `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read the old names), `Error` `Debug` prints message + causes, `Error::Save` has the resolved path, `#[non_exhaustive]` on growing public types.
 - PP-033a: platform checklist `docs/CHECKLIST.md` (PowerShell, 8 steps + macOS/Linux appendix), every step run on Linux, the PowerShell blocks under PowerShell 7.
@@ -124,11 +127,11 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-035a: Release preparation** (phase P3.5, item 5, part 1: compatibility policy, CHANGELOG, latest-dependencies CI). See [TASKS.md](TASKS.md#pp-035a-release-preparation--next).
+- **PP-036a: Second game, part 1: choose and specify it** (phase P3.5, item 6). See [TASKS.md](TASKS.md#pp-036a-second-game-part-1-choose-and-specify-it--next).
 
 ## Blocked
 
-- PP-033b: owner's Windows checklist run, partly reported (steps 1–3 pass; step 5's two autoplay lines and confirmation of steps 4, 7, 8 outstanding). It blocks only the release itself (PP-035b).
+- PP-033b: owner's Windows checklist run, partly reported (steps 1–3 pass; step 5's two autoplay lines and confirmation of steps 4, 7, 8 outstanding). It blocks only the release itself (PP-035b), which also needs the owner's repository URL and a green run of the new CI jobs.
 
 ## Technical Debt
 
@@ -161,6 +164,19 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-035a Release preparation.**
+  - New `docs/RELEASING.md`:
+    - releases are git tags (no crates.io yet);
+    - the 0.x compatibility policy: public API including the `#[non_exhaustive]` rules and the re-exported hecs 0.11 / glam 0.33 / serde 1, scene format 1, assets, MSRV 1.90, platforms;
+    - the release procedure and the CI guards.
+  - New `CHANGELOG.md`: `[Unreleased]` holds the 0.1.0 content and the pre-release breaking changes.
+  - **CI:**
+    - new `msrv` job (`cargo +1.90 check --locked`);
+    - new `latest-deps.yml` workflow (`cargo update`, then check + test; on push, weekly, and on demand).
+
+    Cowork cannot install Rust 1.90, so the `msrv` job is first verified on GitHub. The local evidence is in RISKS R-19.
+  - No code change.
 
 - **2026-10-09: PP-034b Scene component formatting and opt-in console logger (P3.5 item 4 complete).**
   - Registered game components are written as one spaced RON line (`(speed: 0.8, direction: Clockwise)`); `assets/scenes/demo.ron` regenerated (3 lines). Format version unchanged.
@@ -382,7 +398,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-034b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-035a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -391,6 +407,7 @@ after the final PP-034b change (CI additionally runs the latest stable clippy an
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` | ✅ PASS: 220 unit tests + 49 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Release preparation (PP-035a) | ✅ scratch copy with `cargo update` (12 packages newer, e.g. hecs 0.11.2, glam 0.33.12): `cargo check --all-targets --all-features` and `cargo test --all-features` pass (220 + 49); committed `Cargo.lock` unchanged. `cargo clippy --locked --all-targets -- -D warnings -W clippy::incompatible_msrv` clean at `rust-version` 1.90, and it fires at 1.85 (mutation). Highest dependency `rust-version` in the lock file: 1.90. Both workflow files parse as YAML. Rust 1.90 itself could not be installed (blocked download) |
 | Component formatting + console logger (PP-034b) | ✅ scene example `save` rewrote `demo.ron` (only the 3 component lines changed); `save`/`load`/`build` frozen frames pixel-identical to the PP-026b baseline. Breakout with `PURPLEPIE_LOG=info` prints `asset root:`, `audio:` and `GPU:` lines, without it no log lines; autoplay `Lost after 892 …`, lose screen pixel-identical. Sandbox with `PURPLEPIE_LOG=loud` exits 1 with `invalid engine configuration: PURPLEPIE_LOG must be …`. Outside trial crate (no opt-in) prints no log lines with `PURPLEPIE_LOG=info` |
 | API review (PP-034a) | ✅ trial crate `pie_catch` (outside crate): old `ScreenSpace::TOP` fails to compile (expected), its pre-rename `level.ron` (`screen_space: Top`) loads with the title centred; missing `pie.png` prints ``Error: failed to load asset `…/pie.png` `` + `Caused by: No such file or directory (os error 2)`; save into a missing folder names the full resolved path. Scene example frozen frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 fixed steps …` unchanged |
 | Platform checklist (PP-033a) | ✅ all steps on Linux: sandbox frame with `GPU:`/`audio:` log lines, click + `M` music in an ALSA capture; hot reload swap and `git`-style restore (file byte-identical); autoplay `Lost after 892 …` / `Won after 7135 …`; scene: 19 entities, 2 button clicks counted, build mode; steps 7–8 run as PowerShell 7.4.6 scripts: new crate builds with 0 warnings, release build shipped and run from `/` shows the same frame (only the animated corner differs) |
@@ -418,4 +435,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-034b done (P3.5 item 4 complete); PP-033b partly reported (steps 1–3 pass on Windows). PP-035a (release preparation) is next.
+2026-10-09. PP-035a done (release preparation); PP-035b waits on the owner (checklist, URL, CI). PP-036a (second game spec) is next.

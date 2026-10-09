@@ -1,0 +1,60 @@
+# PurplePie: test against the newest compatible dependencies.
+#
+# CI (ci.yml) builds with the committed Cargo.lock. A game that depends on
+# PurplePie resolves its own lock file and gets the newest semver-compatible
+# patch releases (USABILITY.md U-16), so this workflow runs `cargo update`
+# first and then checks and tests on Linux. A red run here with a green CI
+# means an upstream release broke something: update Cargo.lock (and fix the
+# code if needed) in a normal task. See docs/RELEASING.md.
+#
+# Cargo's resolver honours `rust-version`, so it picks the newest versions that
+# still support PurplePie's minimum Rust version.
+
+name: Latest dependencies
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latest-deps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  latest:
+    name: Check and test with updated dependencies (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (stable)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: Install ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+
+      - name: Update dependencies
+        run: cargo update --verbose
+
+      - name: Check
+        run: cargo check --all-targets --all-features
+
+      - name: Test
+        run: cargo test --all-features

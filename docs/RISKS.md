@@ -28,7 +28,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-16 | Documentation drift | MONITORING | Medium | Medium | all |
 | R-17 | Resource and asset lifetime management | MONITORING | Medium | Medium | 6, 9 |
 | R-18 | Performance: per-frame allocations and draw calls | MONITORING | Low | Low | 5–6 |
-| R-19 | Declared MSRV untested | OPEN | Low | Low | all |
+| R-19 | Declared MSRV untested | MITIGATED (CI `msrv` job from PP-035a; first run pending) | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
 | R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |
@@ -148,7 +148,11 @@ Likelihood and impact are qualitative: Low, Medium or High.
 
 ### R-19: Declared MSRV untested
 - **Trigger:** A user builds with Rust 1.90–1.94. `rust-version = "1.90"` comes from dependency metadata, and only 1.95 was run.
-- **Mitigation:** Documented in TECH_STACK.
+- **Mitigation:** Documented in TECH_STACK. **PP-035a:** CI job `msrv` builds with `cargo +1.90 check --locked`
+  (Cowork cannot download 1.90, so its first verification is the first CI run after PP-035a). Local evidence: clippy's
+  `incompatible_msrv` lint (reads `rust-version`) reports nothing at 1.90 and does fire at 1.85 (two `as_chunks`
+  uses, stable since 1.88); no package in `Cargo.lock` declares a `rust-version` above 1.90 (highest: `ordered-float`
+  5.5 at 1.90).
 - **Fallback:** Raise `rust-version` to the lowest version actually verified.
 - **Related (occurred 2026-10-06, after PP-018b):** the opposite direction. CI runs the *latest* stable (clippy 1.99), which
   added `clippy::chunks_exact_to_as_chunks` and failed on `chunks_exact_mut(4)` in `render/atlas.rs`; Cowork has only

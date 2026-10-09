@@ -286,6 +286,8 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Set `CARGO_TARGET_DIR` to a scratch target directory shared by trials, so the dependency tree compiles once
   (about 2 min debug, 4 min release). Never put the trial crate inside the package: it would join the workspace
   (ADR-038). Record what goes wrong in `docs/USABILITY.md`. Logs need `EngineConfig::with_console_log(true)` in the trial (or another logger).
+- **MSRV approximation (PP-035a+):** `cargo clippy --all-targets -- -D warnings -W clippy::incompatible_msrv` must stay
+  clean (it reports std items newer than `rust-version`); the real check is CI's `msrv` job (docs/RELEASING.md §4).
 - **Platform checklist (PP-033a+):** `docs/CHECKLIST.md` is what the owner runs on Windows/macOS. Re-run its steps on
   Linux whenever they change (the PowerShell blocks with PowerShell 7 for Linux: not preinstalled in Cowork; unpack
   `powershell-7.4.6-linux-x64.tar.gz` from the PowerShell GitHub releases into `/opt/pwsh` and run `/opt/pwsh/pwsh -File`;

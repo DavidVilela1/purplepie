@@ -170,12 +170,15 @@ cargo fmt --check && cargo clippy --all-targets
 `target/release/assets/`). PurplePie looks there first, then in `assets/` in the working directory,
 which is the project folder under `cargo run`. `EngineConfig::with_asset_root(path)` sets the folder explicitly.
 
-CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) on every push. All jobs passed on the first run (2026-10-01).
+CI: `.github/workflows/ci.yml` runs fmt, clippy, check and tests (Linux, Windows, macOS) and a build with the minimum
+Rust version (1.90) on every push; `latest-deps.yml` tests with `cargo update`d dependencies (see
+[docs/RELEASING.md](docs/RELEASING.md)). All jobs passed on the first run (2026-10-01).
 
 ## Layout
 
 ```text
 PurplePie/
+├── CHANGELOG.md     what changed in each version (0.1.0 in preparation)
 ├── Cargo.toml / Cargo.lock   the `purplepie` package, also the workspace root (future crates go in `crates/`, ADR-038)
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
@@ -193,6 +196,7 @@ PurplePie/
     ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
     ├── CHECKLIST.md      hands-on platform check the owner runs on Windows/macOS
+    ├── RELEASING.md      compatibility policy (what a version promises) and the release procedure
     ├── GUIDE.md          newcomer guide: from `cargo new` to a shipped game (compiled by `cargo test`)
     ├── USABILITY.md      what newcomers run into (outside-crate trials), and which task fixes it
     └── spikes/           Stage 0 compatibility spike (reference only)

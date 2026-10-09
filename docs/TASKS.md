@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-035a: Release preparation: version policy, CHANGELOG, latest-dependencies CI job (phase P3.5, item 5, part 1)** · P1 · TODO ← **next task**
+- [ ] **PP-036a: Second game, part 1: choose and specify it (phase P3.5, item 6)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-035a: Release preparation: `docs/RELEASING.md` (compatibility policy + procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` (phase P3.5, item 5, part 1)** · DONE (2026-10-09; verified on Linux; the two new CI jobs run first on GitHub)
 - [x] **PP-034b: Scene component formatting (U-12) + opt-in console logger `EngineConfig::console_log` (U-13) (phase P3.5, item 4 complete)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-034a: Second public API review: ADR-040 (anchor names, readable `Error` debug output, resolved `Save` path, `#[non_exhaustive]` policy) (phase P3.5, item 4, part 1)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-033a: Platform checklist `docs/CHECKLIST.md` written and run on Linux (phase P3.5, item 3, part 1)** · DONE (2026-10-09; verified on Linux, PowerShell blocks under PowerShell 7)
@@ -66,7 +67,7 @@ _None._
 ## Future
 
 - [ ] **PP-035b: Release 0.1.0: version bump, tag, `repository` field (needs PP-033b and the owner's URL)** · P2 · TODO
-- [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6)** · P2 · TODO
+- [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6; PP-036a first)** · P2 · TODO
 
 ---
 
@@ -442,26 +443,33 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Dependencies | PP-032b (DONE) |
 | Acceptance criteria | ✅ ADR-040: review table over every public area added since ADR-026 with a verdict each. ✅ U-09: `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` and `ScreenAnchor::TopCenter`/… (breaking rename, no aliases); scene files write the new names and read the old ones (serde aliases; unit test `edge_anchors_load_under_their_old_and_new_names`; the trial's pre-rename `level.ron` still loads). ✅ U-11: `Error`'s `Debug` = message + "Caused by:" chain (unit test; trial output checked). ✅ U-10: `Error::Save` carries the resolved path (trial: save into a missing folder). ✅ `#[non_exhaustive]` on `EngineConfig`, `Sprite`, `Quad`, `Text`, `TextMetrics`, `SpriteAnimation`, `AnimationMode`, `TextureFilter`, `Camera2D`, `ui::Button`, `ui::Pointer`; sandbox, examples, doctests and the guide compile unchanged. ✅ Regressions: scene example frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 …` unchanged. 218 unit tests + 47 doctests. |
 
-### PP-035a: Release preparation ← NEXT
+### PP-035a: Release preparation
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 5, part 1 · Priority P1 · TODO |
-| Dependencies | PP-034b (DONE). Does not need the owner's checklist run |
-| Scope | Everything for 0.1.0 that does not need the owner: a written compatibility policy (what 0.1.x promises: public API per ADR-040, scene format version 1, MSRV, supported platforms) in a new section of DEVELOPMENT or a `docs/RELEASING.md`; `CHANGELOG.md` (Keep a Changelog) with an "Unreleased → 0.1.0" entry summarising the features and the pre-release breaking changes (ADR-040 renames); a CI job that runs `cargo update` and then check/test on Linux, so a fresh outside crate's newer patch versions are tested (U-16); confirm `cargo package --list` / `publish = false` stance. No version bump yet. |
-| Acceptance criteria | Policy and CHANGELOG exist and match the code; the new CI job is valid YAML and its commands pass locally after `cargo update` in a scratch copy (the committed `Cargo.lock` unchanged); CI green. |
+| Stage | Phase P3.5, item 5, part 1 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-034b (DONE) |
+| Acceptance criteria | ✅ `docs/RELEASING.md`: distribution by git tag (`publish = false` kept, reasons and revisit point), 0.x compatibility policy (public API incl. `#[non_exhaustive]` rules and re-exported hecs 0.11 / glam 0.33 / serde 1, scene format 1, assets, MSRV 1.90, platforms; what is not covered), release procedure, CI guards. ✅ `CHANGELOG.md` (Keep a Changelog): `[Unreleased]` = the 0.1.0 content, pre-release breaking changes (ADR-040), known limitations. ✅ CI: `msrv` job (`cargo +1.90 check --locked`) in `ci.yml`; new `latest-deps.yml` (`cargo update` + check + test; push, weekly, manual); both valid YAML. ✅ Locally, in a scratch copy: `cargo update` (12 packages newer) + check + test pass (220 + 49); committed `Cargo.lock` unchanged; MSRV evidence: `incompatible_msrv` clean at 1.90 and firing at 1.85, highest dependency `rust-version` 1.90. ⚠️ Cowork cannot install Rust 1.90 (download blocked), so the `msrv` job's first real run is on GitHub. |
 
 ### PP-035b: Release 0.1.0
 | Field | Value |
 |---|---|
 | Stage | Phase P3.5, item 5, part 2 · Priority P2 · TODO |
-| Dependencies | PP-035a, PP-033b (no release unseen on Windows), the owner's repository URL (U-17) |
+| Dependencies | PP-035a (DONE), PP-033b (no release unseen on Windows), the owner's repository URL (U-17), green CI including the new `msrv` and `latest-deps` jobs |
 | Scope | `version = "0.1.0"`, `repository` field, README/guide git dependency line, CHANGELOG dated, tag `v0.1.0` (owner pushes it). |
 
-### PP-036: A second game as an outside crate
+### PP-036a: Second game, part 1: choose and specify it ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6 · Priority P2 · TODO (split when current) |
-| Dependencies | PP-035b |
+| Stage | Phase P3.5, item 6, part 1 · Priority P1 · TODO |
+| Dependencies | PP-035a (DONE). Not blocked by the release (PP-035b) or the owner's checklist: the game is an outside crate depending on PurplePie by path |
+| Why now | The remaining P3.5 work that does not wait on the owner. A second, different game written as an outside crate is the test of "someone can make a game without knowing the code": it decides which missing features are real (candidates: random numbers U-14, rectangle overlap U-15, world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad). |
+| Scope | Choose the game (different from Breakout and Pie Catch, e.g. a top-down arena shooter or a tile-based puzzle). Write a one-page spec (new `docs/GAME2.md`): mechanics, screens, assets, which engine features it uses and which it lacks. Classify every gap as "write in game code" or "engine feature" and split the engine features into small tasks (PP-036b…). No engine code in this task. |
+| Acceptance criteria | GAME2.md exists with a feature/gap table; each engine-feature gap has a task with scope and acceptance; the trial crate skeleton (empty game opening a window) builds outside the repository. |
+
+### PP-036: A second game as an outside crate (umbrella)
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6 · Split into PP-036a (spec) and follow-ups |
 | Scope | A second, different game written as an outside crate, adding only the engine features it needs. Candidates from the trial: random numbers (U-14) and rectangle-overlap helpers (U-15); from the roadmap: world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad. |
 
 ### PP-013: Choose project license
