@@ -67,8 +67,9 @@ screen-space text and the console logger, from the published v0.1.0 tag.
 
 ## Plan
 
-1. **PP-036b:** `math::Rng` and `math::Rect` (+ circle overlap), with unit tests, docs, a guide update (§4 world
-   clearing, §14 using `Rng`/`Rect` instead of hand-written ones) and a CHANGELOG entry under `[Unreleased]`.
+1. **PP-036b (done):** `math::Rng` and `math::Rect` with `math::circles_overlap` (ADR-041), unit tests including the
+   PCG32 reference sequence, docs, a guide update (§4 now mentions world clearing; the §14 game uses `Rng`/`Rect`
+   instead of hand-written code) and a CHANGELOG entry under `[Unreleased]`.
 2. **PP-036c:** the game's core: arena, player, shooting, enemies, waves, collisions, HUD, sounds. Also decide where
    the game lives:
    - **Recommendation:** in the repository as `games/purple-swarm/`, a workspace member with its own `assets/` and

@@ -170,8 +170,12 @@ fn step(ctx: &mut Context<'_>) {
 }
 ```
 
-`ctx.world().get::<&Enemy>(entity)` reads one entity's component; the full `hecs` API is re-exported as
-`purplepie::ecs::hecs`.
+`ctx.world().get::<&Enemy>(entity)` reads one entity's component; `ctx.world_mut().clear()` despawns everything
+(e.g. when switching from the title screen to a level); the full `hecs` API is re-exported as `purplepie::ecs::hecs`.
+
+For gameplay checks, `purplepie::math` has `Rect` (overlap and containment of axis-aligned boxes, plus
+`overlaps_circle`), `circles_overlap`, and `Rng`, a seedable random number generator: the same seed gives the same
+game on every platform, which makes bugs reproducible. Section 14 uses both.
 
 ## 5. Shapes and sprites
 
@@ -507,7 +511,7 @@ press R) to start over; an animated sprite plays in the corner. It uses only fil
 use purplepie::audio::SoundId;
 use purplepie::ecs::Entity;
 use purplepie::input::KeyCode;
-use purplepie::math::{Transform2D, Vec2};
+use purplepie::math::{Rect, Rng, Transform2D, Vec2};
 use purplepie::render::{
     self, Color, Layer, Quad, ScreenSpace, Sprite, SpriteAnimation, SpriteGrid, Text, TextAnchor,
     TextureId, TextureOptions,
@@ -530,20 +534,14 @@ struct Collector {
     brick: Option<TextureId>,
     blip: Option<SoundId>,
     score: u32,
-    seed: u32,
+    rng: Rng,
 }
 
 impl Collector {
-    /// A tiny pseudo-random number in 0..1 (the engine has no random numbers yet).
-    fn random(&mut self) -> f32 {
-        self.seed = self.seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        (self.seed >> 8) as f32 / (1u32 << 24) as f32
-    }
-
     fn spawn_brick(&mut self, ctx: &mut Context<'_>) {
         let Some(texture) = self.brick else { return };
         let half = ARENA / 2.0 - BRICK_SIZE;
-        let at = Vec2::new((self.random() * 2.0 - 1.0) * half.x, (self.random() * 2.0 - 1.0) * half.y);
+        let at = Vec2::new(self.rng.range_f32(-half.x, half.x), self.rng.range_f32(-half.y, half.y));
         ctx.world_mut()
             .spawn((Transform2D::from_position(at), Sprite::new(texture, BRICK_SIZE), Brick));
     }
@@ -616,16 +614,13 @@ impl Game for Collector {
         }
         render::advance_animations(ctx.world_mut(), dt);
 
-        // Bricks the player touches (rectangle overlap).
-        let reach = (Vec2::splat(PLAYER_SIZE) + BRICK_SIZE) / 2.0;
+        // Bricks the player touches.
+        let player = Rect::from_center_size(player_at, Vec2::splat(PLAYER_SIZE));
         let touched: Vec<Entity> = ctx
             .world()
             .query::<(Entity, &Transform2D, &Brick)>()
             .iter()
-            .filter(|(_, t, _)| {
-                let d = (t.position - player_at).abs();
-                d.x < reach.x && d.y < reach.y
-            })
+            .filter(|(_, t, _)| player.overlaps(Rect::from_center_size(t.position, BRICK_SIZE)))
             .map(|(e, _, _)| e)
             .collect();
         for brick in touched {
@@ -661,7 +656,8 @@ fn main() -> purplepie::Result<()> {
     let config = EngineConfig::new("Collector")
         .with_size(800, 600)
         .with_clear_color(Color::hex(0x10101A));
-    Engine::new(config)?.run(Collector { brick: None, blip: None, score: 0, seed: 7 })
+    // Rng::new(7) gives the same bricks every run; Rng::from_entropy() a new layout each time.
+    Engine::new(config)?.run(Collector { brick: None, blip: None, score: 0, rng: Rng::new(7) })
 }
 ```
 

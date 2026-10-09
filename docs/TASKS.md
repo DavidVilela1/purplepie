@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-036b: `math::Rng` (seedable random numbers) + `math::Rect` and circle overlap (U-14, U-15)** · P1 · TODO ← **next task**
+- [ ] **PP-036c: Purple Swarm core (arena, player, shooting, enemies, waves, collisions, HUD, sound) + where the game lives (ADR)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-036b: `math::Rng` (PCG32) + `math::Rect` and `circles_overlap` (ADR-041; U-14, U-15)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036a: Second game, part 1: Purple Swarm specified in `docs/GAME2.md`; skeleton built from the v0.1.0 tag** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-035b: Release 0.1.0: version 0.1.0, `repository` field, CHANGELOG `[0.1.0] - 2026-10-09`, git dependency line (phase P3.5, item 5 complete)** · DONE (2026-10-09; verified on Linux; the owner pushes the `v0.1.0` tag)
 - [x] **PP-033b: Owner run of `docs/CHECKLIST.md` on Windows (phase P3.5, item 3 complete)** · DONE (2026-10-09; owner-reported)
@@ -69,7 +70,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-036c: Purple Swarm core (arena, player, shooting, enemies, waves, collisions, HUD, sound) + where the game lives (ADR)** · P2 · TODO
 - [ ] **PP-036d: Purple Swarm screens (title, pause, game over, restart), best score, autoplay, findings** · P2 · TODO
 
 ---
@@ -456,14 +456,20 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-036b: `math::Rng` + `math::Rect` and circle overlap ← NEXT
+### PP-036c: Purple Swarm core ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6, part 2 · Priority P1 · TODO |
-| Dependencies | PP-036a (DONE; gaps decided in [GAME2.md](GAME2.md)) |
-| Why now | The two engine gaps that three games (Breakout, Pie Catch, the guide's game) each re-wrote by hand, and that Purple Swarm needs from its first line (U-14, U-15). |
-| Scope | `math::Rng`: small seedable PRNG (e.g. PCG32 or xoshiro-style, no dependency): `new(seed)`, `next_u32`, `f32()` in [0, 1), `range_f32(a..b)`, `range_u32`, `chance(p)`, `pick(&slice)`, `unit_vec2()`; deterministic across platforms (integer-only state; floats derived by exact division). `math::Rect` (centre + half size, `from_center_size`, `min`/`max`, `contains`, `overlaps`, `expand`) and `math::circles_overlap(a, ra, b, rb)` (or a `Circle` type, decided in the task). Unit tests incl. fixed-seed golden values; module docs with examples; guide §4/§14 use them (and §4 mentions `World::clear`); CHANGELOG `[Unreleased]` "Added". Additive only: no breaking change (0.1.x-compatible). |
-| Acceptance criteria | Tests pass incl. golden sequence; guide game rebuilt as an outside crate still runs; `cargo doc` clean; ADR if the RNG algorithm choice is non-trivial; CI green. |
+| Stage | Phase P3.5, item 6, part 3 · Priority P1 · TODO (split when started if it does not fit one session) |
+| Dependencies | PP-036b (DONE) |
+| Scope | Per [GAME2.md](GAME2.md): decide and record (ADR) where the game lives (recommended: workspace member `games/purple-swarm/` with its own `assets/`, built by CI); then the arena with camera follow and clamp, player movement and mouse aim, shooting, Drifter and Dasher enemies with waves, collisions via `math::Rect`/`circles_overlap`, hit points and invulnerability, score, HUD, sounds; deterministic with `Rng::new(seed)`. Only the public API. Findings into USABILITY.md. |
+| Acceptance criteria | Builds with 0 warnings, clippy clean, CI builds it; under Xvfb a scripted run (keys + mouse) shows shooting, enemies dying and the HUD updating; findings recorded. |
+
+### PP-036b: `math::Rng` + `math::Rect` and circle overlap
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-036a (DONE) |
+| Acceptance criteria | ✅ `math::Rng` (PCG32; `new`, `from_entropy`, `next_u32`, `f32`, `range_f32`, `range_u32`, `chance`, `pick`, `shuffle`, `unit_vec2`, `Default`) and `math::Rect` (`from_center_size`, `from_corners`, `min`/`max`/`size`, `contains`, `overlaps`, `intersection`, `closest_point`, `overlaps_circle`, `expand`) + `circles_overlap`; ADR-041. ✅ 11 unit tests incl. the PCG32 reference sequence for seed 42 (a mutated stream constant fails it) and 3 doctests: 231 + 52. ✅ Guide §4 mentions `World::clear` and the new helpers; the §14 game uses `Rng` and `Rect` (rebuilt as an outside crate: clippy clean, Xvfb: three bricks placed by `Rng`, one collected via `Rect::overlaps`, score 1). ✅ CHANGELOG `[Unreleased]`, README, ARCHITECTURE, USABILITY U-14/U-15, GAME2 updated. Additive, 0.1.x-compatible; `incompatible_msrv` clean. |
 
 ### PP-036a: Second game, part 1: choose and specify it
 | Field | Value |

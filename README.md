@@ -13,6 +13,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 - **App and loop:** `Engine` owns the window (winit) and the GPU (wgpu); your `Game` gets `init`, a fixed-rate
   `fixed_update` (60 Hz by default, deterministic) and a per-frame `update`, each with a `Context`.
 - **ECS:** one `hecs::World` for your entities and components; you call your own systems.
+- **Gameplay math:** `Vec2`/`Transform2D`, `Rect` and circle overlap tests, and `Rng`, a seedable random number
+  generator that gives the same game for the same seed on every platform.
 - **2D rendering:** solid `Quad`s, textured `Sprite`s (PNG, tint, crisp `Nearest` or smooth `Linear` sampling per texture, sprite-sheet regions via `SpriteGrid`, frame animation via `SpriteAnimation`) and `Text` (TrueType/OpenType fonts, rasterized
   sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, drawable in screen space for HUDs (`ScreenSpace`) with clickable `ui::Button`s, batched into instanced draw calls, seen
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).

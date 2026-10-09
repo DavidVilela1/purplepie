@@ -23,7 +23,7 @@ window, event loop, time, ECS world, input state and GPU renderer.
 
 **Current reality (Stages 0–10 complete; post-portfolio text phase P1, PP-018a/b):** `purplepie` provides `Engine`,
 `EngineConfig` (incl. `with_asset_root`), `Game`, `Context` (incl. `load_texture`, `load_font`, `measure_text`, `load_sound`, `play_sound`, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `sound_duration`, `audio_available`, `asset_root`, `camera`/`camera_mut`, `viewport_size`, `input`, `cursor_world`), `Time`, `Error`, and the public modules `ecs`
-(`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`), `audio` (`SoundId`, `PlaybackId`), `ui` (`Button`, `Pointer`, `update_buttons`), `input`
+(`World`, `Entity`, `Velocity`, `integrate_velocity`), `math` (`Transform2D`, `Vec2`, `Mat4`, `Rect`, `circles_overlap`, `Rng`), `audio` (`SoundId`, `PlaybackId`), `ui` (`Button`, `Pointer`, `update_buttons`), `input`
 (`Input`, `KeyCode`, `MouseButton`) and `render`
 (`Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextAnchor`, `TextMetrics`, `TextureId`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `ScreenSpace`, `FontId`, `Layer`, `Hidden`; the `advance_animations` system). Every frame the engine clears the window and draws each entity
 that has `Transform2D` + `Quad` (solid colour, ADR-019), `Transform2D` + `Sprite` (textured, ADR-020) or `Transform2D` +
@@ -79,6 +79,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `src/time/mod.rs` | `Time` (public, read-only): clamped delta, elapsed game time, frame number, `fixed_dt`, total fixed steps, `alpha` | VERIFIED |
 | `src/time/fixed.rs` | `FixedTimestep` (`pub(crate)`): accumulator, step cap, backlog clamp, alpha. `std` only. | VERIFIED |
 | `src/math/mod.rs` | `pub mod math`: `Transform2D { position, rotation, scale }` (+ `IDENTITY`, builders, `to_mat4()`), re-exported `glam::{Vec2, Mat4}` | VERIFIED |
+| `src/math/rect.rs`, `src/math/rng.rs` | `Rect` (centre + half size: `contains`, `overlaps`, `intersection`, `overlaps_circle`, `expand`), `circles_overlap`; `Rng` (PCG32, seedable, deterministic; ADR-041) | VERIFIED (PP-036b) |
 | `src/ecs/mod.rs` | `pub mod ecs`: re-exports `hecs::{World, Entity}` and the `hecs` crate; `Velocity(Vec2)`; `integrate_velocity(&mut World, dt)` | VERIFIED |
 | `src/render/mod.rs` | `pub mod render`: public `Color`, `Camera2D`, `Quad`, `Sprite`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `AnimationMode`, `advance_animations`, `ScreenSpace`, `ScreenAnchor`, `Text`, `TextAnchor`, `HorizontalAnchor`, `VerticalAnchor`, `TextMetrics`, `TextureId`, `TextureFilter`, `TextureOptions`, `FontId`, `Layer`, `Hidden`; crate-private `Renderer`, `Textures`, `Fonts`, `measure_text` | VERIFIED |
 | `src/render/camera.rs` | Public `Camera2D { position, zoom }`: `IDENTITY`, `fit`, `effective_zoom`, `screen_to_world`, `world_to_screen`, `visible_world_rect`; crate-private `view_projection` (ADR-018, ADR-022) | VERIFIED (7 unit tests + doctest, Xvfb whole-frame checks) |
@@ -118,7 +119,7 @@ compilability → clear architecture → maintainability → extensibility → p
 | `error` | `Error` enum, `Result<T>` | `thiserror`; wraps winit/wgpu error types | any internal module | new variants per failure domain | 1 |
 | `app` | `Engine`, `EngineConfig`, `Game`, `Context`, `Runner` (winit `ApplicationHandler`), frame orchestration | all engine modules, `winit` | — (top of the engine) | multiple windows (not planned), headless runner for tests | 1 |
 | `time` | `Time` (delta, elapsed, frame count), `FixedTimestep` | `std` only | `winit`, `wgpu`, `hecs` | interpolation alpha, time scale/pause | 2 |
-| `math` | `Transform2D`; re-exports `Vec2`, `Affine2`, `Mat4` | `glam` | everything internal | rect/AABB helpers when needed | 3 |
+| `math` | `Transform2D`, `Rect`, `circles_overlap`, `Rng`; re-exports `Vec2`, `Mat4` | `glam`, `std` | everything internal | more shapes only when a game needs them | 3, PP-036b |
 | `ecs` | Re-exports `World`, `Entity`; engine components (`Velocity`); systems (`integrate_velocity`) | `hecs`, `math` | `render`, `app`, `input`, `wgpu`, `winit` | hierarchy/parenting, command buffers | 3 |
 | `render` | `pub(crate) Renderer`, pipelines, texture and font stores, glyph atlas, draw list; public data types `Color`, `Camera2D`, `Quad`, `Sprite`, `Text`, `TextureId`, `TextureOptions`, `FontId`, `Layer`, `Hidden` | `wgpu`, `pollster`, `image` (PNG decode), `ab_glyph` (fonts, ADR-027), `math`, `ecs` (read-only) | `app`, `input`, `winit` (the window arrives as `Arc<dyn wgpu::WindowHandle>`, the display as `impl wgpu::wgt::WgpuHasDisplayHandle`) | `ShapeRenderer`, `DebugRenderer`, UI widgets, several cameras, text wrapping | 4–7, P2 |
 | `scene` (crate-private) | Scene file format and (de)serialization (ADR-035) | `serde`, `ron`, `ecs`, `math`, `render` (components, texture/font stores), `ui` (`Button`), `error` | `app` (it is called by `Context`), `winit`, `wgpu`, `audio`, `input` | lenient loading for editors, entity references | PP-026a, PP-026b, PP-027 |
@@ -422,7 +423,7 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 220 unit tests + 49 doctests: 36 in the code (every public module page has one, PP-032b), 13 in the guide (PP-032a) |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 231 unit tests + 52 doctests: 39 in the code (every public module page has one, PP-032b), 13 in the guide (PP-032a) |
 | GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text, sprite-sheet and texture-filter rendering read back and compared with the CPU rasterization / texels / bilinear model) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 12 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
 | Newcomer guide (`docs/GUIDE.md`) | every Rust block is a doctest: `src/lib.rs` includes the file into a `#[cfg(doctest)]` module, so `cargo test` compiles each block (and runs those that are not `no_run`) | ✅ 13 blocks (PP-032a, PP-034b); the final game was also built and played as an outside crate |

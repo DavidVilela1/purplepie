@@ -1,12 +1,14 @@
-//! Vectors and transforms: [`Vec2`] for positions, sizes and velocities, and
-//! the [`Transform2D`] component that places an entity.
+//! Vectors, transforms and gameplay math: [`Vec2`], the [`Transform2D`]
+//! component, [`Rect`] overlap tests and the seedable [`Rng`].
 //!
 //! Coordinates: +X right, **+Y up**, the origin at the window centre, one unit is
 //! one logical pixel at zoom 1. A `Transform2D` is the entity's centre, its
 //! rotation in radians (counter-clockwise) and its scale (negative mirrors).
 //! `Vec2` is [`glam`](https://docs.rs/glam)'s, with all its methods
-//! (`length`, `normalize_or_zero`, `clamp`, `abs`, `lerp` …). Guide: section 3
-//! (`docs/GUIDE.md`).
+//! (`length`, `normalize_or_zero`, `clamp`, `abs`, `lerp` …). For collisions,
+//! [`Rect`] and [`circles_overlap`] answer "do these touch?"; for randomness,
+//! [`Rng`] gives the same numbers for the same seed on every platform. Guide:
+//! sections 3, 4 and 14 (`docs/GUIDE.md`).
 //!
 //! ```
 //! use purplepie::math::{Transform2D, Vec2};
@@ -24,8 +26,14 @@
 //!
 //! Built on `glam` (f32 types only; ADR-007). Independent of windowing, ECS and
 //! GPU code; conversion to GPU matrices ([`Transform2D::to_mat4`]) is used by the renderer.
+//! `Rect` and `Rng` are PurplePie's own (ADR-041): PCG32 with no dependency.
+
+mod rect;
+mod rng;
 
 pub use glam::{Mat4, Vec2};
+pub use rect::{Rect, circles_overlap};
+pub use rng::Rng;
 
 use glam::{Quat, Vec3};
 

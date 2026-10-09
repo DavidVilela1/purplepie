@@ -7,7 +7,14 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `math::Rng`: a seedable random number generator (PCG32): `new(seed)`, `from_entropy()`, `next_u32`, `f32`,
+  `range_f32`, `range_u32`, `chance`, `pick`, `shuffle`, `unit_vec2`. The same seed gives the same numbers on every
+  platform (ADR-041).
+- `math::Rect` (centre + half size: `from_center_size`, `from_corners`, `min`, `max`, `size`, `contains`,
+  `overlaps`, `intersection`, `closest_point`, `overlaps_circle`, `expand`) and `math::circles_overlap` for gameplay
+  overlap tests (ADR-041).
 
 ## [0.1.0] - 2026-10-09
 

@@ -32,8 +32,8 @@ git status --short
 cargo test
 ```
 
-**Expect:** `test result: ok. 220 passed; 0 failed; 12 ignored` and `test result: ok. 49 passed`. The guide's code
-blocks are part of the 49. **Report** the two `test result` lines.
+**Expect:** `test result: ok. 231 passed; 0 failed; 12 ignored` and `test result: ok. 52 passed`. The guide's code
+blocks are part of the 52. **Report** the two `test result` lines.
 
 ## 2. GPU tests on your real graphics card
 

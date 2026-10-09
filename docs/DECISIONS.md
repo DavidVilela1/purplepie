@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
 | ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
 | ADR-038 | Workspace layout: no split yet; the root package is also the Cargo workspace root (`[workspace] members = []`); future crates (debug overlay, editor) go under `crates/`, the engine and `assets/` stay at the root | Accepted | Yes (PP-030) |
@@ -2212,6 +2213,60 @@ compatibility promise affordable, all while no outside game depends on the old f
 ## Revisit Conditions
 At 0.1.0, the compatibility policy (PP-035) makes these names and the `#[non_exhaustive]` set binding; changing them
 afterwards needs a minor version with deprecations.
+
+---
+
+# ADR-041: Random numbers and overlap tests in `math`
+
+## Status
+Accepted (2026-10-09, PP-036b). Answers USABILITY U-14 and U-15 and the two engine gaps found by the second-game spec
+(GAME2.md). Additive: 0.1.x-compatible (RELEASING.md §2).
+
+## Context
+Breakout, the PP-031 trial game and the guide's game each wrote their own random-number generator (an LCG) and
+their own box-overlap test. Purple Swarm needs both from its first line. Games run their simulation in a
+fixed-rate `fixed_update` (ADR-010), and Breakout's autoplay shows the value of a reproducible simulation, so the
+generator must give the same numbers for the same seed on every platform.
+
+## Decision
+- **`math::Rng`** implements **PCG32** (PCG-XSH-RR: 64-bit state, 32-bit output, one fixed stream). `new(seed)` follows
+  the reference seeding, and a unit test checks the reference demo's first six outputs for seed 42. It offers
+  `next_u32`, `f32` in `[0, 1)` (24-bit, exact on every platform), `range_f32` and `range_u32` (unbiased by
+  rejection), `chance`, `pick`, `shuffle` (Fisher–Yates) and `unit_vec2`. The last uses `sin`/`cos`, so its last
+  bits may differ between platforms, as documented. `from_entropy()` seeds from the standard library's per-process
+  hash keys and the clock. `Default` is seed 0. No dependency.
+- **`math::Rect`** is an axis-aligned box stored as centre + half size, matching how `Transform2D` + `Quad`/`Sprite`
+  describe things. It has `contains` (edges included), `overlaps` (needs shared area; touching does not count),
+  `intersection` (the overlap box: depth per axis, so a game can push out), `closest_point`, `overlaps_circle` and
+  `expand`. **`math::circles_overlap`** compares two circles.
+- Both are plain values with public fields or methods. Neither is a component, and no system uses them; games call
+  them from their own systems. There is no physics: no resolution, no broad phase, no rotation.
+
+## Alternatives Considered
+- **`fastrand` or `rand`:** good crates, but they add a dependency (and `rand` several) for about 40 lines. Their
+  sequences are not promised to stay stable across versions, and PurplePie's compatibility policy needs that.
+  Games can still use them.
+- **xoshiro128++ / SplitMix:** equally good. PCG32 was chosen for its small state, its published reference outputs
+  (a test can pin them) and its wide use.
+- **Leave it to games (guide recipe):** three hand-written copies already exist. The trial classified it as a missing
+  feature.
+- **A collision module (shapes enum, contact manifolds, spatial grid):** physics-engine territory, which the project
+  rules exclude. A grid can be added later if a game measures a need (GAME2.md).
+
+## Rationale
+These are the two helpers every game so far has rewritten. They are small, pure and testable, and they keep the
+simulation reproducible without new dependencies.
+
+## Consequences
+- 11 unit tests (PCG32 reference sequence, ranges, `pick`/`shuffle`, entropy seeds, rectangle and circle cases) and
+  3 doctests. The guide's game uses `Rng` and `Rect`; built as an outside crate, it collects a brick as before.
+- The PCG32 sequence for a given seed is part of the 0.x compatibility promise (it changes only in a minor release).
+- Breakout keeps its own LCG for now. Switching it would change its recorded autoplay results (`Won after 7135…`);
+  do that only together with re-recording them.
+
+## Revisit Conditions
+A game needs many overlap tests per step (add a spatial grid), rotated boxes, or a second independent random stream
+(add `Rng::with_stream`).
 
 ---
 
