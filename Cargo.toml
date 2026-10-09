@@ -1,13 +1,15 @@
 [package]
 name = "purplepie"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 # Minimum supported Rust version, derived from the dependency graph that
 # Stage 1+ will pull in (wgpu 30.0.1 -> ordered-float 5.5 requires 1.90).
-# Only Rust 1.95.0 has actually been exercised. See docs/TECH_STACK.md.
+# CI builds with 1.90 (the `msrv` job); development uses newer stable releases.
+# See docs/TECH_STACK.md and docs/RELEASING.md.
 rust-version = "1.90"
 description = "PurplePie: a small, modular 2D game engine written in Rust."
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/DavidVilela1/purplepie"
 readme = "README.md"
 publish = false
 

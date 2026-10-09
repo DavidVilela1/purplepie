@@ -1,11 +1,12 @@
 # Releasing PurplePie
 
-What a PurplePie version promises, and how one is made. Written in PP-035a for the first release, 0.1.0.
+What a PurplePie version promises, and how one is made. Written in PP-035a; first release 0.1.0 (PP-035b,
+2026-10-09).
 
 ## 1. How PurplePie is distributed
 
 - **By git tag, not crates.io.** A release is a tag `vX.Y.Z` on the repository. Games depend on it with
-  `purplepie = { git = "<repository URL>", tag = "v0.1.0" }`, or by path to a checkout. `publish = false` stays in
+  `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }`, or by path to a checkout. `publish = false` stays in
   `Cargo.toml`.
 - **Why not crates.io yet:**
   - the name has not been reserved;

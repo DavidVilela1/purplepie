@@ -18,7 +18,7 @@ _None._
 
 ## Blocked
 
-- [ ] **PP-033b: Owner runs `docs/CHECKLIST.md` on Windows (and macOS if available); results recorded in PROJECT_STATUS** · P1 · BLOCKED (partly reported 2026-10-09: steps 1–3 pass on Windows, incl. 12/12 GPU tests on an AMD iGPU; waiting for step 5's autoplay lines and confirmation of steps 4, 7, 8)
+_None._
 
 ## Completed
 
@@ -59,6 +59,8 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-035b: Release 0.1.0: version 0.1.0, `repository` field, CHANGELOG `[0.1.0] - 2026-10-09`, git dependency line (phase P3.5, item 5 complete)** · DONE (2026-10-09; verified on Linux; the owner pushes the `v0.1.0` tag)
+- [x] **PP-033b: Owner run of `docs/CHECKLIST.md` on Windows (phase P3.5, item 3 complete)** · DONE (2026-10-09; owner-reported)
 - [x] **PP-035a: Release preparation: `docs/RELEASING.md` (compatibility policy + procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` (phase P3.5, item 5, part 1)** · DONE (2026-10-09; verified on Linux; the two new CI jobs run first on GitHub)
 - [x] **PP-034b: Scene component formatting (U-12) + opt-in console logger `EngineConfig::console_log` (U-13) (phase P3.5, item 4 complete)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-034a: Second public API review: ADR-040 (anchor names, readable `Error` debug output, resolved `Save` path, `#[non_exhaustive]` policy) (phase P3.5, item 4, part 1)** · DONE (2026-10-09; verified on Linux)
@@ -66,7 +68,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-035b: Release 0.1.0: version bump, tag, `repository` field (needs PP-033b and the owner's URL)** · P2 · TODO
 - [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6; PP-036a first)** · P2 · TODO
 
 ---
@@ -423,12 +424,9 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 ### PP-033b: Owner run of the checklist
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 3, part 2 · Priority P1 · **BLOCKED** on the owner |
+| Stage | Phase P3.5, item 3, part 2 · Priority P1 · **DONE** (2026-10-09; owner-reported) |
 | Dependencies | PP-033a (DONE) |
-| Scope | The owner runs `docs/CHECKLIST.md` on Windows (macOS if available) and reports failed steps and the requested console lines; Claude records them in PROJECT_STATUS as owner-reported and turns real failures into tasks. Not tested by Cowork: Windows PowerShell 5.1 specifics, a real GPU, real audio hardware, window minimise/restore with a window manager, real mouse wheel notches. |
-| Acceptance criteria | Owner report received and recorded; any failure has a task. PP-035b (the release) waits for this. |
-| Progress | 2026-10-09: steps 1–3 reported passing (recorded in PROJECT_STATUS → Validation, owner-provided). Outstanding: step 5's two `breakout: autoplay finished:` lines (cross-platform determinism) and confirmation of steps 4, 7, 8. |
-
+| Result | Owner, Windows: step 1 `cargo test` 216 + 47 green; step 2 GPU tests 12/12 on an AMD Radeon integrated GPU (Vulkan); step 3 GPU and audio lines as expected; all remaining steps (hot reload, Breakout incl. autoplay, scene example, new crate from the guide, shipped release build) reported "as expected". The exact autoplay lines were not quoted, so cross-platform determinism of the Breakout simulation is taken as matching but not recorded number-for-number. |
 ### PP-034b: Scene component formatting + opt-in console logger
 | Field | Value |
 |---|---|
@@ -453,10 +451,9 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 ### PP-035b: Release 0.1.0
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 5, part 2 · Priority P2 · TODO |
-| Dependencies | PP-035a (DONE), PP-033b (no release unseen on Windows), the owner's repository URL (U-17), green CI including the new `msrv` and `latest-deps` jobs |
-| Scope | `version = "0.1.0"`, `repository` field, README/guide git dependency line, CHANGELOG dated, tag `v0.1.0` (owner pushes it). |
-
+| Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
+| Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
+| Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
 ### PP-036a: Second game, part 1: choose and specify it ← NEXT
 | Field | Value |
 |---|---|

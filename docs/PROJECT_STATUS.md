@@ -6,9 +6,10 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**M10: Engine API Stabilization: VERIFIED (Linux).** All milestones M0–M10 are reached: the portfolio scope is complete.
-A complete game (Breakout) runs on the reviewed public API (ADR-026). M5–M10 have not been looked at on Windows yet
-(M1 and M4 are owner-confirmed there; CI builds and tests on Linux, Windows and macOS).
+**Release 0.1.0 (2026-10-09): prepared and verified (Linux); the owner pushes the `v0.1.0` tag.** M10 (Engine API
+Stabilization) and the portfolio scope were reached earlier. Since then the engine gained runtime essentials (P1–P2)
+and editor foundations (P3), and was made usable from outside crates (P3.5). Windows: the owner's checklist passed
+(PP-033b). macOS is built and tested in CI but has not been seen running.
 
 ## Current Stage
 
@@ -22,11 +23,12 @@ trial, is done: a small game built from the README alone worked after three READ
 findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
 `cargo test`, and PP-032b rewrote the API module pages for game authors (item 2 complete; no template crate, ADR-039).
 PP-033a wrote the Windows/macOS [CHECKLIST.md](CHECKLIST.md) and ran it on Linux; the owner's run (PP-033b)
-is in progress (owner-reported so far: steps 1–3 on Windows, see Validation). PP-034a/b, the second API review (ADR-040), renamed the
+passed on Windows (owner-reported, PP-033b; see Validation). PP-034a/b, the second API review (ADR-040), renamed the
 edge anchors, made errors print readably, marked growing types `#[non_exhaustive]`, formatted game components in
 scene files and added the opt-in console logger (item 4 complete). PP-035a prepared the release (compatibility
 policy in [RELEASING.md](RELEASING.md), `CHANGELOG.md`, CI jobs for the minimum Rust version and the latest
-dependencies); the release itself (PP-035b) waits on the owner. Next: **PP-036a**, specifying the second game. The long-term plan (in-game UI and an editor) is in
+dependencies) and PP-035b made it: **version 0.1.0**, `repository` set, dependency by git tag. Items 1–5 of P3.5 are
+done. Next: **PP-036a**, specifying the second game (item 6). The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -107,6 +109,8 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-035b: release 0.1.0: version, `repository = "https://github.com/DavidVilela1/purplepie"`, CHANGELOG `[0.1.0] - 2026-10-09`, git-tag dependency line in README/guide/RELEASING.
+- PP-033b: owner's Windows run of `docs/CHECKLIST.md`: all steps as expected.
 - PP-035a: release preparation: `docs/RELEASING.md` (distribution by git tag, 0.x compatibility policy, procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` workflow.
 - PP-034b: game components in scene files written as one spaced line; opt-in `EngineConfig::console_log` (stderr logger, level from `PURPLEPIE_LOG`), used by the sandbox and both examples.
 - PP-034a: second API review (ADR-040): `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read the old names), `Error` `Debug` prints message + causes, `Error::Save` has the resolved path, `#[non_exhaustive]` on growing public types.
@@ -131,7 +135,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Blocked
 
-- PP-033b: owner's Windows checklist run, partly reported (steps 1–3 pass; step 5's two autoplay lines and confirmation of steps 4, 7, 8 outstanding). It blocks only the release itself (PP-035b), which also needs the owner's repository URL and a green run of the new CI jobs.
+- Nothing is blocked. Owner action pending: push the `v0.1.0` tag after committing PP-035b and seeing CI green.
 
 ## Technical Debt
 
@@ -164,6 +168,12 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-035b Release 0.1.0 (P3.5 item 5 complete).**
+  - `Cargo.toml`: `version = "0.1.0"`, `repository = "https://github.com/DavidVilela1/purplepie"` (`Cargo.lock`: only purplepie's own version line).
+  - `CHANGELOG.md`: `[0.1.0] - 2026-10-09` and an empty `[Unreleased]`. README, guide section 1 and RELEASING now depend by git tag (`tag = "v0.1.0"`), with the path form as the alternative.
+  - PP-033b closed: the owner reports the whole Windows checklist as expected, and all CI jobs (including `msrv` and latest-deps) green.
+  - The owner pushes the tag (RELEASING §3).
 
 - **2026-10-09: PP-035a Release preparation.**
   - New `docs/RELEASING.md`:
@@ -398,7 +408,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-035a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-035b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -407,6 +417,7 @@ after the final PP-035a change (CI additionally runs the latest stable clippy an
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` | ✅ PASS: 220 unit tests + 49 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Release 0.1.0 (PP-035b) | ✅ `cargo check --locked` with version 0.1.0; sandbox prints `PurplePie sandbox v0.1.0`. GitHub `main` (`e3abead`, PP-035a) byte-identical to the PP-035a archive. A fresh crate with `purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }` fetched, built and ran the guide game (frame identical to the PP-032a guide frame); the same crate by path against this 0.1.0 tree built and ran (only the animated corner differs). The tag form itself is checked after the owner pushes `v0.1.0` |
 | Release preparation (PP-035a) | ✅ scratch copy with `cargo update` (12 packages newer, e.g. hecs 0.11.2, glam 0.33.12): `cargo check --all-targets --all-features` and `cargo test --all-features` pass (220 + 49); committed `Cargo.lock` unchanged. `cargo clippy --locked --all-targets -- -D warnings -W clippy::incompatible_msrv` clean at `rust-version` 1.90, and it fires at 1.85 (mutation). Highest dependency `rust-version` in the lock file: 1.90. Both workflow files parse as YAML. Rust 1.90 itself could not be installed (blocked download) |
 | Component formatting + console logger (PP-034b) | ✅ scene example `save` rewrote `demo.ron` (only the 3 component lines changed); `save`/`load`/`build` frozen frames pixel-identical to the PP-026b baseline. Breakout with `PURPLEPIE_LOG=info` prints `asset root:`, `audio:` and `GPU:` lines, without it no log lines; autoplay `Lost after 892 …`, lose screen pixel-identical. Sandbox with `PURPLEPIE_LOG=loud` exits 1 with `invalid engine configuration: PURPLEPIE_LOG must be …`. Outside trial crate (no opt-in) prints no log lines with `PURPLEPIE_LOG=info` |
 | API review (PP-034a) | ✅ trial crate `pie_catch` (outside crate): old `ScreenSpace::TOP` fails to compile (expected), its pre-rename `level.ron` (`screen_space: Top`) loads with the title centred; missing `pie.png` prints ``Error: failed to load asset `…/pie.png` `` + `Caused by: No such file or directory (os error 2)`; save into a missing folder names the full resolved path. Scene example frozen frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 fixed steps …` unchanged |
@@ -430,9 +441,9 @@ after the final PP-035a change (CI additionally runs the latest stable clippy an
 | Breakout lose screen vs PP-025 | ✅ pixel-identical (earlier run; no engine code changed since) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (earlier run; no engine code changed since) |
 
-Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a/PP-034a trees, `docs/CHECKLIST.md`): step 1 `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; step 2 `cargo test -- --ignored` 12/12 passed on a real GPU, the first hardware run of the pixel-exact GPU tests; step 3 `GPU: AMD Radeon(TM) Graphics (Vulkan, IntegratedGpu); surface Bgra8UnormSrgb, AutoVsync` (laptop on battery, so the RTX 3060 was idle) and `audio: 2 channels at 48000 Hz (f32)`; the owner reports everything else working. Step 5's two autoplay lines and explicit confirmation of steps 4, 7 and 8 are outstanding (PP-033b).
+Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a/PP-034a trees, `docs/CHECKLIST.md`): step 1 `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; step 2 `cargo test -- --ignored` 12/12 passed on a real GPU, the first hardware run of the pixel-exact GPU tests; step 3 `GPU: AMD Radeon(TM) Graphics (Vulkan, IntegratedGpu); surface Bgra8UnormSrgb, AutoVsync` (laptop on battery, so the RTX 3060 was idle) and `audio: 2 channels at 48000 Hz (f32)`; the owner reports everything else working. Later the same day the owner reported the remaining steps (4–8) "as expected" (exact autoplay lines not quoted) and all CI jobs green, including `msrv` (Rust 1.90) and latest-deps.
 Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-035a done (release preparation); PP-035b waits on the owner (checklist, URL, CI). PP-036a (second game spec) is next.
+2026-10-09. PP-035b done: release 0.1.0 prepared (the owner pushes the tag). PP-036a (second game spec) is next.

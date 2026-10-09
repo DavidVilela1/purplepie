@@ -7,7 +7,12 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ## [Unreleased]
 
-The first release, 0.1.0, is being prepared (PP-035b). Everything below will become its entry.
+Nothing yet.
+
+## [0.1.0] - 2026-10-09
+
+The first release. Depend on it with
+`purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }`.
 
 ### Added
 
@@ -37,7 +42,7 @@ The first release, 0.1.0, is being prepared (PP-035b). Everything below will bec
 - **Examples and docs:** the sandbox, `examples/breakout.rs`, `examples/scene.rs`; `docs/GUIDE.md` (every code
   block compiled by `cargo test`); `docs/CHECKLIST.md`.
 
-### Changed (before 0.1.0, for code written against earlier snapshots)
+### Changed (for code written against pre-release snapshots)
 
 - `ScreenSpace::TOP` / `LEFT` / `RIGHT` / `BOTTOM` are now `TOP_CENTER` / `CENTER_LEFT` / `CENTER_RIGHT` /
   `BOTTOM_CENTER`, and `ScreenAnchor::Top` / … are now `TopCenter` / …. Scene files with the old names still load
@@ -60,3 +65,6 @@ These are listed in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md):
 - fatal GPU faults;
 - rendering has been seen on Linux (software GPU) and on a Windows AMD integrated GPU; macOS is compiled and tested in
   CI but not yet seen running.
+
+[Unreleased]: https://github.com/DavidVilela1/purplepie/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/DavidVilela1/purplepie/releases/tag/v0.1.0

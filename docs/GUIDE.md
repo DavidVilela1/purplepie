@@ -23,7 +23,7 @@ The API reference is one command away: `cargo doc -p purplepie --no-deps --open`
 
 ## 1. Set up a game crate
 
-PurplePie is not on crates.io yet. Put your game next to a PurplePie folder and depend on it by path:
+PurplePie is not on crates.io. Depend on a release tag from GitHub, or by path on a local checkout of PurplePie:
 
 ```text
 cargo new my_game
@@ -32,12 +32,14 @@ cargo new my_game
 ```toml
 # my_game/Cargo.toml
 [dependencies]
-purplepie = { path = "../PurplePie" }
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }
+# or, with a PurplePie checkout next to the game: purplepie = { path = "../PurplePie" }
 serde = { version = "1", features = ["derive"] }   # only for your own components in scene files (section 11)
 ```
 
 Your game has its **own** `assets/` folder; every asset path in your code is relative to it. To follow this guide,
-copy PurplePie's `assets/fonts`, `assets/sounds` and `assets/textures` folders into `my_game/assets/`:
+copy the `assets/fonts`, `assets/sounds` and `assets/textures` folders of the PurplePie repository (a clone, or the
+release's source zip from GitHub) into `my_game/assets/`:
 
 ```text
 my_game/

@@ -28,7 +28,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-16 | Documentation drift | MONITORING | Medium | Medium | all |
 | R-17 | Resource and asset lifetime management | MONITORING | Medium | Medium | 6, 9 |
 | R-18 | Performance: per-frame allocations and draw calls | MONITORING | Low | Low | 5–6 |
-| R-19 | Declared MSRV untested | MITIGATED (CI `msrv` job from PP-035a; first run pending) | Low | Low | all |
+| R-19 | Declared MSRV untested | MITIGATED (CI `msrv` job green since PP-035a, owner-reported) | Low | Low | all |
 | R-20 | Compile-time growth in a single crate | OPEN | High | Low | 4, 10 |
 | R-21 | ECS integration complexity (no resources/scheduler in hecs) | OPEN | Low | Medium | 3 |
 | R-22 | Panics inside wgpu/wgpu-hal/winit that PurplePie cannot intercept | MONITORING | Low | High | 4+ |

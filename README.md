@@ -3,9 +3,9 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: Stages 0–10 complete; growing past the portfolio scope: runtime essentials done (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops and UI buttons); editor foundations done (scene files, hot reload); now making it usable from outside (usability and first release).**
+> **Status: version 0.1.0, the first release ([CHANGELOG](CHANGELOG.md), [compatibility policy](docs/RELEASING.md)).** Stages 0–10 complete; runtime essentials (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops, UI buttons) and editor foundations (scene files, hot reload) done; usable from an outside crate with a [guide](docs/GUIDE.md).
 > The engine runs a complete game: `cargo run --example breakout`.
-> Rendering verified on Linux (Xvfb + software GPU, pixel-checked); CI builds and tests on Linux, Windows and macOS.
+> Rendering verified on Linux (Xvfb + software GPU, pixel-checked) and Windows (owner's checklist, AMD GPU); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
 
 ## What it does
@@ -40,16 +40,17 @@ section, and every code block in it is compiled by `cargo test`.
 
 ### A new game crate
 
-PurplePie is not on crates.io yet; a game depends on it by path (or by git). Create the game next to your
-PurplePie checkout and add it to the game's `Cargo.toml`:
+PurplePie is not on crates.io; a game depends on a release tag from GitHub (or by path on a local checkout).
+Create the game and add it to the game's `Cargo.toml`:
 
 ```text
-cargo new my_game        # next to the PurplePie folder
+cargo new my_game
 ```
 
 ```toml
 [dependencies]
-purplepie = { path = "../PurplePie" }   # or: purplepie = { git = "<PurplePie repository URL>" }
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }
+# or, with a PurplePie checkout next to the game: purplepie = { path = "../PurplePie" }
 # Only if you save your own components in scene files (Context::register_scene_component):
 serde = { version = "1", features = ["derive"] }
 ```
@@ -63,7 +64,7 @@ my_game/
 
 - **Assets are your game's own.** Paths like `"textures/player.png"` are looked up in `my_game/assets/`, not in
   PurplePie's folder. To use the bundled font, copy `assets/fonts/Poppins-Regular.ttf` and `assets/fonts/OFL.txt`
-  from PurplePie into `my_game/assets/fonts/`.
+  from the PurplePie repository (a clone, or the release's source zip on GitHub) into `my_game/assets/fonts/`.
 - **First build:** about 140 crates (a few minutes; on Linux install the ALSA headers first, see [Build](#build)).
   Later builds take seconds.
 - **API docs:** `cargo doc -p purplepie --no-deps --open` (without `--no-deps` every dependency is documented too,
@@ -178,7 +179,7 @@ Rust version (1.90) on every push; `latest-deps.yml` tests with `cargo update`d 
 
 ```text
 PurplePie/
-├── CHANGELOG.md     what changed in each version (0.1.0 in preparation)
+├── CHANGELOG.md     what changed in each version
 ├── Cargo.toml / Cargo.lock   the `purplepie` package, also the workspace root (future crates go in `crates/`, ADR-038)
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)

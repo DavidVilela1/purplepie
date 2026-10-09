@@ -54,7 +54,7 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-14 | missing feature | There are no random numbers; the trial wrote a 10-line LCG. | **PP-036** (second game). Alternatively the guide recommends a small crate such as `fastrand`. |
 | U-15 | missing feature | There is no rectangle-overlap helper; the trial, like Breakout, checks boxes by hand. | **PP-036:** "collision helpers" is already on the P3.5 item 6 list. |
 | U-16 | observation | A fresh outside crate resolves newer patch versions than the engine's `Cargo.lock` (hecs 0.11.2, glam 0.33.12, zerocopy 0.8.62, cc 1.6.0, …). It built and ran, but CI only tests the committed lock file. | **Addressed in PP-035a:** the new workflow `.github/workflows/latest-deps.yml` runs `cargo update` and then check and test, on every push and weekly. Run locally with the PP-035a updates (12 packages newer): 220 + 49 tests pass. |
-| U-17 | observation | `Cargo.toml` has no `repository` field, so the README cannot give a git URL. | **PP-035b:** the owner provides the URL; the git dependency form is described in `docs/RELEASING.md` §1. |
+| U-17 | observation | `Cargo.toml` has no `repository` field, so the README cannot give a git URL. | **Fixed in PP-035b:** `repository` field set; README, guide and RELEASING give `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }` (the git form was built and run from GitHub). |
 
 **What worked without help:** the `Game` / `Context` / `EngineConfig` shape; sprites, quads, text and layers;
 `ScreenSpace` HUD text; keyboard input; `play_sound`; `save_scene` / `load_scene` with two registered components
