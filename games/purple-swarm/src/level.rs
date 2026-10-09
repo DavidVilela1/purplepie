@@ -1,9 +1,10 @@
 //! The arena: floor, walls, the HUD texts and the camera that follows the player.
 
 use purplepie::Context;
+use purplepie::ecs::Entity;
 use purplepie::math::{Rect, Rng, Transform2D, Vec2};
 use purplepie::render::{
-    Color, FontId, Layer, Quad, ScreenSpace, Sprite, Text, TextAnchor, TextureOptions,
+    Color, FontId, Hidden, Layer, Quad, ScreenSpace, Sprite, Text, TextAnchor, TextureOptions,
 };
 
 /// The playing field, centred on the origin (world units).
@@ -20,8 +21,12 @@ pub enum Hud {
     Status,
     /// Hit points.
     Health,
-    /// The centred message (game over).
+    /// The big centred word (title, pause, game over).
     Banner,
+    /// The smaller lines under the banner (what to click or press).
+    Prompt,
+    /// The dark panel behind the banner and prompt (hidden with them).
+    Backdrop,
 }
 
 /// The arena as a rectangle.
@@ -89,15 +94,32 @@ pub fn spawn(ctx: &mut Context<'_>) -> purplepie::Result<FontId> {
     ));
     world.spawn((
         Transform2D::default(),
-        hud("", 40.0).with_anchor(TextAnchor::CENTER),
+        Quad::new(Vec2::new(620.0, 210.0), Color::rgba(0.03, 0.01, 0.08, 0.85)),
+        ScreenSpace::CENTER,
+        Layer(29),
+        Hidden,
+        Hud::Backdrop,
+    ));
+    world.spawn((
+        Transform2D::from_position(Vec2::new(0.0, 40.0)),
+        hud("", 48.0)
+            .with_color(Color::hex(0xC77DFF))
+            .with_anchor(TextAnchor::CENTER),
         ScreenSpace::CENTER,
         Layer(30),
         Hud::Banner,
     ));
     world.spawn((
+        Transform2D::from_position(Vec2::new(0.0, -36.0)),
+        hud("", 20.0).with_anchor(TextAnchor::CENTER),
+        ScreenSpace::CENTER,
+        Layer(30),
+        Hud::Prompt,
+    ));
+    world.spawn((
         Transform2D::from_position(Vec2::new(0.0, 16.0)),
         hud(
-            "WASD move - mouse aim - hold left button to shoot - Esc quits",
+            "WASD move - mouse aim - hold left button to shoot - Esc pauses",
             16.0,
         )
         .with_color(Color::rgba(1.0, 1.0, 1.0, 0.6))
@@ -125,6 +147,36 @@ pub fn set_hud(ctx: &mut Context<'_>, which: Hud, content: &str) {
     for (text, hud) in ctx.world_mut().query_mut::<(&mut Text, &Hud)>() {
         if *hud == which && text.content != content {
             content.clone_into(&mut text.content);
+        }
+    }
+}
+
+/// Sets the colour of one HUD text.
+pub fn set_hud_color(ctx: &mut Context<'_>, which: Hud, color: Color) {
+    for (text, hud) in ctx.world_mut().query_mut::<(&mut Text, &Hud)>() {
+        if *hud == which {
+            text.color = color;
+        }
+    }
+}
+
+/// Shows the centred banner with `prompt` under it on a dark panel, or hides
+/// all three when `banner` is empty.
+pub fn show_banner(ctx: &mut Context<'_>, banner: &str, prompt: &str) {
+    set_hud(ctx, Hud::Banner, banner);
+    set_hud(ctx, Hud::Prompt, prompt);
+    let world = ctx.world_mut();
+    let panels: Vec<Entity> = world
+        .query::<(Entity, &Hud)>()
+        .iter()
+        .filter(|(_, hud)| **hud == Hud::Backdrop)
+        .map(|(e, _)| e)
+        .collect();
+    for panel in panels {
+        if banner.is_empty() {
+            let _ = world.insert_one(panel, Hidden);
+        } else {
+            let _ = world.remove_one::<Hidden>(panel);
         }
     }
 }

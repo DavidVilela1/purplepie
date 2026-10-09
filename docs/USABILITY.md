@@ -57,6 +57,7 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-17 | observation | `Cargo.toml` has no `repository` field, so the README cannot give a git URL. | **Fixed in PP-035b:** `repository` field set; README, guide and RELEASING give `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }` (the git form was built and run from GitHub). |
 | U-18 | observation | In a workspace, `cargo run -p purple-swarm` from the repository root runs with the root as the working directory, so the engine finds the engine's `assets/` and fails on the game's first texture (`failed to load asset …/PurplePie/assets/textures/floor.png`). Running from the game's folder works. The error is clear, but the cause isn't obvious. | **Documented** (ADR-042, README, the game's header). Possible engine follow-up: an asset-root fallback to the package's own folder for `cargo run` (revisit with ADR-042). |
 | U-19 | observation | `TextureId` has no public constructor (only `Context::load_texture*` makes one), so a game's unit test cannot build a `Sprite` without a GPU. Purple Swarm split its enemy logic so steering is tested on `Transform2D`/`Velocity`/`Enemy` only, and tinting lives in a separate function. | **Open, no change yet.** The split is reasonable design anyway. Revisit if a third game hits it; options: a documented placeholder id for tests, or `Default`. Adding either is additive (0.1.x-compatible). |
+| U-20 | observation | Sounds cannot be paused. Purple Swarm's pause mutes the music with `set_sound_volume(id, 0.0)`; the loop keeps advancing silently, so it resumes later in the track rather than where it stopped. Fine for a loop, wrong for a jingle or a voice line. | **Open, no change yet.** A `pause_sound`/`resume_sound` pair would be additive (0.1.x-compatible). Revisit when a game needs exact resumption. |
 
 **What worked without help:** the `Game` / `Context` / `EngineConfig` shape; sprites, quads, text and layers;
 `ScreenSpace` HUD text; keyboard input; `play_sound`; `save_scene` / `load_scene` with two registered components
@@ -145,7 +146,20 @@ Enemies, waves, collisions, hit points, score, orbs and sounds, still with the p
 `math::circles_overlap` (PP-036b) covered every random choice and every collision; nothing was written by hand that
 the engine should own. New finding: U-19 (sprites need a loaded texture, so sprite code is hard to unit-test).
 
-Game-side notes for PP-036d (not engine findings):
+Game-side notes for PP-036d (not engine findings; the first is fixed in PP-036d1, the second is PP-036d2):
 
 - The centred game-over banner overlaps the player sprite; it needs a backdrop.
 - The bot never loses a hit point in 60 s, while an idle player dies in about 10 s; a balance pass is due.
+
+## PP-036d1: Purple Swarm screens (2026-10-09)
+
+Title, pause and game over with restart, using the public API only. What worked without friction:
+
+- `World::clear` plus respawning the arena gave a clean restart. Loading the same files again returned the same
+  ids, so restart needed no asset bookkeeping.
+- A screen-space `Quad` with `Hidden` made the banner backdrop; multi-line centred `Text` handled the prompts.
+- `with_exit_on_escape(false)` and `just_pressed(KeyCode::Escape)` gave the game Escape.
+
+One snag, already a known limitation: click and key edges must be read in `update`, because an edge can reach
+`fixed_update` a frame late, or not at all when a frame runs no fixed step. The game does this and says why in a
+comment. New finding: U-20 (sounds cannot be paused, only muted).

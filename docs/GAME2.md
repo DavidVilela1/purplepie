@@ -82,8 +82,10 @@ screen-space text and the console logger, from the published v0.1.0 tag.
    - **Alternative:** a separate repository.
 
    This changes the workspace layout and CI, so it gets an ADR in that task.
-3. **PP-036d:** screens (title, pause, game over, restart via `World::clear`), best-score file and polish (banner
-   backdrop, low-health colour, a balance pass). Its findings go into `docs/USABILITY.md`.
+3. **PP-036d:** split in two:
+   - **PP-036d1 (done):** title, pause and game-over screens, restart via `World::clear`, banner backdrop and a
+     low-health colour (results below);
+   - **PP-036d2:** the best-score file, a balance pass and the final findings, which close P3.5 item 6.
 
 ## Skeleton (PP-036a)
 
@@ -118,7 +120,7 @@ waves, steering) and `level.rs` (arena, HUD, camera, spawn points).
 - **Feedback:** a hit enemy is drawn half transparent for 0.1 s; the player blinks with `Hidden` while invulnerable;
   separate sounds for a shot, a wounding hit, an enemy death (`death.wav`, generated), a player hit and game over;
   the music stops on game over.
-- **Game over** freezes the world and shows a banner. Screens and restart are PP-036d.
+- **Game over** freezes the world and shows a banner. Screens and restart came in PP-036d1 (below).
 - **Autoplay** (`PURPLE_SWARM_AUTOPLAY=1`) uses `Rng::new(2026)`: the bot circles the arena centre and shoots the
   nearest enemy within 420 units. After 3600 fixed steps it prints
   `swarm: autoplay finished: 60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5` and exits. The line was
@@ -127,3 +129,18 @@ waves, steering) and `level.rs` (arena, HUD, camera, spawn points).
 What the engine made easy: `Rng` and `circles_overlap` were exactly what the rules needed; `Hidden` made blinking a
 two-line insert/remove; despawning after collecting (guide §4) worked for bullets, enemies and orbs; debug builds
 stayed smooth under Xvfb with dozens of entities. One new finding: U-19 (testing code that creates sprites).
+
+## Screens (PP-036d1)
+
+- **Flow:** a small `screen.rs` holds `Screen` (Title, Playing, Paused, Over) and maps this frame's presses (click,
+  Escape, Q) to an action: start, pause, resume, restart or quit. It uses no engine types, so the whole flow is
+  unit-tested. The game reads the presses in `update`, which runs every frame, so no edge is lost (an edge can
+  reach `fixed_update` a frame late). `with_exit_on_escape(false)` hands Escape to the game.
+- **Pause** skips `fixed_update` entirely (the world and the clock freeze) and mutes the music with
+  `set_sound_volume(…, 0.0)`; resuming restores the volume.
+- **Restart** is `ctx.world_mut().clear()`, then the arena, HUD and player are spawned again. Loading the same
+  texture or font again returns the same id, so nothing is reloaded. All per-round numbers live in one `Round`
+  struct, replaced by `Round::new()`.
+- **Banner:** the title, pause and game-over texts sit on a dark screen-space panel that is hidden with `Hidden`
+  during play. The HP text turns red at 2 hit points or fewer.
+- Autoplay skips the title, so its summary line did not change.

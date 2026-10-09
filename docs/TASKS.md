@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-036d: Purple Swarm screens (title, pause, game over, restart), best score, balance and HUD polish, findings** · P1 · TODO ← **next task**
+- [ ] **PP-036d2: Purple Swarm best-score file, balance pass, findings; closes P3.5 item 6** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-036d1: Purple Swarm screens: title, pause, game over with restart (`World::clear`), banner backdrop, low-health colour** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036c2: Purple Swarm core, part 2: enemies (Drifter, Dasher), waves, collisions, hit points, score, orbs, sounds, deterministic autoplay summary** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036c1: Purple Swarm core, part 1: `games/purple-swarm` workspace member (ADR-042), arena, player, camera, shooting, HUD; CI `--workspace`** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036b: `math::Rng` (PCG32) + `math::Rect` and `circles_overlap` (ADR-041; U-14, U-15)** · DONE (2026-10-09; verified on Linux)
@@ -72,7 +73,7 @@ _None._
 
 ## Future
 
-_None in this phase beyond PP-036d (the last part of P3.5 item 6)._
+_None in this phase beyond PP-036d2 (the last part of P3.5 item 6)._
 
 ---
 
@@ -458,13 +459,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-036d: Purple Swarm screens, best score, polish ← NEXT
+### PP-036d2: Purple Swarm best score, balance, findings ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6, part 4 (last) · Priority P1 · TODO |
+| Stage | Phase P3.5, item 6, part 4b (last) · Priority P1 · TODO |
+| Dependencies | PP-036d1 (DONE) |
+| Scope | In `games/purple-swarm` (public API only): best score kept in a small text file next to the game (one number; a missing or broken file counts as 0 and is never fatal; written only when beaten; autoplay never writes it), shown on the title and game-over screens ("Best N", "New best!"). Balance pass: the bot ends 60 s at 5/5 hit points and an idle player dies in ~10–12 s; tune spawn rate / speeds / contact so both feel fair, then re-record the autoplay summary line. Final findings in USABILITY (U-19, U-20 and anything new); GAME2 results; P3.5 item 6 closed in ROADMAP. |
+| Acceptance criteria | `--workspace` clippy clean; unit tests for reading/writing the score file (missing, broken, valid); Xvfb: a round beats the best, the file holds the score, a restart and a fresh start show it; the new autoplay summary is identical over two runs; ROADMAP item 6 done. |
+
+### PP-036d1: Purple Swarm screens and restart
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6, part 4a · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
 | Dependencies | PP-036c2 (DONE) |
-| Scope | In `games/purple-swarm` (public API only): screens per GAME2.md: title ("Click to start", best score), play, pause (Escape; Escape again or Q quits; needs `with_exit_on_escape(false)`), game over (score, best, "Click to play again") with restart through `World::clear` and respawning the arena/HUD; best score in a small text file next to the game (missing or broken file = 0, never fatal). Polish from PP-036c2: a dark backdrop behind the centred banner (it overlaps the player), HP text turning red at 1–2 hit points, and a balance pass (the bot ends 60 s at 5/5 hit points; an idle player dies in ~10 s) with the autoplay summary line re-recorded. Autoplay skips the title screen. Findings (incl. U-19) go to USABILITY. |
-| Acceptance criteria | `--workspace` clippy clean; Xvfb frames of title, pause and game over; restart reaches a fresh wave 1 with the score reset and the best score kept (file written and read back); autoplay summary identical over two runs; P3.5 item 6 closed in ROADMAP. |
+| Scope | PP-036d was split: screens and restart here, best score and balance in PP-036d2. |
+| Acceptance criteria | ✅ New `screen.rs`: `Screen` (Title, Playing, Paused, Over) and `Screen::action` (click / Escape / Q → Start, Pause, Resume, Restart, Quit), with no engine types; 3 unit tests (a whole session, Escape/Q quit everywhere but play, a click wins over a key). ✅ Edges read in `update` (every frame); `with_exit_on_escape(false)`; per-round state in a `Round` struct, so a restart is `World::clear` + respawn + `Round::new()`. ✅ Dark screen-space backdrop behind the banner and prompt; HP text red at 2 or fewer. ✅ Autoplay skips the title; summary unchanged (`60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5`). ✅ Xvfb session: title → click → Escape (paused: two frames 1.5 s apart identical) → click → idle until game over (`11.5 s` played, pause time not counted; `HP 0/5` red) → click (fresh round: `Score 0 Wave 1 0:01`, `HP 5/5`, no enemies) → Escape → Q: exit 0. Escape on the title: exit 0. Engine unchanged. |
 
 ### PP-036c2: Purple Swarm core, part 2
 | Field | Value |
