@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; scene component formatting and a built-in logger in PP-034b) |
+| ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
 | ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
 | ADR-038 | Workspace layout: no split yet; the root package is also the Cargo workspace root (`[workspace] members = []`); future crates (debug overlay, editor) go under `crates/`, the engine and `assets/` stay at the root | Accepted | Yes (PP-030) |
 | ADR-037 | Asset hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed textures, fonts and sounds are replaced under the same id (texture revision → GPU re-upload; font revision → glyph atlas cleared; sounds: new `Arc`, running voices keep the old); broken or oversized files keep the old asset | Accepted | Yes (PP-028 textures, PP-029 fonts + sounds) |
@@ -696,6 +696,9 @@ logging backend on games (ADR-011), and new dependencies must earn their place (
   degraded operation, `info` for one-time facts (GPU name/backend, surface
   format, present mode), `debug` for per-event detail (suboptimal/outdated surface).
 - The engine **never installs a logger**. Choosing one is the game's decision.
+  *Amended by ADR-040 (PP-034b):* a game may opt in to the engine's console logger with
+  `EngineConfig::with_console_log(true)` (the sandbox's logger, moved into the library). Without that opt-in the
+  engine still installs nothing.
 - The `sandbox` game installs a ~20-line built-in stderr logger. Its level comes
   from `PURPLEPIE_LOG=off|error|warn|info|debug|trace`, default `warn`. No `env_logger` dependency.
 - `tracing` is not adopted. winit's `tracing` events are dropped when no subscriber is installed.
@@ -2194,6 +2197,17 @@ compatibility promise affordable, all while no outside game depends on the old f
   a one-word change).
 - Games cannot write struct literals for the listed types (they never needed to; builders exist).
 - `{:?}` of an `Error` no longer shows the variant name. Matching shows it.
+
+## Implementation of U-12 and U-13 (PP-034b, 2026-10-09)
+- **Game components in scene files** are written as one RON line spaced like the rest of the file
+  (`(speed: 0.8, direction: Clockwise)`, nested arrays/maps/tuples included) instead of `RawValue::from_rust`'s compact
+  form. The file format is unchanged; `assets/scenes/demo.ron` was regenerated (3 lines differ) and all three scene
+  example modes stay pixel-identical.
+- **Opt-in console logger:** `EngineConfig::console_log` / `with_console_log(true)` makes `Engine::new` install a small
+  stderr logger (`app::logging`, the sandbox's former logger) at the level in `PURPLEPIE_LOG` (`off` … `trace`, empty or
+  unset = `warn`; anything else is `Error::InvalidConfig`). If a logger is already installed it does nothing. The
+  sandbox and both examples opt in, so `PURPLEPIE_LOG=info` now works for the examples too. The `log` facade is not
+  part of the public API, and there is no new dependency.
 
 ## Revisit Conditions
 At 0.1.0, the compatibility policy (PP-035) makes these names and the `#[non_exhaustive]` set binding; changing them

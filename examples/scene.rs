@@ -261,7 +261,9 @@ fn main() -> purplepie::Result<()> {
         Ok("save") => Mode::Save,
         _ => Mode::Load,
     };
-    let config = EngineConfig::new("PurplePie Scene").with_size(1024, 600);
+    let config = EngineConfig::new("PurplePie Scene")
+        .with_size(1024, 600)
+        .with_console_log(true); // PURPLEPIE_LOG=info shows engine details
     let frozen = std::env::var("PURPLEPIE_SCENE_FREEZE").is_ok_and(|v| v == "1");
     Engine::new(config)?.run(SceneDemo {
         mode,

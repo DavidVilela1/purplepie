@@ -22,8 +22,9 @@ trial, is done: a small game built from the README alone worked after three READ
 findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
 `cargo test`, and PP-032b rewrote the API module pages for game authors (item 2 complete; no template crate, ADR-039).
 PP-033a wrote the Windows/macOS [CHECKLIST.md](CHECKLIST.md) and ran it on Linux; the owner's run (PP-033b)
-is pending (the owner has reported `cargo test` green on Windows). PP-034a, the second API review (ADR-040), renamed the
-edge anchors, made errors print readably and marked growing types `#[non_exhaustive]`. Next: **PP-034b**. The long-term plan (in-game UI and an editor) is in
+is in progress (owner-reported so far: steps 1–3 on Windows, see Validation). PP-034a/b, the second API review (ADR-040), renamed the
+edge anchors, made errors print readably, marked growing types `#[non_exhaustive]`, formatted game components in
+scene files and added the opt-in console logger (item 4 complete). Next: **PP-035a**, release preparation. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -104,6 +105,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-034b: game components in scene files written as one spaced line; opt-in `EngineConfig::console_log` (stderr logger, level from `PURPLEPIE_LOG`), used by the sandbox and both examples.
 - PP-034a: second API review (ADR-040): `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read the old names), `Error` `Debug` prints message + causes, `Error::Save` has the resolved path, `#[non_exhaustive]` on growing public types.
 - PP-033a: platform checklist `docs/CHECKLIST.md` (PowerShell, 8 steps + macOS/Linux appendix), every step run on Linux, the PowerShell blocks under PowerShell 7.
 - PP-032b: module pages for game authors (summary, guide link, compiled example; internals under "Engine notes"); starter template decision ADR-039 (the guide is the template).
@@ -122,11 +124,11 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-034b: Scene component formatting + opt-in console logger** (phase P3.5, item 4, part 2). See [TASKS.md](TASKS.md#pp-034b-scene-component-formatting--opt-in-console-logger--next).
+- **PP-035a: Release preparation** (phase P3.5, item 5, part 1: compatibility policy, CHANGELOG, latest-dependencies CI). See [TASKS.md](TASKS.md#pp-035a-release-preparation--next).
 
 ## Blocked
 
-- PP-033b: waiting on the owner to run `docs/CHECKLIST.md` on Windows and report. It blocks only the release (PP-035).
+- PP-033b: owner's Windows checklist run, partly reported (steps 1–3 pass; step 5's two autoplay lines and confirmation of steps 4, 7, 8 outstanding). It blocks only the release itself (PP-035b).
 
 ## Technical Debt
 
@@ -155,10 +157,15 @@ executable, else `assets/` in the working directory (ADR-025).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
-- Logging only reaches the console if the game installs a `log` backend (ADR-016). The sandbox does; the examples do not, so `PURPLEPIE_LOG` has no effect on them; games choose their own (the README shows `env_logger`; a built-in option is PP-034's U-13).
+- Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-034b Scene component formatting and opt-in console logger (P3.5 item 4 complete).**
+  - Registered game components are written as one spaced RON line (`(speed: 0.8, direction: Clockwise)`); `assets/scenes/demo.ron` regenerated (3 lines). Format version unchanged.
+  - New `EngineConfig::console_log` / `with_console_log(true)`: `Engine::new` installs a stderr logger (crate-private `app::logging`, the sandbox's former logger) with the level from `PURPLEPIE_LOG` (empty/unset = `warn`, invalid = `Error::InvalidConfig`); does nothing if a logger exists. Sandbox, Breakout and scene examples opt in. Amends ADR-016. No new dependency.
+  - 2 unit tests + 2 doctests (one in the guide): 220 + 49.
 
 - **2026-10-09: PP-034a Second API review (ADR-040).**
   - **Breaking (pre-0.1.0):** `ScreenSpace::TOP`/`LEFT`/`RIGHT`/`BOTTOM` → `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER`, and `ScreenAnchor::Top`/… → `TopCenter`/…, named like `TextAnchor`. Scene files write the new names and still read the old ones (format version 1 unchanged).
@@ -375,15 +382,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-034a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-034b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 218 unit tests + 47 doctests (12 of them the guide's blocks), 12 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 220 unit tests + 49 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Component formatting + console logger (PP-034b) | ✅ scene example `save` rewrote `demo.ron` (only the 3 component lines changed); `save`/`load`/`build` frozen frames pixel-identical to the PP-026b baseline. Breakout with `PURPLEPIE_LOG=info` prints `asset root:`, `audio:` and `GPU:` lines, without it no log lines; autoplay `Lost after 892 …`, lose screen pixel-identical. Sandbox with `PURPLEPIE_LOG=loud` exits 1 with `invalid engine configuration: PURPLEPIE_LOG must be …`. Outside trial crate (no opt-in) prints no log lines with `PURPLEPIE_LOG=info` |
 | API review (PP-034a) | ✅ trial crate `pie_catch` (outside crate): old `ScreenSpace::TOP` fails to compile (expected), its pre-rename `level.ron` (`screen_space: Top`) loads with the title centred; missing `pie.png` prints ``Error: failed to load asset `…/pie.png` `` + `Caused by: No such file or directory (os error 2)`; save into a missing folder names the full resolved path. Scene example frozen frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 fixed steps …` unchanged |
 | Platform checklist (PP-033a) | ✅ all steps on Linux: sandbox frame with `GPU:`/`audio:` log lines, click + `M` music in an ALSA capture; hot reload swap and `git`-style restore (file byte-identical); autoplay `Lost after 892 …` / `Won after 7135 …`; scene: 19 entities, 2 button clicks counted, build mode; steps 7–8 run as PowerShell 7.4.6 scripts: new crate builds with 0 warnings, release build shipped and run from `/` shows the same frame (only the animated corner differs) |
 | Module pages (PP-032b) | ✅ `cargo doc --no-deps` (`-D warnings`) clean; rendered crate page lists the six modules with the new game-author summaries; the 4 new module examples pass as doctests |
@@ -405,9 +413,9 @@ after the final PP-034a change (CI additionally runs the latest stable clippy an
 | Breakout lose screen vs PP-025 | ✅ pixel-identical (earlier run; no engine code changed since) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (earlier run; no engine code changed since) |
 
-Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a tree, checklist step 1): `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; the rest of the checklist (PP-033b) is pending.
+Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a/PP-034a trees, `docs/CHECKLIST.md`): step 1 `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; step 2 `cargo test -- --ignored` 12/12 passed on a real GPU, the first hardware run of the pixel-exact GPU tests; step 3 `GPU: AMD Radeon(TM) Graphics (Vulkan, IntegratedGpu); surface Bgra8UnormSrgb, AutoVsync` (laptop on battery, so the RTX 3060 was idle) and `audio: 2 channels at 48000 Hz (f32)`; the owner reports everything else working. Step 5's two autoplay lines and explicit confirmation of steps 4, 7 and 8 are outstanding (PP-033b).
 Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-034a done (second API review, ADR-040); PP-033b (owner checklist run) partly reported. PP-034b is next.
+2026-10-09. PP-034b done (P3.5 item 4 complete); PP-033b partly reported (steps 1–3 pass on Windows). PP-035a (release preparation) is next.

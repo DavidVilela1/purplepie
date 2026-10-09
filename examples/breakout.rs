@@ -657,6 +657,7 @@ fn main() -> purplepie::Result<()> {
     };
     let config = EngineConfig::new("PurplePie Breakout")
         .with_size(1024, 768)
-        .with_clear_color(Color::hex(0x10002B));
+        .with_clear_color(Color::hex(0x10002B))
+        .with_console_log(true); // PURPLEPIE_LOG=info shows engine details
     Engine::new(config)?.run(Breakout::new(autoplay))
 }

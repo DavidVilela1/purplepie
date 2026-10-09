@@ -35,41 +35,7 @@ use purplepie::ui::{self, Button, Pointer};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 const EXIT_AFTER_FRAMES_VAR: &str = "PURPLEPIE_SANDBOX_EXIT_AFTER_FRAMES";
-const LOG_LEVEL_VAR: &str = "PURPLEPIE_LOG";
 const CAMERA_VAR: &str = "PURPLEPIE_SANDBOX_CAMERA";
-
-/// Minimal `log` backend that prints to stderr. The engine never installs a
-/// logger (ADR-016). Choosing one is the game's job, and this is the sandbox's choice.
-struct StderrLogger;
-
-impl log::Log for StderrLogger {
-    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        metadata.level() <= log::max_level()
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        if self.enabled(record.metadata()) {
-            eprintln!("[{} {}] {}", record.level(), record.target(), record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-static LOGGER: StderrLogger = StderrLogger;
-
-/// Installs [`StderrLogger`] with the level from `PURPLEPIE_LOG` (default `warn`).
-fn init_logging() -> Result<(), String> {
-    let level = match std::env::var(LOG_LEVEL_VAR) {
-        Ok(value) => value.parse::<log::LevelFilter>().map_err(|_| {
-            format!("{LOG_LEVEL_VAR} must be off|error|warn|info|debug|trace, got {value:?}")
-        })?,
-        Err(_) => log::LevelFilter::Warn,
-    };
-    log::set_logger(&LOGGER).map_err(|e| e.to_string())?;
-    log::set_max_level(level);
-    Ok(())
-}
 
 /// Parses `x,y,zoom` (e.g. `0,120,2`) into a camera.
 fn parse_camera(value: &str) -> Result<Camera2D, String> {
@@ -437,10 +403,6 @@ impl Game for Sandbox {
 }
 
 fn main() -> ExitCode {
-    if let Err(message) = init_logging() {
-        eprintln!("error: {message}");
-        return ExitCode::FAILURE;
-    }
     let exit_after_frames = match std::env::var(EXIT_AFTER_FRAMES_VAR) {
         Ok(value) => match value.parse::<u64>() {
             Ok(frames) if frames > 0 => Some(frames),
@@ -484,7 +446,10 @@ fn main() -> ExitCode {
     };
     // Hot reload (ADR-037): edit a texture, font or sound under assets/ while
     // the sandbox runs and the change shows up within about half a second.
-    let config = EngineConfig::new("PurplePie Sandbox").with_hot_reload(true);
+    // Console log (ADR-040): PURPLEPIE_LOG=info shows the GPU, audio and reloads.
+    let config = EngineConfig::new("PurplePie Sandbox")
+        .with_hot_reload(true)
+        .with_console_log(true);
     let result = Engine::new(config).and_then(|e| e.run(game));
 
     match result {

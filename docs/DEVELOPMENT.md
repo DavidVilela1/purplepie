@@ -279,12 +279,13 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   the moved binary started from the project folder (working-directory fallback).
 - **Window destroyed (re-run after any change that touches the runner or adds a per-frame window/surface call; use a fresh Xvfb display, see R-22):**
   PP-009 showed that a per-frame `Window::inner_size()` panics inside winit once the X11 window is gone (R-22).
-- **Logs:** `PURPLEPIE_LOG=info cargo run` shows the GPU/backend/surface line.
+- **Logs:** `PURPLEPIE_LOG=info cargo run` (or `--example breakout` / `scene`, since PP-034b) shows the asset-root,
+  audio and GPU/backend/surface lines.
 - **Outside-crate check (PP-031+):** `cargo new` a crate in a scratch folder beside a PurplePie folder (a symlink is
   enough), then follow the README (or the guide) word for word: path dependency, the game's own `assets/`, a copied font.
   Set `CARGO_TARGET_DIR` to a scratch target directory shared by trials, so the dependency tree compiles once
   (about 2 min debug, 4 min release). Never put the trial crate inside the package: it would join the workspace
-  (ADR-038). Record what goes wrong in `docs/USABILITY.md`. Logs need a logger in the trial (`env_logger`, `RUST_LOG`).
+  (ADR-038). Record what goes wrong in `docs/USABILITY.md`. Logs need `EngineConfig::with_console_log(true)` in the trial (or another logger).
 - **Platform checklist (PP-033a+):** `docs/CHECKLIST.md` is what the owner runs on Windows/macOS. Re-run its steps on
   Linux whenever they change (the PowerShell blocks with PowerShell 7 for Linux: not preinstalled in Cowork; unpack
   `powershell-7.4.6-linux-x64.tar.gz` from the PowerShell GitHub releases into `/opt/pwsh` and run `/opt/pwsh/pwsh -File`;

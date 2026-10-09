@@ -398,8 +398,9 @@ followed by `event_loop.exit()`, and returned from `Engine::run`. The sandbox
 prints the full `source()` chain. GPU setup failures map to `Error::{Surface,
 Adapter, Device, SurfaceUnsupported}`. GPU runtime faults map to `Error::Render`
 (ADR-017) and end the loop the same way. Diagnostics use the `log` facade
-(ADR-016). The engine never installs a logger, and the sandbox has a built-in stderr
-logger controlled by `PURPLEPIE_LOG` (default `warn`).
+(ADR-016). The engine installs a logger only when the game opts in with
+`EngineConfig::console_log` (ADR-040): `app::logging` then prints to stderr at the level in `PURPLEPIE_LOG` (default
+`warn`). The sandbox and both examples opt in.
 The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `src/` contains no `unwrap`, and `expect` is used only in tests.
 
 **Planned (ADR-011):** one `purplepie::Error` (`thiserror`) and
@@ -421,10 +422,10 @@ The lints `unsafe_code = "forbid"` and `clippy::unwrap_used = "warn"` apply. `sr
 
 | Layer | Approach | Current |
 |---|---|---|
-| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 218 unit tests + 47 doctests: 35 in the code (every public module page has one, PP-032b), 12 in the guide (PP-032a) |
+| `error`, `app::{config, game, pacer}`, `time`, `math`, `ecs`, `render::{Color, camera, faults, quad, instance, texture, region, animation, screen, font, atlas, text, sprite, draw}`, `input`, `app::{keymap, state}`, `assets`, `audio::{sound, mixer}`, `ui`, `scene` | pure unit tests + doctests | ✅ 220 unit tests + 49 doctests: 36 in the code (every public module page has one, PP-032b), 13 in the guide (PP-032a) |
 | GPU-dependent code paths (`FaultSlot`, quad and sprite pipelines, texture upload and size limit, shader errors on a real device, offscreen text, sprite-sheet and texture-filter rendering read back and compared with the CPU rasterization / texels / bilinear model) | `#[ignore]` tests, run with `cargo test -- --ignored` where a GPU/lavapipe exists (not in CI) | ✅ 12 ignored tests pass under lavapipe |
 | Rendered output | Xvfb screenshots analysed per pixel (`docs/DEVELOPMENT.md` §8): exact rectangles, colours, texels, alpha blends, motion, resize behaviour | ✅ Stages 5–6 |
-| Newcomer guide (`docs/GUIDE.md`) | every Rust block is a doctest: `src/lib.rs` includes the file into a `#[cfg(doctest)]` module, so `cargo test` compiles each block (and runs those that are not `no_run`) | ✅ 12 blocks (PP-032a); the final game was also built and played as an outside crate |
+| Newcomer guide (`docs/GUIDE.md`) | every Rust block is a doctest: `src/lib.rs` includes the file into a `#[cfg(doctest)]` module, so `cargo test` compiles each block (and runs those that are not `no_run`) | ✅ 13 blocks (PP-032a, PP-034b); the final game was also built and played as an outside crate |
 | Every push | GitHub Actions `.github/workflows/ci.yml`: fmt + clippy (Linux); `cargo check` + `cargo test` on Linux, Windows, macOS | ✅ first run all green (owner-reported, 2026-10-01) |
 | `input` state | pure unit tests, no window/GPU; Xvfb XTEST key, click, move and wheel runs | ✅ keyboard (PP-010) + mouse (PP-016) |
 | Game logic | build `World`/`Time`/`Input` headless, call game methods | planned (Stage 3+) |

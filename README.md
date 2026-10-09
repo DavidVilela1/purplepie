@@ -70,9 +70,9 @@ my_game/
   which takes several minutes). Start at `Context`: it lists everything a game calls (loading assets, scenes, sound,
   input, camera, exit).
 - **Logs:** PurplePie reports through the [`log`](https://docs.rs/log) crate (asset root, GPU, audio device,
-  hot-reload results, warnings), which prints nothing until the game installs a logger. For example add
-  `env_logger = "0.11"`, call `env_logger::init();` first thing in `main`, and run with `RUST_LOG=info`
-  (PowerShell: `$env:RUST_LOG="info"; cargo run`). `PURPLEPIE_LOG` below is the sandbox's own setting.
+  hot-reload results, warnings), which prints nothing until a logger is installed. The simplest way:
+  `EngineConfig::new("My Game").with_console_log(true)`, then run with `PURPLEPIE_LOG=info cargo run`
+  (PowerShell: `$env:PURPLEPIE_LOG="info"; cargo run`). Any other `log` backend (e.g. `env_logger`) works too.
 - **Errors:** a missing asset ends the game with ``Error: failed to load asset `.../my_game/assets/textures/player.png` ``
   and a "Caused by:" line (e.g. "No such file or directory"); the path shows where PurplePie looked.
 
@@ -160,7 +160,7 @@ cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/
 # PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
 cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_EXAMPLE=build|save: build in code / write it)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
-# PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox only)
+# PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets

@@ -49,8 +49,8 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-09 | API issue | `ScreenSpace::TOP` / `BOTTOM` / `LEFT` / `RIGHT` versus `TextAnchor::TOP_CENTER` / `BOTTOM_CENTER`. The natural guess `ScreenSpace::TOP_CENTER` does not exist, and the compiler suggests `CENTER`, which is wrong. | **Fixed in PP-034a (ADR-040):** the anchors are now `TOP_CENTER`, `CENTER_LEFT`, `CENTER_RIGHT` and `BOTTOM_CENTER`, named like `TextAnchor`'s; scene files written with the old names still load. |
 | U-10 | API issue | `Error::Save` shows the path as given (`"scenes/level.ron"`), while `Error::Asset` shows the resolved full path. When the folder is missing, the user cannot see where the save was attempted. | **Fixed in PP-034a (ADR-040):** `Error::Save` carries the resolved path. In the trial, a save into a missing folder now names `…/pie_catch/assets/scenes/level.ron`. |
 | U-11 | API issue | `fn main() -> purplepie::Result<()>` prints errors in `Debug` form (`Error: Asset { path: …, source: Os { code: 2, kind: NotFound, … } }`). It is readable, but raw for a player-facing failure. | **Fixed in PP-034a (ADR-040):** `Error`'s `Debug` prints the message and a "Caused by:" list, so `?` in `main` is readable. |
-| U-12 | API issue | Registered game components are written on one line without spaces (`(speed:420.0)`), unlike the pretty-printed engine parts of the same scene file. Cosmetic. | **Decided in ADR-040, built in PP-034b.** |
-| U-13 | doc fix + API issue | No engine message appeared in the trial: not the asset root, the GPU, the audio device, hot-reload results or warnings. PurplePie logs through the `log` crate and only the sandbox installs a backend; the README's `PURPLEPIE_LOG=info` works only for the sandbox, and the examples have no logger either. | **Doc part fixed:** README "Logs" bullet; `env_logger` + `RUST_LOG=info` was verified in the trial (the asset-root, audio and GPU lines appeared). **ADR-040** decides an opt-in console logger, **built in PP-034b**. |
+| U-12 | API issue | Registered game components are written on one line without spaces (`(speed:420.0)`), unlike the pretty-printed engine parts of the same scene file. Cosmetic. | **Fixed in PP-034b (ADR-040):** game components are written as one spaced line, e.g. `(speed: 0.8, direction: Clockwise)`. |
+| U-13 | doc fix + API issue | No engine message appeared in the trial: not the asset root, the GPU, the audio device, hot-reload results or warnings. PurplePie logs through the `log` crate and only the sandbox installs a backend; the README's `PURPLEPIE_LOG=info` works only for the sandbox, and the examples have no logger either. | **Fixed:** README and guide explain logging. Since PP-034b (ADR-040), `EngineConfig::with_console_log(true)` plus `PURPLEPIE_LOG=info` shows the engine's messages without adding a logging crate; the examples opt in too. |
 | U-14 | missing feature | There are no random numbers; the trial wrote a 10-line LCG. | **PP-036** (second game). Alternatively the guide recommends a small crate such as `fastrand`. |
 | U-15 | missing feature | There is no rectangle-overlap helper; the trial, like Breakout, checks boxes by hand. | **PP-036:** "collision helpers" is already on the P3.5 item 6 list. |
 | U-16 | observation | A fresh outside crate resolves newer patch versions than the engine's `Cargo.lock` (hecs 0.11.2, glam 0.33.12, zerocopy 0.8.62, cc 1.6.0, …). It built and ran, but CI only tests the committed lock file. | **PP-035** (release): add a latest-dependencies CI job. |
@@ -113,3 +113,11 @@ go to PP-034b. Checked in the trial crate `pie_catch`:
   ```
 
 - A save into a missing `scenes/` folder names the full resolved path.
+
+## PP-034b: component formatting and console logger (2026-10-09)
+
+- U-12 and U-13 are fixed (see the table).
+- The trial crate `pie_catch` does not opt in, and it stays silent even with `PURPLEPIE_LOG=info` set: the engine
+  installs nothing unless asked.
+- One new snag was found and fixed while testing: `PURPLEPIE_LOG=` (set but empty, which bash allows) was rejected as
+  invalid. An empty value now means the default level (`warn`).

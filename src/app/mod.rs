@@ -4,6 +4,7 @@
 mod config;
 mod game;
 mod keymap;
+mod logging;
 mod pacer;
 mod runner;
 mod state;
@@ -37,12 +38,17 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Validates `config` and creates the platform event loop.
+    /// Validates `config`, installs the console logger if
+    /// [`console_log`](EngineConfig::console_log) asks for it, and creates the
+    /// platform event loop.
     ///
     /// Must be called on the main thread. The platform allows only one event
     /// loop per process, so a second `Engine` returns [`Error::EventLoop`].
     pub fn new(config: EngineConfig) -> Result<Self> {
         config.validate()?;
+        if config.console_log {
+            logging::install()?;
+        }
         let event_loop = EventLoop::new().map_err(|e| Error::EventLoop(Box::new(e)))?;
         Ok(Self { config, event_loop })
     }

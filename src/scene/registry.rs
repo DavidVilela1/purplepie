@@ -51,8 +51,21 @@ fn has<T: hecs::Component>(e: &hecs::EntityRef<'_>) -> bool {
 }
 
 fn save<T: hecs::Component + Serialize>(e: &hecs::EntityRef<'_>) -> Saved {
-    e.get::<&T>()
-        .map(|c| RawValue::from_rust(&*c).map_err(BoxError::from))
+    e.get::<&T>().map(|c| to_raw(&*c))
+}
+
+/// Writes a game component as one line of RON spaced like the engine's parts
+/// of the file (`(speed: 2.0, mode: Fast)`, not `(speed:2.0,mode:Fast)`; ADR-040).
+/// `RawValue::from_rust` writes the compact form.
+fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, BoxError> {
+    let one_line = ron::ser::PrettyConfig::new()
+        .new_line("\n")
+        .struct_names(false)
+        .compact_structs(true)
+        .compact_maps(true)
+        .compact_arrays(true);
+    let text = ron::ser::to_string_pretty(value, one_line)?;
+    Ok(RawValue::from_boxed_ron(text.into_boxed_str())?)
 }
 
 fn load<T: hecs::Component + DeserializeOwned>(raw: &RawValue) -> Result<Inserter, BoxError> {
@@ -139,5 +152,51 @@ impl Registry {
                 )
             })?;
         (entry.load)(raw).map_err(|err| format!("component `{name}`: {err}").into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    enum Mode {
+        Calm,
+        Chase(u32),
+    }
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Enemy {
+        name: String,
+        speed: f32,
+        mode: Mode,
+        path: Vec<(f32, f32)>,
+        loot: BTreeMap<String, u8>,
+        boss: Option<bool>,
+    }
+
+    #[test]
+    fn game_components_are_one_spaced_line_and_read_back_exactly() {
+        let enemy = Enemy {
+            name: "bat, \"big\"".into(),
+            speed: 2.5,
+            mode: Mode::Chase(3),
+            path: vec![(0.0, 1.0), (2.0, -3.5)],
+            loot: BTreeMap::from([("coins".into(), 5), ("keys".into(), 1)]),
+            boss: Some(false),
+        };
+        let raw = to_raw(&enemy).expect("write");
+        assert_eq!(
+            raw.get_ron(),
+            r#"(name: "bat, \"big\"", speed: 2.5, mode: Chase(3), path: [(0.0, 1.0), (2.0, -3.5)], loot: {"coins": 5, "keys": 1}, boss: Some(false))"#
+        );
+        let back: Enemy = raw.into_rust().expect("read");
+        assert_eq!(back, enemy);
+        // Unit structs (markers) stay `()`.
+        #[derive(Serialize)]
+        struct Marker;
+        assert_eq!(to_raw(&Marker).expect("marker").get_ron(), "()");
     }
 }

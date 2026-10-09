@@ -62,6 +62,15 @@ pub struct EngineConfig {
     /// broken at that moment (e.g. half-written) is logged and the old asset
     /// stays. Meant for development: turn it off in shipped games.
     pub hot_reload: bool,
+    /// Print the engine's (and every other crate's) `log` messages to the
+    /// console (default `false`; ADR-040). [`Engine::new`](crate::Engine::new)
+    /// then installs a small stderr logger whose level comes from the
+    /// `PURPLEPIE_LOG` environment variable: `off`, `error`, `warn` (the
+    /// default), `info`, `debug` or `trace`; any other value is
+    /// [`Error::InvalidConfig`](crate::Error::InvalidConfig). `info` shows the
+    /// asset folder, the GPU, the audio device and hot reloads. Does nothing
+    /// if the game installed its own logger first (e.g. `env_logger`).
+    pub console_log: bool,
 }
 
 impl EngineConfig {
@@ -91,6 +100,7 @@ impl EngineConfig {
             asset_root: None,
             audio: true,
             hot_reload: false,
+            console_log: false,
         }
     }
 
@@ -165,6 +175,27 @@ impl EngineConfig {
     #[must_use]
     pub fn with_hot_reload(mut self, hot_reload: bool) -> Self {
         self.hot_reload = hot_reload;
+        self
+    }
+
+    /// Turns the console logger on or off (default off; see
+    /// [`console_log`](Self::console_log)).
+    ///
+    /// ```no_run
+    /// use purplepie::{Engine, EngineConfig, Game};
+    ///
+    /// struct MyGame;
+    /// impl Game for MyGame {}
+    ///
+    /// fn main() -> purplepie::Result<()> {
+    ///     // Run with PURPLEPIE_LOG=info to see what the engine is doing.
+    ///     let config = EngineConfig::new("My Game").with_console_log(true);
+    ///     Engine::new(config)?.run(MyGame)
+    /// }
+    /// ```
+    #[must_use]
+    pub fn with_console_log(mut self, console_log: bool) -> Self {
+        self.console_log = console_log;
         self
     }
 

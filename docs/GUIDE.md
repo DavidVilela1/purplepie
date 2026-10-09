@@ -465,9 +465,24 @@ fn main() {
 ```
 
 **Logs.** The engine reports what it is doing through the [`log`](https://docs.rs/log) crate: the asset folder it
-chose, the GPU, the audio device, hot reloads and warnings. Nothing is printed until your game installs a logger. For
-example add `env_logger = "0.11"` to `Cargo.toml`, call `env_logger::init();` first thing in `main`, and run with
-`RUST_LOG=info cargo run` (PowerShell: `$env:RUST_LOG="info"; cargo run`).
+chose, the GPU, the audio device, hot reloads and warnings. Nothing is printed until a logger is installed. Turn on
+the engine's console logger with `EngineConfig::with_console_log(true)` and pick the level with `PURPLEPIE_LOG`
+(`warn` by default; `info` shows the details above):
+
+```rust no_run
+use purplepie::{Engine, EngineConfig, Game};
+
+struct MyGame;
+impl Game for MyGame {}
+
+fn main() -> purplepie::Result<()> {
+    let config = EngineConfig::new("My Game").with_console_log(true);
+    Engine::new(config)?.run(MyGame)
+}
+```
+
+Then `PURPLEPIE_LOG=info cargo run` (PowerShell: `$env:PURPLEPIE_LOG="info"; cargo run`). If you prefer another
+logger, such as `env_logger`, install it yourself and leave `console_log` off.
 
 ## 13. Shipping
 

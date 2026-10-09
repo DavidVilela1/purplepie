@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-034b: Scene component formatting (U-12) + opt-in console logger (U-13) (phase P3.5, item 4, part 2)** · P1 · TODO ← **next task**
+- [ ] **PP-035a: Release preparation: version policy, CHANGELOG, latest-dependencies CI job (phase P3.5, item 5, part 1)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -18,7 +18,7 @@ _None._
 
 ## Blocked
 
-- [ ] **PP-033b: Owner runs `docs/CHECKLIST.md` on Windows (and macOS if available); results recorded in PROJECT_STATUS** · P1 · BLOCKED (waiting on the owner's run; PP-034 proceeds meanwhile)
+- [ ] **PP-033b: Owner runs `docs/CHECKLIST.md` on Windows (and macOS if available); results recorded in PROJECT_STATUS** · P1 · BLOCKED (partly reported 2026-10-09: steps 1–3 pass on Windows, incl. 12/12 GPU tests on an AMD iGPU; waiting for step 5's autoplay lines and confirmation of steps 4, 7, 8)
 
 ## Completed
 
@@ -59,12 +59,13 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-034b: Scene component formatting (U-12) + opt-in console logger `EngineConfig::console_log` (U-13) (phase P3.5, item 4 complete)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-034a: Second public API review: ADR-040 (anchor names, readable `Error` debug output, resolved `Save` path, `#[non_exhaustive]` policy) (phase P3.5, item 4, part 1)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-033a: Platform checklist `docs/CHECKLIST.md` written and run on Linux (phase P3.5, item 3, part 1)** · DONE (2026-10-09; verified on Linux, PowerShell blocks under PowerShell 7)
 
 ## Future
 
-- [ ] **PP-035: Release 0.1.0 (phase P3.5, item 5)** · P2 · TODO
+- [ ] **PP-035b: Release 0.1.0: version bump, tag, `repository` field (needs PP-033b and the owner's URL)** · P2 · TODO
 - [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6)** · P2 · TODO
 
 ---
@@ -424,15 +425,15 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 3, part 2 · Priority P1 · **BLOCKED** on the owner |
 | Dependencies | PP-033a (DONE) |
 | Scope | The owner runs `docs/CHECKLIST.md` on Windows (macOS if available) and reports failed steps and the requested console lines; Claude records them in PROJECT_STATUS as owner-reported and turns real failures into tasks. Not tested by Cowork: Windows PowerShell 5.1 specifics, a real GPU, real audio hardware, window minimise/restore with a window manager, real mouse wheel notches. |
-| Acceptance criteria | Owner report received and recorded; any failure has a task. PP-035 (release) waits for this. |
+| Acceptance criteria | Owner report received and recorded; any failure has a task. PP-035b (the release) waits for this. |
+| Progress | 2026-10-09: steps 1–3 reported passing (recorded in PROJECT_STATUS → Validation, owner-provided). Outstanding: step 5's two `breakout: autoplay finished:` lines (cross-platform determinism) and confirmation of steps 4, 7, 8. |
 
-### PP-034b: Scene component formatting + opt-in console logger ← NEXT
+### PP-034b: Scene component formatting + opt-in console logger
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 4, part 2 · Priority P1 · TODO |
-| Dependencies | PP-034a (DONE; ADR-040 decided both) |
-| Scope | U-12: write registered game components in scene files formatted like the engine's parts (`(speed: 420.0)`, spaces after separators; format version unchanged), regenerate `assets/scenes/demo.ron` with the scene example's `save` mode and keep the round-trip tests byte-exact. U-13: an opt-in console logger in the engine (the sandbox's `StderrLogger` moved into the library behind a small public function, level from `PURPLEPIE_LOG`), used by the sandbox and both examples (so `PURPLEPIE_LOG` works there too) and shown in the guide (section 12) and README; no new dependency, the engine still never installs a logger on its own (ADR-016). |
-| Acceptance criteria | A saved scene shows game components with the engine's spacing and loads back byte-identically; demo.ron regenerated and the scene example's three modes stay pixel-identical; `PURPLEPIE_LOG=info cargo run --example breakout` prints the asset-root and GPU lines; a game that does not call the logger function prints nothing extra; ADR-040 consequences updated; CI green. |
+| Stage | Phase P3.5, item 4, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-034a (DONE) |
+| Acceptance criteria | ✅ U-12: registered components are written as one spaced RON line (unit test with nested struct, enum, tuple array, map, `Option`, escaped string and a unit marker; exact text + exact read-back); `demo.ron` regenerated (3 lines differ) and the shipped-scene round-trip test passes; scene example `save`/`load`/`build` frames pixel-identical to the PP-026b baseline. ✅ U-13: `EngineConfig::console_log` / `with_console_log` (doctest); `app::logging` (the sandbox's logger moved in), level from `PURPLEPIE_LOG` with empty = `warn` and invalid = `Error::InvalidConfig` (unit test; sandbox run with `loud` exits 1 with the message); sandbox, Breakout and scene opt in: `PURPLEPIE_LOG=info` Breakout prints the asset-root, audio and GPU lines, without it nothing extra; the outside trial crate (no opt-in) prints nothing even with `PURPLEPIE_LOG=info`. ✅ Breakout `Lost after 892 …` and lose screen pixel-identical. ✅ README, guide (new compiled block), ARCHITECTURE §9, ADR-016 amendment, ADR-040 implementation note updated. 220 unit tests + 49 doctests. |
 
 ### PP-034a: Second public API review
 | Field | Value |
@@ -441,18 +442,26 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Dependencies | PP-032b (DONE) |
 | Acceptance criteria | ✅ ADR-040: review table over every public area added since ADR-026 with a verdict each. ✅ U-09: `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` and `ScreenAnchor::TopCenter`/… (breaking rename, no aliases); scene files write the new names and read the old ones (serde aliases; unit test `edge_anchors_load_under_their_old_and_new_names`; the trial's pre-rename `level.ron` still loads). ✅ U-11: `Error`'s `Debug` = message + "Caused by:" chain (unit test; trial output checked). ✅ U-10: `Error::Save` carries the resolved path (trial: save into a missing folder). ✅ `#[non_exhaustive]` on `EngineConfig`, `Sprite`, `Quad`, `Text`, `TextMetrics`, `SpriteAnimation`, `AnimationMode`, `TextureFilter`, `Camera2D`, `ui::Button`, `ui::Pointer`; sandbox, examples, doctests and the guide compile unchanged. ✅ Regressions: scene example frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 …` unchanged. 218 unit tests + 47 doctests. |
 
-### PP-035: Release 0.1.0
+### PP-035a: Release preparation ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 5 · Priority P2 · TODO |
-| Dependencies | PP-034, PP-033b (no release unseen on Windows) |
-| Scope | Version 0.1.0, CHANGELOG, tag, compatibility policy; `repository` field in `Cargo.toml` (owner gives the URL, U-17) so the docs can show the git dependency; a CI job that builds and tests against the latest compatible dependencies, as a fresh outside crate gets them (U-16). |
+| Stage | Phase P3.5, item 5, part 1 · Priority P1 · TODO |
+| Dependencies | PP-034b (DONE). Does not need the owner's checklist run |
+| Scope | Everything for 0.1.0 that does not need the owner: a written compatibility policy (what 0.1.x promises: public API per ADR-040, scene format version 1, MSRV, supported platforms) in a new section of DEVELOPMENT or a `docs/RELEASING.md`; `CHANGELOG.md` (Keep a Changelog) with an "Unreleased → 0.1.0" entry summarising the features and the pre-release breaking changes (ADR-040 renames); a CI job that runs `cargo update` and then check/test on Linux, so a fresh outside crate's newer patch versions are tested (U-16); confirm `cargo package --list` / `publish = false` stance. No version bump yet. |
+| Acceptance criteria | Policy and CHANGELOG exist and match the code; the new CI job is valid YAML and its commands pass locally after `cargo update` in a scratch copy (the committed `Cargo.lock` unchanged); CI green. |
+
+### PP-035b: Release 0.1.0
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 5, part 2 · Priority P2 · TODO |
+| Dependencies | PP-035a, PP-033b (no release unseen on Windows), the owner's repository URL (U-17) |
+| Scope | `version = "0.1.0"`, `repository` field, README/guide git dependency line, CHANGELOG dated, tag `v0.1.0` (owner pushes it). |
 
 ### PP-036: A second game as an outside crate
 | Field | Value |
 |---|---|
 | Stage | Phase P3.5, item 6 · Priority P2 · TODO (split when current) |
-| Dependencies | PP-035 |
+| Dependencies | PP-035b |
 | Scope | A second, different game written as an outside crate, adding only the engine features it needs. Candidates from the trial: random numbers (U-14) and rectangle-overlap helpers (U-15); from the roadmap: world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad. |
 
 ### PP-013: Choose project license
