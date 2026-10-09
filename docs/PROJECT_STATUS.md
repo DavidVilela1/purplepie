@@ -21,7 +21,8 @@ decision (PP-030, ADR-038). **Phase P3.5 (usability and first release): in progr
 trial, is done: a small game built from the README alone worked after three README gaps were fixed, and its 17
 findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
 `cargo test`, and PP-032b rewrote the API module pages for game authors (item 2 complete; no template crate, ADR-039).
-Next: **PP-033**, the Windows/macOS checklist. The long-term plan (in-game UI and an editor) is in
+PP-033a wrote the Windows/macOS [CHECKLIST.md](CHECKLIST.md) and ran it on Linux; the owner's run (PP-033b)
+is pending. Next: **PP-034**, the second API review. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -102,6 +103,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-033a: platform checklist `docs/CHECKLIST.md` (PowerShell, 8 steps + macOS/Linux appendix), every step run on Linux, the PowerShell blocks under PowerShell 7.
 - PP-032b: module pages for game authors (summary, guide link, compiled example; internals under "Engine notes"); starter template decision ADR-039 (the guide is the template).
 - PP-032a: newcomer guide `docs/GUIDE.md` (14 sections, every Rust block a doctest); checked as an outside crate (phase P3.5 item 2, part 1).
 - PP-031: outside-crate trial: a game crate outside the package built from the README alone; findings in `docs/USABILITY.md`; README, crate-page and `ecs` docs fixed (phase P3.5 item 1).
@@ -118,11 +120,11 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-033: Windows/macOS verification checklist** (phase P3.5, item 3; Claude writes it, the owner runs it). See [TASKS.md](TASKS.md#pp-033-windowsmacos-verification-checklist--next).
+- **PP-034: Second public API review** (phase P3.5, item 4). See [TASKS.md](TASKS.md#pp-034-second-public-api-review--next).
 
 ## Blocked
 
-- Nothing is blocked.
+- PP-033b: waiting on the owner to run `docs/CHECKLIST.md` on Windows and report. It blocks only the release (PP-035).
 
 ## Technical Debt
 
@@ -155,6 +157,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-033a Platform checklist.**
+  - New `docs/CHECKLIST.md`: what the owner runs on Windows (PowerShell) to see PurplePie on real hardware: tests and GPU tests, sandbox (drawing, input, sound, window), hot reload (restored with `git checkout`), Breakout play and autoplay lines, scene example, a new game crate from the guide outside the repository and OneDrive, and shipping it. macOS/Linux appendix. Each step says what to expect and what to report.
+  - Every step was run on Linux first; the PowerShell blocks for steps 7–8 ran under PowerShell 7.4.6 for Linux (unpacked into `/opt/pwsh` in Cowork for this). No code change.
+  - PP-033 split: PP-033a done, PP-033b (owner run) pending; PP-034 next; the release (PP-035) waits for PP-033b.
 
 - **2026-10-09: PP-032b Module pages for game authors (P3.5 item 2 complete).**
   - `audio`, `ecs`, `input`, `math`, `render` and `ui` module docs now open with a one-line summary for game authors (the crate page's module list reads as a map), a paragraph naming the `Context` methods and the guide section, and a compiled example; engine internals and ADR references moved under "Engine notes". Doctests 43 → 47. No code or API change.
@@ -360,7 +367,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-032b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-033a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -369,6 +376,7 @@ after the final PP-032b change (CI additionally runs the latest stable clippy an
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` | ✅ PASS: 216 unit tests + 47 doctests (12 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Platform checklist (PP-033a) | ✅ all steps on Linux: sandbox frame with `GPU:`/`audio:` log lines, click + `M` music in an ALSA capture; hot reload swap and `git`-style restore (file byte-identical); autoplay `Lost after 892 …` / `Won after 7135 …`; scene: 19 entities, 2 button clicks counted, build mode; steps 7–8 run as PowerShell 7.4.6 scripts: new crate builds with 0 warnings, release build shipped and run from `/` shows the same frame (only the animated corner differs) |
 | Module pages (PP-032b) | ✅ `cargo doc --no-deps` (`-D warnings`) clean; rendered crate page lists the six modules with the new game-author summaries; the 4 new module examples pass as doctests |
 | Starter template trial (ADR-039) | ✅ reproduced: a `templates/starter` crate inside a scratch copy of the repository fails `cargo check` with "current package believes it's in a workspace when it's not" |
 | Guide (PP-032a) | ✅ `cargo test --doc guide`: 12/12; a deliberate `KeyCode::KeyA` in the guide fails its block; CRLF copy of the guide also passes. Fresh outside crate following the guide word for word (section 1 `Cargo.toml` + asset folders, section 14 game): no warnings, clippy clean; Xvfb: first frame correct, a brick collected (score 1, blip in ALSA capture), Restart click reset score and position |
@@ -393,4 +401,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-032b done (module pages for game authors; ADR-039); P3.5 item 2 complete. PP-033 (Windows/macOS checklist) is next.
+2026-10-09. PP-033a done (platform checklist, run on Linux); PP-033b waits on the owner. PP-034 (second API review) is next.

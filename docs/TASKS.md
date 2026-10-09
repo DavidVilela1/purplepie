@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-033: Windows/macOS verification checklist (phase P3.5, item 3; Claude writes it, the owner runs it)** · P1 · TODO ← **next task**
+- [ ] **PP-034: Second public API review (phase P3.5, item 4)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -18,7 +18,7 @@ _None._
 
 ## Blocked
 
-_None._
+- [ ] **PP-033b: Owner runs `docs/CHECKLIST.md` on Windows (and macOS if available); results recorded in PROJECT_STATUS** · P1 · BLOCKED (waiting on the owner's run; PP-034 proceeds meanwhile)
 
 ## Completed
 
@@ -59,10 +59,10 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-033a: Platform checklist `docs/CHECKLIST.md` written and run on Linux (phase P3.5, item 3, part 1)** · DONE (2026-10-09; verified on Linux, PowerShell blocks under PowerShell 7)
 
 ## Future
 
-- [ ] **PP-034: Second public API review (phase P3.5, item 4)** · P2 · TODO
 - [ ] **PP-035: Release 0.1.0 (phase P3.5, item 5)** · P2 · TODO
 - [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6)** · P2 · TODO
 
@@ -410,27 +410,33 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Dependencies | PP-030 (DONE; phase P3 complete) |
 | Acceptance criteria | ✅ A trial crate `pie_catch` outside the package (path dependency, own `assets/`) built from the README and API docs alone: sprites, text, keyboard, a sound, a scene file with two registered game components; ran under Xvfb (screenshots checked: play, game over, restart; sound captured), and its release build ran shipped with `assets/` from another working directory. ✅ `docs/USABILITY.md` lists 17 findings (U-01…U-17) with class and owner task. ✅ README ("A new game crate", font copying, serde, scene folder, `cargo doc --no-deps`), crate-page and `ecs` docs fixed (new doctest); re-checked by a fresh `cargo new` crate following the README word for word. ✅ Follow-ups recorded (PP-032…PP-036). No engine API change. |
 
-### PP-033: Windows/macOS verification checklist ← NEXT
+### PP-033a: Platform checklist, written and run on Linux
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 3 · Priority P1 · TODO · Claude writes the checklist, the owner runs it |
-| Dependencies | PP-032b (DONE; the guide's steps are part of the checklist) |
-| Why now | Stages 5–10 and every post-portfolio feature have only been seen on Linux (Xvfb + software GPU); Windows has confirmed only the purple window, `cargo test`, Escape and the close button. A release (PP-035) must not ship unseen on its owner's own platform. |
-| Scope | A short, numbered checklist (new `docs/CHECKLIST.md`, linked from DEVELOPMENT) the owner runs in PowerShell on Windows (and macOS if available): sandbox (sprites, text, HUD button, wheel zoom, music key, hot reload by editing a PNG), Breakout (play + autoplay), scene example, a fresh crate from GUIDE.md, release build shipped with `assets/`. Each step states the exact command and what to see, with a place to record pass/fail; results go into PROJECT_STATUS as owner-reported. |
-| Acceptance criteria | CHECKLIST.md exists, every command in it was run on Linux by Claude (Linux equivalents noted), the owner's run is recorded (or the task stays open waiting for it, with PP-034 allowed to proceed). |
+| Stage | Phase P3.5, item 3, part 1 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-032b (DONE) |
+| Acceptance criteria | ✅ `docs/CHECKLIST.md`: setup + 8 numbered steps in PowerShell (tests, GPU tests on real hardware, sandbox incl. input/sound/window, hot reload with `git checkout` restore, Breakout play + autoplay lines, scene example, a new crate from GUIDE.md section 14 outside the repository and OneDrive, shipping its release build) with what to expect and what to report, plus a macOS/Linux appendix. ✅ Every step run on Linux: tests 216 + 47 and 12/12 GPU (lavapipe); sandbox frame, `GPU:`/`audio:` lines, click + music audible in an ALSA capture; hot reload swapped and restored the texture (two `reloaded texture` lines, file byte-identical afterwards); autoplay lines `Lost after 892 …` / `Won after 7135 …`; scene: 19 entities, 2 clicks counted, build mode; steps 7–8 executed **as PowerShell** with PowerShell 7.4.6 for Linux (only `cargo run`→`cargo build`, `.exe` and one `.NET` path separator adapted): crate built without warnings, game frame correct, release build shipped and run from `/` showed the same frame; bash appendix extraction line tested. ✅ Linked from DEVELOPMENT §8 and the README. |
 
-### PP-034: Second public API review
+### PP-033b: Owner run of the checklist
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 4 · Priority P2 · TODO |
-| Dependencies | PP-032b |
+| Stage | Phase P3.5, item 3, part 2 · Priority P1 · **BLOCKED** on the owner |
+| Dependencies | PP-033a (DONE) |
+| Scope | The owner runs `docs/CHECKLIST.md` on Windows (macOS if available) and reports failed steps and the requested console lines; Claude records them in PROJECT_STATUS as owner-reported and turns real failures into tasks. Not tested by Cowork: Windows PowerShell 5.1 specifics, a real GPU, real audio hardware, window minimise/restore with a window manager, real mouse wheel notches. |
+| Acceptance criteria | Owner report received and recorded; any failure has a task. PP-035 (release) waits for this. |
+
+### PP-034: Second public API review ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 4 · Priority P1 · TODO |
+| Dependencies | PP-032b (DONE). Independent of the owner's checklist run (PP-033b) |
 | Scope | Review everything public since ADR-026 (text, sheets, animation, screen space, audio, buttons, sampling, scenes, hot reload) like PP-017 did, including the trial's API findings: U-09 (`ScreenSpace::TOP` vs `TextAnchor::TOP_CENTER` naming), U-10 (`Error::Save` path not resolved), U-11 (errors from `main` print in `Debug` form), U-12 (registered components written compact in scene files), U-13 (a built-in console logger, so games and examples show engine warnings without adding a logging crate). Changes recorded in an ADR. |
 
 ### PP-035: Release 0.1.0
 | Field | Value |
 |---|---|
 | Stage | Phase P3.5, item 5 · Priority P2 · TODO |
-| Dependencies | PP-034 |
+| Dependencies | PP-034, PP-033b (no release unseen on Windows) |
 | Scope | Version 0.1.0, CHANGELOG, tag, compatibility policy; `repository` field in `Cargo.toml` (owner gives the URL, U-17) so the docs can show the git dependency; a CI job that builds and tests against the latest compatible dependencies, as a fresh outside crate gets them (U-16). |
 
 ### PP-036: A second game as an outside crate

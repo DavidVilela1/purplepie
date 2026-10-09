@@ -192,6 +192,7 @@ PurplePie/
     ├── ROADMAP.md        Stages 0–10, milestones M0–M10
     ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
+    ├── CHECKLIST.md      hands-on platform check the owner runs on Windows/macOS
     ├── GUIDE.md          newcomer guide: from `cargo new` to a shipped game (compiled by `cargo test`)
     ├── USABILITY.md      what newcomers run into (outside-crate trials), and which task fixes it
     └── spikes/           Stage 0 compatibility spike (reference only)

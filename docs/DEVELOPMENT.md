@@ -285,6 +285,11 @@ Interactive checks inside `xvfb-run` (there is no window manager):
   Set `CARGO_TARGET_DIR` to a scratch target directory shared by trials, so the dependency tree compiles once
   (about 2 min debug, 4 min release). Never put the trial crate inside the package: it would join the workspace
   (ADR-038). Record what goes wrong in `docs/USABILITY.md`. Logs need a logger in the trial (`env_logger`, `RUST_LOG`).
+- **Platform checklist (PP-033a+):** `docs/CHECKLIST.md` is what the owner runs on Windows/macOS. Re-run its steps on
+  Linux whenever they change (the PowerShell blocks with PowerShell 7 for Linux: not preinstalled in Cowork; unpack
+  `powershell-7.4.6-linux-x64.tar.gz` from the PowerShell GitHub releases into `/opt/pwsh` and run `/opt/pwsh/pwsh -File`;
+  only `cargo run`, `.exe` names and .NET-API path separators need adapting), and update the expected outputs (test counts, autoplay lines)
+  when they change.
 - **Guide (PP-032a+):** every Rust block in `docs/GUIDE.md` is a doctest (`cargo test --doc guide`). Blocks that
   open a window are `rust no_run` (compiled only); the others define functions and run trivially. Non-Rust blocks need a
   language tag (`text`, `toml`), or rustdoc compiles them as Rust. After changing the guide's final game, rebuild it as
