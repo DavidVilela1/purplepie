@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-036c: Purple Swarm core (arena, player, shooting, enemies, waves, collisions, HUD, sound) + where the game lives (ADR)** · P1 · TODO ← **next task**
+- [ ] **PP-036c2: Purple Swarm core, part 2: enemies, waves, collisions, hit points, score, sounds** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-036c1: Purple Swarm core, part 1: `games/purple-swarm` workspace member (ADR-042), arena, player, camera, shooting, HUD; CI `--workspace`** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036b: `math::Rng` (PCG32) + `math::Rect` and `circles_overlap` (ADR-041; U-14, U-15)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036a: Second game, part 1: Purple Swarm specified in `docs/GAME2.md`; skeleton built from the v0.1.0 tag** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-035b: Release 0.1.0: version 0.1.0, `repository` field, CHANGELOG `[0.1.0] - 2026-10-09`, git dependency line (phase P3.5, item 5 complete)** · DONE (2026-10-09; verified on Linux; the owner pushes the `v0.1.0` tag)
@@ -456,13 +457,20 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-036c: Purple Swarm core ← NEXT
+### PP-036c2: Purple Swarm core, part 2 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6, part 3 · Priority P1 · TODO (split when started if it does not fit one session) |
+| Stage | Phase P3.5, item 6, part 3b · Priority P1 · TODO |
+| Dependencies | PP-036c1 (DONE) |
+| Scope | In `games/purple-swarm` (public API only): Drifter and Dasher enemies (generated PNGs) spawned by `math::Rng` on the arena edge at least 300 units from the player, in waves growing every 20 s; bullet ↔ enemy (`circles_overlap`), enemy ↔ player (`Rect`/circle) collisions; hit points (Dasher 2), player hit points 5 with 0.5 s invulnerability (blinking via `Hidden`); score (10 / 25) and wave in the HUD; hit and death sounds; health-orb drops (10 %, 8 s). Autoplay keeps working and becomes deterministic with `Rng::new(seed)`; print a summary line at a fixed simulated time for automated checks (like Breakout's). Game over and screens stay for PP-036d. |
+| Acceptance criteria | `--workspace` clippy clean; autoplay run under Xvfb shows enemies, kills and the score rising; the summary line is identical over two runs (determinism); findings recorded. |
+
+### PP-036c1: Purple Swarm core, part 1
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6, part 3a · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
 | Dependencies | PP-036b (DONE) |
-| Scope | Per [GAME2.md](GAME2.md): decide and record (ADR) where the game lives (recommended: workspace member `games/purple-swarm/` with its own `assets/`, built by CI); then the arena with camera follow and clamp, player movement and mouse aim, shooting, Drifter and Dasher enemies with waves, collisions via `math::Rect`/`circles_overlap`, hit points and invulnerability, score, HUD, sounds; deterministic with `Rng::new(seed)`. Only the public API. Findings into USABILITY.md. |
-| Acceptance criteria | Builds with 0 warnings, clippy clean, CI builds it; under Xvfb a scripted run (keys + mouse) shows shooting, enemies dying and the HUD updating; findings recorded. |
+| Acceptance criteria | ✅ ADR-042: example games are workspace members under `games/` (own manifest + assets, public API only; root stays the only default member; CI `--workspace` in clippy/check/test/msrv/latest-deps). ✅ `games/purple-swarm`: 16 × 12 tiled floor, walls, WASD/arrows, mouse aim, shooting (8/s, sound), bullets despawned outside the arena via `Rect::contains`, camera follow clamped to the walls, HUD (title, shot counter, controls hint); `PURPLE_SWARM_AUTOPLAY=1` bot. ✅ `cargo clippy --workspace` clean incl. `incompatible_msrv`; Xvfb: autoplay frame (Shots 62, bullets, wall, camera clamped), manual frame (mouse aim + W + held button for 1 s → Shots 8, camera moved); running from the repository root fails with a clear asset error (U-18, documented). `Cargo.lock`: only the game's own entry. |
 
 ### PP-036b: `math::Rng` + `math::Rect` and circle overlap
 | Field | Value |

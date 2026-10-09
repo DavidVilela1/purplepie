@@ -15,6 +15,13 @@ break compatibility and a patch version (0.x.**y**) may not.
 - `math::Rect` (centre + half size: `from_center_size`, `from_corners`, `min`, `max`, `size`, `contains`,
   `overlaps`, `intersection`, `closest_point`, `overlaps_circle`, `expand`) and `math::circles_overlap` for gameplay
   overlap tests (ADR-041).
+- `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
+  built by CI (ADR-042). Part 1: arena, player, camera and shooting.
+
+### Changed
+
+- CI builds, lints and tests the whole workspace (`--workspace`), so the example games are checked with every
+  engine change. Root `cargo` commands still build only the engine.
 
 ## [0.1.0] - 2026-10-09
 

@@ -53,11 +53,13 @@ ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
 
 # PP-030 (ADR-038): this package is also the root of a Cargo workspace. The engine stays at the
-# repository root (paths, commands and `assets/` unchanged); future crates (debug overlay, editor)
-# go under `crates/` and are listed in `members`. Declaring the workspace also keeps Cargo from
+# repository root (paths, commands and `assets/` unchanged); future engine crates (debug overlay,
+# editor) go under `crates/`. Example games written only against the public API live under
+# `games/` (ADR-042). Plain `cargo build`/`test` at the root still builds only the engine;
+# `--workspace` includes the games (CI does). Declaring the workspace also keeps Cargo from
 # attaching this project to a workspace in a parent folder.
 [workspace]
-members = []
+members = ["games/purple-swarm"]
 
 [lints.rust]
 unsafe_code = "forbid"

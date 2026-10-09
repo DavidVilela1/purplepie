@@ -162,6 +162,7 @@ cargo run            # opens the sandbox window (M toggles a music loop; Escape 
 cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/click launch, Escape quits
 # PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
 cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_EXAMPLE=build|save: build in code / write it)
+(cd games/purple-swarm && cargo run)   # the second example game, run from its folder (docs/GAME2.md)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
@@ -182,11 +183,12 @@ Rust version (1.90) on every push; `latest-deps.yml` tests with `cargo update`d 
 ```text
 PurplePie/
 ├── CHANGELOG.md     what changed in each version
-├── Cargo.toml / Cargo.lock   the `purplepie` package, also the workspace root (future crates go in `crates/`, ADR-038)
+├── Cargo.toml / Cargo.lock   the `purplepie` package, also the workspace root (future engine crates go in `crates/`, ADR-038)
 ├── LICENSE-MIT / LICENSE-APACHE
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API; scene.rs: scene files
+├── games/            example games as workspace members with their own assets (ADR-042): purple-swarm/ (in progress, docs/GAME2.md)
 ├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav; loop.ogg), scenes/ (demo.ron), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/

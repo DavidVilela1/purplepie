@@ -70,8 +70,12 @@ screen-space text and the console logger, from the published v0.1.0 tag.
 1. **PP-036b (done):** `math::Rng` and `math::Rect` with `math::circles_overlap` (ADR-041), unit tests including the
    PCG32 reference sequence, docs, a guide update (§4 now mentions world clearing; the §14 game uses `Rng`/`Rect`
    instead of hand-written code) and a CHANGELOG entry under `[Unreleased]`.
-2. **PP-036c:** the game's core: arena, player, shooting, enemies, waves, collisions, HUD, sounds. Also decide where
-   the game lives:
+2. **PP-036c:** the game's core. Split in two:
+   - **PP-036c1 (done):** the location decision (ADR-042: `games/purple-swarm/`, a workspace member built by CI),
+     plus the arena, player, camera, shooting and HUD;
+   - **PP-036c2:** enemies, waves, collisions, hit points, score and sounds.
+
+   The location options that were considered:
    - **Recommendation:** in the repository as `games/purple-swarm/`, a workspace member with its own `assets/` and
      `purplepie = { path = "../.." }`, built by CI. It uses the public API only, like an outside crate. It keeps
      compiling as the engine changes, and the owner receives it with the repository.

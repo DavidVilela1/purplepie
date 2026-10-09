@@ -55,6 +55,7 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-15 | missing feature | There is no rectangle-overlap helper; the trial, like Breakout, checks boxes by hand. | **Fixed in PP-036b (ADR-041):** `math::Rect` (with `overlaps`, `contains`, `intersection`, `overlaps_circle`) and `math::circles_overlap`. The guide's game uses `Rect`. |
 | U-16 | observation | A fresh outside crate resolves newer patch versions than the engine's `Cargo.lock` (hecs 0.11.2, glam 0.33.12, zerocopy 0.8.62, cc 1.6.0, …). It built and ran, but CI only tests the committed lock file. | **Addressed in PP-035a:** the new workflow `.github/workflows/latest-deps.yml` runs `cargo update` and then check and test, on every push and weekly. Run locally with the PP-035a updates (12 packages newer): 220 + 49 tests pass. |
 | U-17 | observation | `Cargo.toml` has no `repository` field, so the README cannot give a git URL. | **Fixed in PP-035b:** `repository` field set; README, guide and RELEASING give `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }` (the git form was built and run from GitHub). |
+| U-18 | observation | In a workspace, `cargo run -p purple-swarm` from the repository root runs with the root as the working directory, so the engine finds the engine's `assets/` and fails on the game's first texture (`failed to load asset …/PurplePie/assets/textures/floor.png`). Running from the game's folder works. The error is clear, but the cause isn't obvious. | **Documented** (ADR-042, README, the game's header). Possible engine follow-up: an asset-root fallback to the package's own folder for `cargo run` (revisit with ADR-042). |
 
 **What worked without help:** the `Game` / `Context` / `EngineConfig` shape; sprites, quads, text and layers;
 `ScreenSpace` HUD text; keyboard input; `play_sound`; `save_scene` / `load_scene` with two registered components
@@ -121,3 +122,18 @@ go to PP-034b. Checked in the trial crate `pie_catch`:
   installs nothing unless asked.
 - One new snag was found and fixed while testing: `PURPLEPIE_LOG=` (set but empty, which bash allows) was rejected as
   invalid. An empty value now means the default level (`warn`).
+
+## PP-036c1: Purple Swarm, part 1 (2026-10-09)
+
+The game lives in `games/purple-swarm` (ADR-042). Part 1 covers:
+
+- a 16 × 12 tiled floor;
+- walls;
+- WASD/arrow movement;
+- mouse aim;
+- shooting at 8 per second with a sound;
+- bullets removed when they leave the arena (`Rect::contains`);
+- a camera that follows the player and stops at the walls;
+- a HUD.
+
+It was written against the public API only and built with no warnings. The only new finding is U-18.

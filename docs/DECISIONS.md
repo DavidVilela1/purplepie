@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
 | ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
@@ -2267,6 +2268,57 @@ simulation reproducible without new dependencies.
 ## Revisit Conditions
 A game needs many overlap tests per step (add a spatial grid), rotated boxes, or a second independent random stream
 (add `Rng::with_stream`).
+
+---
+
+# ADR-042: Example games live in `games/` as workspace members
+
+## Status
+Accepted (2026-10-09, PP-036c1). Extends ADR-038 (workspace layout) and ADR-039 (no template crate). Decides where
+Purple Swarm (GAME2.md) lives.
+
+## Context
+The second game must be written like an outside crate: public API only, its own `assets/` folder, its own
+`Cargo.toml`. It also has to keep compiling as the engine changes, and it has to reach the owner, whose only channel
+is the repository archive. ADR-038 reserved `crates/` for future engine crates. ADR-039 showed that a crate nested
+inside the repository breaks unless it is a workspace member or excluded.
+
+## Decision
+- Example games live under **`games/<name>/`**, each a workspace member (`members` in the root `Cargo.toml`) with
+  its own `Cargo.toml`, `src/` and `assets/`. They depend on the engine with `purplepie = { path = "../.." }` and use
+  only `purplepie::` items, as an outside game would. The first is `games/purple-swarm`.
+- The root package stays the only **default** member. Plain `cargo build` / `cargo test` / `cargo run` at the root
+  behave exactly as before, so the owner's commands are unchanged.
+- **CI uses `--workspace`** in every job (clippy, check, test, msrv, latest-deps), so a game breaks the build the
+  moment an engine change breaks it.
+- **A game is run from its own folder** (`cd games/purple-swarm; cargo run`). The engine finds `assets/` in the
+  working directory (ADR-025), so `cargo run -p purple-swarm` from the repository root would use the engine's
+  `assets/` instead; this is recorded as USABILITY U-18.
+- The game shares the workspace's `Cargo.lock` and `target/`. Its lock entry is its own package only; no new
+  dependency.
+
+## Alternatives Considered
+- **A separate repository:** the purest outside crate, but it is not built with engine changes and the owner would
+  have to fetch it separately.
+- **`examples/purple_swarm.rs`:** it could not have its own `assets/` folder or its own manifest, so it would not
+  exercise what an outside game does.
+- **`crates/`:** that is reserved for engine crates (ADR-038); games are users of the engine, not parts of it.
+- **Excluding the game from the workspace:** then nothing builds it and it can silently rot (the ADR-039 argument).
+
+## Rationale
+The game gets outside-crate conditions (own manifest, own assets, public API only), continuous compilation and
+delivery with the repository, without changing anything for the engine's own commands.
+
+## Consequences
+- The root `Cargo.toml` lists `members = ["games/purple-swarm"]`. `Cargo.lock` gains the game's own entry (7 lines,
+  no new crates). CI does a little more work (one more binary).
+- The archive and the repository carry the game's assets (about 170 KB, mostly a copy of the bundled font).
+- The game's binary goes to the shared `target/`. To ship it, copy `target/release/purple-swarm(.exe)` and
+  `games/purple-swarm/assets/` side by side.
+
+## Revisit Conditions
+More than two or three example games (consider a separate examples repository); or the engine gains an asset-root
+option based on the manifest directory, which would make `cargo run -p` from the root work (U-18).
 
 ---
 

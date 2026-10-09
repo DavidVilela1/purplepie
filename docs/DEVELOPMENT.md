@@ -121,13 +121,17 @@ divergence is fixed in the code instead.
 Run from the project root:
 
 ```bash
-cargo fmt --check
-cargo check --all-targets
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all --check
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 cargo build
 cargo run            # sandbox
+(cd games/purple-swarm && cargo run)   # example game, from its own folder (ADR-042)
 ```
+
+`--workspace` includes the example games under `games/` (ADR-042), as CI does. Plain root commands build only the
+engine. Purple Swarm has an autoplay bot for automated runs: `PURPLE_SWARM_AUTOPLAY=1`.
 
 The repository root is also a Cargo workspace root (ADR-038), with the engine as its only member, so these commands
 are unchanged. Once a crate exists under `crates/`, run the gates with `--workspace` (and update CI the same way); tests

@@ -1,0 +1,16 @@
+[package]
+name = "purple-swarm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+description = "Purple Swarm: a top-down arena shooter, PurplePie's second example game (docs/GAME2.md)."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# A game written only against PurplePie's public API, like an outside crate,
+# but kept in this workspace so CI builds it with every engine change (ADR-042).
+[dependencies]
+purplepie = { path = "../.." }
+
+[lints.rust]
+unsafe_code = "forbid"
