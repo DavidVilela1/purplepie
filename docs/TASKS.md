@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-036a: Second game, part 1: choose and specify it (phase P3.5, item 6)** · P1 · TODO ← **next task**
+- [ ] **PP-036b: `math::Rng` (seedable random numbers) + `math::Rect` and circle overlap (U-14, U-15)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-036a: Second game, part 1: Purple Swarm specified in `docs/GAME2.md`; skeleton built from the v0.1.0 tag** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-035b: Release 0.1.0: version 0.1.0, `repository` field, CHANGELOG `[0.1.0] - 2026-10-09`, git dependency line (phase P3.5, item 5 complete)** · DONE (2026-10-09; verified on Linux; the owner pushes the `v0.1.0` tag)
 - [x] **PP-033b: Owner run of `docs/CHECKLIST.md` on Windows (phase P3.5, item 3 complete)** · DONE (2026-10-09; owner-reported)
 - [x] **PP-035a: Release preparation: `docs/RELEASING.md` (compatibility policy + procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` (phase P3.5, item 5, part 1)** · DONE (2026-10-09; verified on Linux; the two new CI jobs run first on GitHub)
@@ -68,7 +69,8 @@ _None._
 
 ## Future
 
-- [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6; PP-036a first)** · P2 · TODO
+- [ ] **PP-036c: Purple Swarm core (arena, player, shooting, enemies, waves, collisions, HUD, sound) + where the game lives (ADR)** · P2 · TODO
+- [ ] **PP-036d: Purple Swarm screens (title, pause, game over, restart), best score, autoplay, findings** · P2 · TODO
 
 ---
 
@@ -454,14 +456,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-036a: Second game, part 1: choose and specify it ← NEXT
+### PP-036b: `math::Rng` + `math::Rect` and circle overlap ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6, part 1 · Priority P1 · TODO |
-| Dependencies | PP-035a (DONE). Not blocked by the release (PP-035b) or the owner's checklist: the game is an outside crate depending on PurplePie by path |
-| Why now | The remaining P3.5 work that does not wait on the owner. A second, different game written as an outside crate is the test of "someone can make a game without knowing the code": it decides which missing features are real (candidates: random numbers U-14, rectangle overlap U-15, world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad). |
-| Scope | Choose the game (different from Breakout and Pie Catch, e.g. a top-down arena shooter or a tile-based puzzle). Write a one-page spec (new `docs/GAME2.md`): mechanics, screens, assets, which engine features it uses and which it lacks. Classify every gap as "write in game code" or "engine feature" and split the engine features into small tasks (PP-036b…). No engine code in this task. |
-| Acceptance criteria | GAME2.md exists with a feature/gap table; each engine-feature gap has a task with scope and acceptance; the trial crate skeleton (empty game opening a window) builds outside the repository. |
+| Stage | Phase P3.5, item 6, part 2 · Priority P1 · TODO |
+| Dependencies | PP-036a (DONE; gaps decided in [GAME2.md](GAME2.md)) |
+| Why now | The two engine gaps that three games (Breakout, Pie Catch, the guide's game) each re-wrote by hand, and that Purple Swarm needs from its first line (U-14, U-15). |
+| Scope | `math::Rng`: small seedable PRNG (e.g. PCG32 or xoshiro-style, no dependency): `new(seed)`, `next_u32`, `f32()` in [0, 1), `range_f32(a..b)`, `range_u32`, `chance(p)`, `pick(&slice)`, `unit_vec2()`; deterministic across platforms (integer-only state; floats derived by exact division). `math::Rect` (centre + half size, `from_center_size`, `min`/`max`, `contains`, `overlaps`, `expand`) and `math::circles_overlap(a, ra, b, rb)` (or a `Circle` type, decided in the task). Unit tests incl. fixed-seed golden values; module docs with examples; guide §4/§14 use them (and §4 mentions `World::clear`); CHANGELOG `[Unreleased]` "Added". Additive only: no breaking change (0.1.x-compatible). |
+| Acceptance criteria | Tests pass incl. golden sequence; guide game rebuilt as an outside crate still runs; `cargo doc` clean; ADR if the RNG algorithm choice is non-trivial; CI green. |
+
+### PP-036a: Second game, part 1: choose and specify it
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6, part 1 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-035a (DONE) |
+| Acceptance criteria | ✅ [GAME2.md](GAME2.md): Purple Swarm (top-down arena shooter: free movement, mouse aim, waves of two enemy types, pickups, four screens, sound), the engine features it uses (all in 0.1.0), and a gap table: two engine features (random numbers, overlap tests → PP-036b), everything else in game code with reasons (timers, world clearing via `World::clear`, tiled floor, camera clamp, best-score file, shake), gamepad out of scope. ✅ Follow-up tasks PP-036b/c/d with scope; the game's location (recommended: in-repository workspace member `games/purple-swarm/`) is decided with an ADR in PP-036c. ✅ Skeleton outside the repository depending on `tag = "v0.1.0"` from GitHub: builds with 0 warnings, clippy clean, runs under Xvfb (arena, player turning to the cursor, camera follow, HUD; console logger lines). |
 
 ### PP-036: A second game as an outside crate (umbrella)
 | Field | Value |

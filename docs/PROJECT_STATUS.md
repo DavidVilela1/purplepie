@@ -28,7 +28,8 @@ edge anchors, made errors print readably, marked growing types `#[non_exhaustive
 scene files and added the opt-in console logger (item 4 complete). PP-035a prepared the release (compatibility
 policy in [RELEASING.md](RELEASING.md), `CHANGELOG.md`, CI jobs for the minimum Rust version and the latest
 dependencies) and PP-035b made it: **version 0.1.0**, `repository` set, dependency by git tag. Items 1–5 of P3.5 are
-done. Next: **PP-036a**, specifying the second game (item 6). The long-term plan (in-game UI and an editor) is in
+done. PP-036a specified the second game, Purple Swarm ([GAME2.md](GAME2.md)). Next: **PP-036b**, `math::Rng` and
+`math::Rect`. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -109,6 +110,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-036a: second game specified: Purple Swarm, a top-down arena shooter ([GAME2.md](GAME2.md)); engine gaps: random numbers and overlap tests (PP-036b); skeleton built from the v0.1.0 tag.
 - PP-035b: release 0.1.0: version, `repository = "https://github.com/DavidVilela1/purplepie"`, CHANGELOG `[0.1.0] - 2026-10-09`, git-tag dependency line in README/guide/RELEASING.
 - PP-033b: owner's Windows run of `docs/CHECKLIST.md`: all steps as expected.
 - PP-035a: release preparation: `docs/RELEASING.md` (distribution by git tag, 0.x compatibility policy, procedure), `CHANGELOG.md`, CI `msrv` job and `latest-deps.yml` workflow.
@@ -131,11 +133,11 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-036a: Second game, part 1: choose and specify it** (phase P3.5, item 6). See [TASKS.md](TASKS.md#pp-036a-second-game-part-1-choose-and-specify-it--next).
+- **PP-036b: `math::Rng` + `math::Rect` and circle overlap** (phase P3.5, item 6). See [TASKS.md](TASKS.md#pp-036b-mathrng--mathrect-and-circle-overlap--next).
 
 ## Blocked
 
-- Nothing is blocked. Owner action pending: push the `v0.1.0` tag after committing PP-035b and seeing CI green.
+- Nothing is blocked. (The `v0.1.0` tag is on GitHub and equals this tree before PP-036a.)
 
 ## Technical Debt
 
@@ -168,6 +170,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-036a Second game specified.**
+  - New `docs/GAME2.md`: Purple Swarm, a top-down arena shooter. It lists the 0.1.0 features it uses and a gap table: random numbers and overlap tests become engine work (PP-036b); timers, screen switching with `World::clear`, the tiled floor, the camera clamp, the best-score file and screen shake stay in game code; gamepad is out of scope.
+  - Skeleton built outside the repository from the published `tag = "v0.1.0"`. Release check: the tag on GitHub equals the PP-035b archive. No engine change.
 
 - **2026-10-09: PP-035b Release 0.1.0 (P3.5 item 5 complete).**
   - `Cargo.toml`: `version = "0.1.0"`, `repository = "https://github.com/DavidVilela1/purplepie"` (`Cargo.lock`: only purplepie's own version line).
@@ -408,7 +414,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-035b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-036a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -417,6 +423,7 @@ after the final PP-035b change (CI additionally runs the latest stable clippy an
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` | ✅ PASS: 220 unit tests + 49 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Second game spec (PP-036a) | ✅ GitHub tag `v0.1.0` (`bf03aeb`) cloned: identical to this tree before PP-036a; a crate with `purplepie = { git = …, tag = "v0.1.0" }` builds and prints `purplepie 0.1.0`. Purple Swarm skeleton from that tag: 0 warnings, clippy clean; Xvfb frames before/after moving (player turns to the cursor, camera follows, HUD drawn); console logger shows asset root and GPU |
 | Release 0.1.0 (PP-035b) | ✅ `cargo check --locked` with version 0.1.0; sandbox prints `PurplePie sandbox v0.1.0`. GitHub `main` (`e3abead`, PP-035a) byte-identical to the PP-035a archive. A fresh crate with `purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }` fetched, built and ran the guide game (frame identical to the PP-032a guide frame); the same crate by path against this 0.1.0 tree built and ran (only the animated corner differs). The tag form itself is checked after the owner pushes `v0.1.0` |
 | Release preparation (PP-035a) | ✅ scratch copy with `cargo update` (12 packages newer, e.g. hecs 0.11.2, glam 0.33.12): `cargo check --all-targets --all-features` and `cargo test --all-features` pass (220 + 49); committed `Cargo.lock` unchanged. `cargo clippy --locked --all-targets -- -D warnings -W clippy::incompatible_msrv` clean at `rust-version` 1.90, and it fires at 1.85 (mutation). Highest dependency `rust-version` in the lock file: 1.90. Both workflow files parse as YAML. Rust 1.90 itself could not be installed (blocked download) |
 | Component formatting + console logger (PP-034b) | ✅ scene example `save` rewrote `demo.ron` (only the 3 component lines changed); `save`/`load`/`build` frozen frames pixel-identical to the PP-026b baseline. Breakout with `PURPLEPIE_LOG=info` prints `asset root:`, `audio:` and `GPU:` lines, without it no log lines; autoplay `Lost after 892 …`, lose screen pixel-identical. Sandbox with `PURPLEPIE_LOG=loud` exits 1 with `invalid engine configuration: PURPLEPIE_LOG must be …`. Outside trial crate (no opt-in) prints no log lines with `PURPLEPIE_LOG=info` |
@@ -446,4 +453,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-035b done: release 0.1.0 prepared (the owner pushes the tag). PP-036a (second game spec) is next.
+2026-10-09. PP-036a done (Purple Swarm specified; v0.1.0 tag verified). PP-036b (`math::Rng`, `math::Rect`) is next.

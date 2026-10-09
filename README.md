@@ -197,6 +197,7 @@ PurplePie/
     ├── RISKS.md          technical risks
     ├── TECH_STACK.md     verified versions and API notes
     ├── CHECKLIST.md      hands-on platform check the owner runs on Windows/macOS
+    ├── GAME2.md          the second game (Purple Swarm): design and the engine gaps it found
     ├── RELEASING.md      compatibility policy (what a version promises) and the release procedure
     ├── GUIDE.md          newcomer guide: from `cargo new` to a shipped game (compiled by `cargo test`)
     ├── USABILITY.md      what newcomers run into (outside-crate trials), and which task fixes it
