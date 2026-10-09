@@ -33,7 +33,7 @@
 //!     world.spawn((
 //!         Transform2D::from_position(Vec2::new(0.0, 40.0)), // 40 px above the bottom edge
 //!         Text::new("Press Space", font, 24.0).with_anchor(TextAnchor::BOTTOM_CENTER),
-//!         ScreenSpace::BOTTOM, // follows the window, not the camera
+//!         ScreenSpace::BOTTOM_CENTER, // follows the window, not the camera
 //!     ));
 //!     ctx.camera_mut().zoom = 1.5;
 //!     Ok(())

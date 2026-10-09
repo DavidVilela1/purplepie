@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-034: Second public API review (phase P3.5, item 4)** · P1 · TODO ← **next task**
+- [ ] **PP-034b: Scene component formatting (U-12) + opt-in console logger (U-13) (phase P3.5, item 4, part 2)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-034a: Second public API review: ADR-040 (anchor names, readable `Error` debug output, resolved `Save` path, `#[non_exhaustive]` policy) (phase P3.5, item 4, part 1)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-033a: Platform checklist `docs/CHECKLIST.md` written and run on Linux (phase P3.5, item 3, part 1)** · DONE (2026-10-09; verified on Linux, PowerShell blocks under PowerShell 7)
 
 ## Future
@@ -425,12 +426,20 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope | The owner runs `docs/CHECKLIST.md` on Windows (macOS if available) and reports failed steps and the requested console lines; Claude records them in PROJECT_STATUS as owner-reported and turns real failures into tasks. Not tested by Cowork: Windows PowerShell 5.1 specifics, a real GPU, real audio hardware, window minimise/restore with a window manager, real mouse wheel notches. |
 | Acceptance criteria | Owner report received and recorded; any failure has a task. PP-035 (release) waits for this. |
 
-### PP-034: Second public API review ← NEXT
+### PP-034b: Scene component formatting + opt-in console logger ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 4 · Priority P1 · TODO |
-| Dependencies | PP-032b (DONE). Independent of the owner's checklist run (PP-033b) |
-| Scope | Review everything public since ADR-026 (text, sheets, animation, screen space, audio, buttons, sampling, scenes, hot reload) like PP-017 did, including the trial's API findings: U-09 (`ScreenSpace::TOP` vs `TextAnchor::TOP_CENTER` naming), U-10 (`Error::Save` path not resolved), U-11 (errors from `main` print in `Debug` form), U-12 (registered components written compact in scene files), U-13 (a built-in console logger, so games and examples show engine warnings without adding a logging crate). Changes recorded in an ADR. |
+| Stage | Phase P3.5, item 4, part 2 · Priority P1 · TODO |
+| Dependencies | PP-034a (DONE; ADR-040 decided both) |
+| Scope | U-12: write registered game components in scene files formatted like the engine's parts (`(speed: 420.0)`, spaces after separators; format version unchanged), regenerate `assets/scenes/demo.ron` with the scene example's `save` mode and keep the round-trip tests byte-exact. U-13: an opt-in console logger in the engine (the sandbox's `StderrLogger` moved into the library behind a small public function, level from `PURPLEPIE_LOG`), used by the sandbox and both examples (so `PURPLEPIE_LOG` works there too) and shown in the guide (section 12) and README; no new dependency, the engine still never installs a logger on its own (ADR-016). |
+| Acceptance criteria | A saved scene shows game components with the engine's spacing and loads back byte-identically; demo.ron regenerated and the scene example's three modes stay pixel-identical; `PURPLEPIE_LOG=info cargo run --example breakout` prints the asset-root and GPU lines; a game that does not call the logger function prints nothing extra; ADR-040 consequences updated; CI green. |
+
+### PP-034a: Second public API review
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 4, part 1 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-032b (DONE) |
+| Acceptance criteria | ✅ ADR-040: review table over every public area added since ADR-026 with a verdict each. ✅ U-09: `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` and `ScreenAnchor::TopCenter`/… (breaking rename, no aliases); scene files write the new names and read the old ones (serde aliases; unit test `edge_anchors_load_under_their_old_and_new_names`; the trial's pre-rename `level.ron` still loads). ✅ U-11: `Error`'s `Debug` = message + "Caused by:" chain (unit test; trial output checked). ✅ U-10: `Error::Save` carries the resolved path (trial: save into a missing folder). ✅ `#[non_exhaustive]` on `EngineConfig`, `Sprite`, `Quad`, `Text`, `TextMetrics`, `SpriteAnimation`, `AnimationMode`, `TextureFilter`, `Camera2D`, `ui::Button`, `ui::Pointer`; sandbox, examples, doctests and the guide compile unchanged. ✅ Regressions: scene example frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 …` unchanged. 218 unit tests + 47 doctests. |
 
 ### PP-035: Release 0.1.0
 | Field | Value |

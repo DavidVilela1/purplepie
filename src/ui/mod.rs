@@ -36,6 +36,7 @@ use crate::render::{Hidden, Layer, ScreenSpace};
 /// left button did. A plain `Copy` value, so it can be read from
 /// [`Context::input`](crate::Context::input) before borrowing the world.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[non_exhaustive]
 pub struct Pointer {
     /// Cursor in window coordinates (logical pixels, top-left origin, +Y
     /// down), or `None` when it is outside the window.
@@ -90,6 +91,7 @@ impl Pointer {
 /// ));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Button {
     /// Width and height of the clickable area in logical pixels.
     pub size: Vec2,

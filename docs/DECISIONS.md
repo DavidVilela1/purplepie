@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; scene component formatting and a built-in logger in PP-034b) |
 | ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
 | ADR-038 | Workspace layout: no split yet; the root package is also the Cargo workspace root (`[workspace] members = []`); future crates (debug overlay, editor) go under `crates/`, the engine and `assets/` stay at the root | Accepted | Yes (PP-030) |
 | ADR-037 | Asset hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed textures, fonts and sounds are replaced under the same id (texture revision → GPU re-upload; font revision → glyph atlas cleared; sounds: new `Arc`, running voices keep the old); broken or oversized files keep the old asset | Accepted | Yes (PP-028 textures, PP-029 fonts + sounds) |
@@ -2123,6 +2124,80 @@ One maintained source for newcomers instead of two, and the source that exists i
 ## Revisit Conditions
 At release 0.1.0 (PP-035), when a git or crates.io dependency line exists: then a separate template repository (for
 `cargo generate`) or a `templates/` folder with `workspace.exclude` plus a CI job that builds it becomes worthwhile.
+
+---
+
+# ADR-040: Second API review: names, error output and room to grow before 0.1.0
+
+## Status
+Accepted (2026-10-09, PP-034a). Reviews the API added since ADR-026 (PP-018a … PP-030) together with the outside-crate
+trial's API findings (USABILITY.md U-09 … U-13). Part of P3.5 item 4; U-12 and U-13 are decided here and built in PP-034b.
+
+## Context
+Since ADR-026 the public API grew by text, sprite sheets and animation, screen space, audio, buttons, per-texture
+sampling, scene files and hot reload. All of it was designed task by task from inside the repository. The P3.5 trial
+(PP-031) and the guide (PP-032a) then used it from outside. The 0.1.0 release (PP-035) will promise compatibility, so
+this is the last cheap moment for renames and for leaving room to grow.
+
+## Review
+| Area | Public items | Verdict |
+|---|---|---|
+| App, config | `Engine`, `Game`, `Context`, `EngineConfig` (+ `audio`, `hot_reload`) | Keep. `EngineConfig` will gain fields again → `#[non_exhaustive]` (builders already cover every field). |
+| Errors | `Error` (+ `Save`), `BoxError`, `Result` | Keep the variants. **Change** `Debug` (U-11) and the `Save` path (U-10), see below. |
+| Text | `Text`, `TextAnchor` (12 consts), `HorizontalAnchor`, `VerticalAnchor`, `TextMetrics`, `FontId`, `load_font`, `measure_text` | Keep. `Text` (wrapping, line spacing) and `TextMetrics` will grow → `#[non_exhaustive]`. |
+| Sheets, animation | `TextureRegion`, `SpriteGrid`, `SpriteAnimation`, `AnimationMode`, `advance_animations` | Keep. `SpriteAnimation` (per-frame durations, events) and `AnimationMode` (ping-pong) → `#[non_exhaustive]`. |
+| Sprites, quads, camera | `Sprite`, `Quad`, `Camera2D`, `TextureFilter`, `TextureOptions`, `load_texture_with` | Keep. `Sprite` already grew twice; `Quad` (outline, corners), `Camera2D` (rotation) and `TextureFilter` may → `#[non_exhaustive]`. |
+| Screen space | `ScreenSpace` (9 consts), `ScreenAnchor` | **Rename** the edge anchors (U-09), see below. |
+| Audio | `SoundId`, `PlaybackId`, `load_sound`, `play_sound`, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, `set_master_volume`, `master_volume`, `sound_duration`, `audio_available` | Keep as is. |
+| UI | `Button`, `Pointer`, `update_buttons(world, pointer, viewport)` | Keep. Three arguments are verbose, but they keep the system explicit and testable without a window (ADR-031); a `Context` shortcut can be added later without breaking. `Button` (disabled state) and `Pointer` (more buttons) → `#[non_exhaustive]`. |
+| Scenes | `save_scene`, `load_scene`, `register_scene_component` | Keep. Game components were written on one line without spaces (U-12): format them like the engine's parts (PP-034b; file format unchanged). |
+| Hot reload, assets | `with_hot_reload`, `asset_root` | Keep. Logging (U-13): offer an opt-in console logger (PP-034b), because engine warnings are invisible in games without a `log` backend. |
+
+## Decision
+1. **Edge anchors are named like `TextAnchor`'s.** `ScreenSpace::TOP` / `LEFT` / `RIGHT` / `BOTTOM` become `TOP_CENTER` /
+   `CENTER_LEFT` / `CENTER_RIGHT` / `BOTTOM_CENTER`, and `ScreenAnchor::Top` / … become `TopCenter` / `CenterLeft` /
+   `CenterRight` / `BottomCenter`: vertical part first, then horizontal. This is a breaking rename with no deprecated
+   aliases, because nothing outside the repository depends on PurplePie before 0.1.0; the release notes list it.
+   Scene files keep format version 1. They now write the new names, and `serde` aliases still read the old ones.
+2. **`Error`'s `Debug` prints the message and its causes** (like `anyhow`), so `fn main() -> purplepie::Result<()>` shows
+   ``Error: failed to load asset `…/player.png` `` followed by ``Caused by: No such file or directory (os error 2)``,
+   not a struct dump. The structured data stays available by matching on the variant. `Display` is unchanged.
+3. **`Error::Save` carries the resolved file path** (asset root + the game's path), like `Error::Asset` already did,
+   so a missing folder shows where the save was attempted. The field docs of both now say so.
+4. **Room to grow:** `EngineConfig`, `Sprite`, `Quad`, `Text`, `TextMetrics`, `SpriteAnimation`, `AnimationMode`,
+   `TextureFilter`, `Camera2D`, `ui::Button` and `ui::Pointer` are `#[non_exhaustive]`. Games build them with their
+   constructors and builders, which every one already has; fields stay public to read and write. Complete value types
+   stay open: `Transform2D`, `Color`, `TextureRegion`, `SpriteGrid`, `TextAnchor`, the anchor enums, `Layer` and
+   `Velocity`. Enums that are complete sets (`HorizontalAnchor`, `VerticalAnchor`, `ScreenAnchor`) stay exhaustive.
+
+## Alternatives Considered
+- **Keep `TOP`/`LEFT`/… and add the new names as aliases:** two names for one thing in the docs forever.
+- **Deprecated aliases until 0.1.0:** helpful only to existing users, and there are none outside the repository.
+- **A friendlier `main` helper (`purplepie::run`) instead of changing `Debug`:** every game would have to know about
+  it. The `Debug` change helps every game, including the guide's `?` in `main`.
+- **`#[non_exhaustive]` on every public struct:** it would forbid struct literals for complete value types such as
+  `Transform2D { … }` or `Color { … }`, which games legitimately write.
+
+## Rationale
+Make the names a newcomer guesses work, make failures readable without extra code, and make the release's
+compatibility promise affordable, all while no outside game depends on the old forms.
+
+## Consequences
+### Positive
+- `ScreenSpace::TOP_CENTER` exists (the trial's natural guess). Old scene files still load, shown by a unit test and
+  by the trial crate's `level.ron`, which was written before the rename.
+- Failure output from games is readable. Verified end to end in the trial crate: a missing PNG prints the full path
+  plus "Caused by: No such file or directory"; a save into a missing folder names the full resolved path.
+- Fields can be added to the listed types in 0.1.x without breaking games.
+### Negative
+- Breaking for code using the four old constant or variant names (none outside the repository; the trial crate needed
+  a one-word change).
+- Games cannot write struct literals for the listed types (they never needed to; builders exist).
+- `{:?}` of an `Error` no longer shows the variant name. Matching shows it.
+
+## Revisit Conditions
+At 0.1.0, the compatibility policy (PP-035) makes these names and the `#[non_exhaustive]` set binding; changing them
+afterwards needs a minor version with deprecations.
 
 ---
 

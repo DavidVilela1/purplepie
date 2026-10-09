@@ -15,6 +15,7 @@ use crate::render::Color;
 /// assert_eq!((config.width, config.height), (1280, 720));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct EngineConfig {
     /// Window title.
     pub title: String,

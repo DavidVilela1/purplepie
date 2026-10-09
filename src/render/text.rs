@@ -50,6 +50,7 @@ use crate::math::Vec2;
 /// # }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Text {
     /// The characters to draw.
     pub content: String,
@@ -198,6 +199,7 @@ impl TextAnchor {
 /// so they do not depend on which characters are used. Drawn text is placed
 /// on whole pixels, so it can differ from these values by up to a pixel.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[non_exhaustive]
 pub struct TextMetrics {
     /// Width of the widest line.
     pub width: f32,

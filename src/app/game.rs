@@ -180,15 +180,19 @@ impl<'a> Context<'a> {
     /// are [`Error::Save`](crate::Error::Save).
     pub fn save_scene(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        let save_error = |source: crate::error::BoxError| crate::Error::Save {
-            path: path.to_path_buf(),
-            source,
-        };
         let file = self
             .state
             .assets
             .locate(path)
-            .map_err(|e| save_error(Box::new(e)))?;
+            .map_err(|e| crate::Error::Save {
+                path: path.to_path_buf(),
+                source: Box::new(e),
+            })?;
+        // Report the resolved file, so a missing folder shows where (ADR-040).
+        let save_error = |source: crate::error::BoxError| crate::Error::Save {
+            path: file.clone(),
+            source,
+        };
         let state = &*self.state;
         let scene = crate::scene::capture(
             &state.world,

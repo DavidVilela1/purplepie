@@ -8,25 +8,29 @@
 use crate::math::{Mat4, Vec2};
 
 /// A point of the window that screen-space positions are measured from.
+///
+/// Named like [`TextAnchor`](super::TextAnchor)'s constants: vertical part
+/// first (`Top`, `Center`, `Bottom`), then horizontal (`Left`, `Center`,
+/// `Right`), so the middle of the top edge is `TopCenter` (ADR-040).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ScreenAnchor {
     /// Top-left corner.
     TopLeft,
     /// Middle of the top edge.
-    Top,
+    TopCenter,
     /// Top-right corner.
     TopRight,
     /// Middle of the left edge.
-    Left,
+    CenterLeft,
     /// Centre of the window. The default.
     #[default]
     Center,
     /// Middle of the right edge.
-    Right,
+    CenterRight,
     /// Bottom-left corner.
     BottomLeft,
     /// Middle of the bottom edge.
-    Bottom,
+    BottomCenter,
     /// Bottom-right corner.
     BottomRight,
 }
@@ -37,13 +41,13 @@ impl ScreenAnchor {
     const fn fraction(self) -> (f32, f32) {
         match self {
             ScreenAnchor::TopLeft => (0.0, 1.0),
-            ScreenAnchor::Top => (0.5, 1.0),
+            ScreenAnchor::TopCenter => (0.5, 1.0),
             ScreenAnchor::TopRight => (1.0, 1.0),
-            ScreenAnchor::Left => (0.0, 0.5),
+            ScreenAnchor::CenterLeft => (0.0, 0.5),
             ScreenAnchor::Center => (0.5, 0.5),
-            ScreenAnchor::Right => (1.0, 0.5),
+            ScreenAnchor::CenterRight => (1.0, 0.5),
             ScreenAnchor::BottomLeft => (0.0, 0.0),
-            ScreenAnchor::Bottom => (0.5, 0.0),
+            ScreenAnchor::BottomCenter => (0.5, 0.0),
             ScreenAnchor::BottomRight => (1.0, 0.0),
         }
     }
@@ -83,19 +87,19 @@ impl ScreenSpace {
     /// Measured from the top-left corner.
     pub const TOP_LEFT: Self = Self::new(ScreenAnchor::TopLeft);
     /// Measured from the middle of the top edge.
-    pub const TOP: Self = Self::new(ScreenAnchor::Top);
+    pub const TOP_CENTER: Self = Self::new(ScreenAnchor::TopCenter);
     /// Measured from the top-right corner.
     pub const TOP_RIGHT: Self = Self::new(ScreenAnchor::TopRight);
     /// Measured from the middle of the left edge.
-    pub const LEFT: Self = Self::new(ScreenAnchor::Left);
+    pub const CENTER_LEFT: Self = Self::new(ScreenAnchor::CenterLeft);
     /// Measured from the centre of the window (the default).
     pub const CENTER: Self = Self::new(ScreenAnchor::Center);
     /// Measured from the middle of the right edge.
-    pub const RIGHT: Self = Self::new(ScreenAnchor::Right);
+    pub const CENTER_RIGHT: Self = Self::new(ScreenAnchor::CenterRight);
     /// Measured from the bottom-left corner.
     pub const BOTTOM_LEFT: Self = Self::new(ScreenAnchor::BottomLeft);
     /// Measured from the middle of the bottom edge.
-    pub const BOTTOM: Self = Self::new(ScreenAnchor::Bottom);
+    pub const BOTTOM_CENTER: Self = Self::new(ScreenAnchor::BottomCenter);
     /// Measured from the bottom-right corner.
     pub const BOTTOM_RIGHT: Self = Self::new(ScreenAnchor::BottomRight);
 
@@ -172,14 +176,14 @@ mod tests {
                 Vec2::new(20.0, -30.0),
                 Vec2::new(20.0, 30.0),
             ),
-            (ScreenSpace::TOP, Vec2::ZERO, Vec2::new(400.0, 0.0)),
+            (ScreenSpace::TOP_CENTER, Vec2::ZERO, Vec2::new(400.0, 0.0)),
             (
                 ScreenSpace::TOP_RIGHT,
                 Vec2::new(-10.0, -10.0),
                 Vec2::new(790.0, 10.0),
             ),
             (
-                ScreenSpace::LEFT,
+                ScreenSpace::CENTER_LEFT,
                 Vec2::new(5.0, 0.0),
                 Vec2::new(5.0, 300.0),
             ),
@@ -188,14 +192,18 @@ mod tests {
                 Vec2::new(1.0, 1.0),
                 Vec2::new(401.0, 299.0),
             ),
-            (ScreenSpace::RIGHT, Vec2::ZERO, Vec2::new(800.0, 300.0)),
+            (
+                ScreenSpace::CENTER_RIGHT,
+                Vec2::ZERO,
+                Vec2::new(800.0, 300.0),
+            ),
             (
                 ScreenSpace::BOTTOM_LEFT,
                 Vec2::new(10.0, 10.0),
                 Vec2::new(10.0, 590.0),
             ),
             (
-                ScreenSpace::BOTTOM,
+                ScreenSpace::BOTTOM_CENTER,
                 Vec2::new(0.0, 4.0),
                 Vec2::new(400.0, 596.0),
             ),

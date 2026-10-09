@@ -22,7 +22,8 @@ trial, is done: a small game built from the README alone worked after three READ
 findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
 `cargo test`, and PP-032b rewrote the API module pages for game authors (item 2 complete; no template crate, ADR-039).
 PP-033a wrote the Windows/macOS [CHECKLIST.md](CHECKLIST.md) and ran it on Linux; the owner's run (PP-033b)
-is pending. Next: **PP-034**, the second API review. The long-term plan (in-game UI and an editor) is in
+is pending (the owner has reported `cargo test` green on Windows). PP-034a, the second API review (ADR-040), renamed the
+edge anchors, made errors print readably and marked growing types `#[non_exhaustive]`. Next: **PP-034b**. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -103,6 +104,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-034a: second API review (ADR-040): `ScreenSpace::TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read the old names), `Error` `Debug` prints message + causes, `Error::Save` has the resolved path, `#[non_exhaustive]` on growing public types.
 - PP-033a: platform checklist `docs/CHECKLIST.md` (PowerShell, 8 steps + macOS/Linux appendix), every step run on Linux, the PowerShell blocks under PowerShell 7.
 - PP-032b: module pages for game authors (summary, guide link, compiled example; internals under "Engine notes"); starter template decision ADR-039 (the guide is the template).
 - PP-032a: newcomer guide `docs/GUIDE.md` (14 sections, every Rust block a doctest); checked as an outside crate (phase P3.5 item 2, part 1).
@@ -120,7 +122,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-034: Second public API review** (phase P3.5, item 4). See [TASKS.md](TASKS.md#pp-034-second-public-api-review--next).
+- **PP-034b: Scene component formatting + opt-in console logger** (phase P3.5, item 4, part 2). See [TASKS.md](TASKS.md#pp-034b-scene-component-formatting--opt-in-console-logger--next).
 
 ## Blocked
 
@@ -157,6 +159,12 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-034a Second API review (ADR-040).**
+  - **Breaking (pre-0.1.0):** `ScreenSpace::TOP`/`LEFT`/`RIGHT`/`BOTTOM` → `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER`, and `ScreenAnchor::Top`/… → `TopCenter`/…, named like `TextAnchor`. Scene files write the new names and still read the old ones (format version 1 unchanged).
+  - `Error`'s `Debug` prints the message plus a "Caused by:" chain, so `fn main() -> purplepie::Result<()>` reports failures readably; `Error::Save` now holds the resolved path.
+  - `#[non_exhaustive]` on `EngineConfig`, `Sprite`, `Quad`, `Text`, `TextMetrics`, `SpriteAnimation`, `AnimationMode`, `TextureFilter`, `Camera2D`, `ui::Button`, `ui::Pointer` (constructors and builders unchanged; struct literals of these types are no longer possible outside the crate).
+  - 2 new unit tests (218). No new dependency. U-12 (component formatting) and U-13 (console logger) decided, built next in PP-034b.
 
 - **2026-10-09: PP-033a Platform checklist.**
   - New `docs/CHECKLIST.md`: what the owner runs on Windows (PowerShell) to see PurplePie on real hardware: tests and GPU tests, sandbox (drawing, input, sound, window), hot reload (restored with `git checkout`), Breakout play and autoplay lines, scene example, a new game crate from the guide outside the repository and OneDrive, and shipping it. macOS/Linux appendix. Each step says what to expect and what to report.
@@ -367,15 +375,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-033a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-034a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` | ✅ PASS: 216 unit tests + 47 doctests (12 of them the guide's blocks), 12 ignored (GPU) |
+| `cargo test --locked` | ✅ PASS: 218 unit tests + 47 doctests (12 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| API review (PP-034a) | ✅ trial crate `pie_catch` (outside crate): old `ScreenSpace::TOP` fails to compile (expected), its pre-rename `level.ron` (`screen_space: Top`) loads with the title centred; missing `pie.png` prints ``Error: failed to load asset `…/pie.png` `` + `Caused by: No such file or directory (os error 2)`; save into a missing folder names the full resolved path. Scene example frozen frame and Breakout lose screen pixel-identical to their baselines; `Lost after 892 fixed steps …` unchanged |
 | Platform checklist (PP-033a) | ✅ all steps on Linux: sandbox frame with `GPU:`/`audio:` log lines, click + `M` music in an ALSA capture; hot reload swap and `git`-style restore (file byte-identical); autoplay `Lost after 892 …` / `Won after 7135 …`; scene: 19 entities, 2 button clicks counted, build mode; steps 7–8 run as PowerShell 7.4.6 scripts: new crate builds with 0 warnings, release build shipped and run from `/` shows the same frame (only the animated corner differs) |
 | Module pages (PP-032b) | ✅ `cargo doc --no-deps` (`-D warnings`) clean; rendered crate page lists the six modules with the new game-author summaries; the 4 new module examples pass as doctests |
 | Starter template trial (ADR-039) | ✅ reproduced: a `templates/starter` crate inside a scratch copy of the repository fails `cargo check` with "current package believes it's in a workspace when it's not" |
@@ -396,9 +405,9 @@ after the final PP-033a change (CI additionally runs the latest stable clippy an
 | Breakout lose screen vs PP-025 | ✅ pixel-identical (earlier run; no engine code changed since) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (earlier run; no engine code changed since) |
 
-Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01.
+Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a tree, checklist step 1): `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; the rest of the checklist (PP-033b) is pending.
 Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-033a done (platform checklist, run on Linux); PP-033b waits on the owner. PP-034 (second API review) is next.
+2026-10-09. PP-034a done (second API review, ADR-040); PP-033b (owner checklist run) partly reported. PP-034b is next.

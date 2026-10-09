@@ -25,6 +25,7 @@ use crate::math::Vec2;
 /// ));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Quad {
     /// Width and height in world units (logical pixels with the default view).
     pub size: Vec2,

@@ -34,6 +34,7 @@ impl TextureId {
 /// How a texture's texels are blended when it is drawn larger, smaller, rotated
 /// or between whole pixels (ADR-034).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TextureFilter {
     /// Every pixel shows exactly one texel: crisp, blocky edges. Right for
     /// pixel art and exact at whole-number scales; scaled-down or rotated

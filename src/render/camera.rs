@@ -30,6 +30,7 @@ use crate::math::{Mat4, Vec2};
 /// assert_eq!(camera.world_to_screen(Vec2::new(110.0, 50.0), viewport), Vec2::new(420.0, 300.0));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Camera2D {
     /// The world point shown at the centre of the window.
     pub position: Vec2,

@@ -73,8 +73,8 @@ my_game/
   hot-reload results, warnings), which prints nothing until the game installs a logger. For example add
   `env_logger = "0.11"`, call `env_logger::init();` first thing in `main`, and run with `RUST_LOG=info`
   (PowerShell: `$env:RUST_LOG="info"; cargo run`). `PURPLEPIE_LOG` below is the sandbox's own setting.
-- **Errors:** a missing asset ends the game with `Error: Asset { path: ".../assets/textures/player.png", ... }`;
-  the path shows where PurplePie looked.
+- **Errors:** a missing asset ends the game with ``Error: failed to load asset `.../my_game/assets/textures/player.png` ``
+  and a "Caused by:" line (e.g. "No such file or directory"); the path shows where PurplePie looked.
 
 ### The smallest useful game
 

@@ -17,6 +17,7 @@ const BOUNDARY_SLACK: f64 = 1e-6;
 
 /// What happens after the last frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum AnimationMode {
     /// Start again from the first frame, forever. The default.
     #[default]
@@ -51,6 +52,7 @@ pub enum AnimationMode {
 /// // In fixed_update: `let dt = ctx.dt(); purplepie::render::advance_animations(ctx.world_mut(), dt);`
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct SpriteAnimation {
     /// The sheet's layout; frame numbers index into it.
     pub grid: SpriteGrid,

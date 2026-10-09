@@ -38,6 +38,7 @@ use crate::math::Vec2;
 /// # }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Sprite {
     /// The image to draw, from [`Context::load_texture`](crate::Context::load_texture).
     pub texture: TextureId,

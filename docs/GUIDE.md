@@ -358,7 +358,8 @@ fn restart_clicked(ctx: &mut Context<'_>) -> bool {
 }
 ```
 
-`ScreenSpace::TOP`, `BOTTOM`, `LEFT`, `RIGHT` and `CENTER` anchor to the middle of an edge or of the window.
+The nine anchors are named like `TextAnchor`'s: `TOP_LEFT`, `TOP_CENTER`, `TOP_RIGHT`, `CENTER_LEFT`, `CENTER`,
+`CENTER_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_CENTER` and `BOTTOM_RIGHT`.
 
 ## 10. Sound and music
 
@@ -443,7 +444,10 @@ replaces it within about half a second, under the same id. Turn it off for shipp
 **Errors.** Every engine failure is a `purplepie::Error`: `Asset` (a file is missing or broken, with the full path the
 engine tried), `Save` (a scene could not be written), `Render` (the GPU failed), `Game` (your own error returned
 from `init`) and a few start-up errors. `init` returning an error ends the game, and
-`Engine::run` returns it, so `?` in `main` prints it. To show it in a friendlier form, print its `Display` text:
+`Engine::run` returns it, so `?` in `main` prints it with its causes, for example
+``Error: failed to load asset `…/assets/textures/player.png` `` and then
+`Caused by: No such file or directory (os error 2)`. To print it your own way, use its `Display` text and walk
+`std::error::Error::source`, or just print the one-line message:
 
 ```rust no_run
 use purplepie::{Engine, EngineConfig, Game};

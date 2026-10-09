@@ -46,11 +46,11 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-06 | doc fix | `cargo doc` documents all of the roughly 140 dependencies, which took 6 minutes here. | **Fixed:** the README gives `cargo doc -p purplepie --no-deps --open` (1 min from cold). |
 | U-07 | doc fix | The crate page pointed only to repository-internal docs. Module pages are written for engine developers: they describe crate-private parts (mixer, sound store) and cite ADR numbers. Only `ecs` and `ui` have examples; `audio`, `input`, `math` and `render` have none. | **Fixed:** the crate page now explains the game-crate layout and points to `Context` and `ecs`. The guide (`docs/GUIDE.md`, PP-032a) covers every feature with compiled examples. In PP-032b every public module page (`audio`, `ecs`, `input`, `math`, `render`, `ui`) gained a one-line summary for game authors, a paragraph with links to the guide, and a compiled example, with engine internals moved under "Engine notes". |
 | U-08 | doc fix | Coming from winit, the first guess for letter keys is `KeyCode::KeyA`; PurplePie names them `KeyCode::A`. The compiler error does not suggest the right name. | **Fixed in PP-032a:** GUIDE.md section 8 lists the key names. |
-| U-09 | API issue | `ScreenSpace::TOP` / `BOTTOM` / `LEFT` / `RIGHT` versus `TextAnchor::TOP_CENTER` / `BOTTOM_CENTER`. The natural guess `ScreenSpace::TOP_CENTER` does not exist, and the compiler suggests `CENTER`, which is wrong. | **PP-034** (API review). |
-| U-10 | API issue | `Error::Save` shows the path as given (`"scenes/level.ron"`), while `Error::Asset` shows the resolved full path. When the folder is missing, the user cannot see where the save was attempted. | **PP-034.** |
-| U-11 | API issue | `fn main() -> purplepie::Result<()>` prints errors in `Debug` form (`Error: Asset { path: …, source: Os { code: 2, kind: NotFound, … } }`). It is readable, but raw for a player-facing failure. | **PP-034:** decide between a documented `main` pattern and a helper that prints the `Display` form. |
-| U-12 | API issue | Registered game components are written on one line without spaces (`(speed:420.0)`), unlike the pretty-printed engine parts of the same scene file. Cosmetic. | **PP-034.** |
-| U-13 | doc fix + API issue | No engine message appeared in the trial: not the asset root, the GPU, the audio device, hot-reload results or warnings. PurplePie logs through the `log` crate and only the sandbox installs a backend; the README's `PURPLEPIE_LOG=info` works only for the sandbox, and the examples have no logger either. | **Doc part fixed:** README "Logs" bullet; `env_logger` + `RUST_LOG=info` was verified in the trial (the asset-root, audio and GPU lines appeared). **PP-034:** decide whether the engine offers a built-in console logger (the sandbox's `StderrLogger`) so games and examples see warnings without an extra dependency (`env_logger` 0.11 adds 21 crates). |
+| U-09 | API issue | `ScreenSpace::TOP` / `BOTTOM` / `LEFT` / `RIGHT` versus `TextAnchor::TOP_CENTER` / `BOTTOM_CENTER`. The natural guess `ScreenSpace::TOP_CENTER` does not exist, and the compiler suggests `CENTER`, which is wrong. | **Fixed in PP-034a (ADR-040):** the anchors are now `TOP_CENTER`, `CENTER_LEFT`, `CENTER_RIGHT` and `BOTTOM_CENTER`, named like `TextAnchor`'s; scene files written with the old names still load. |
+| U-10 | API issue | `Error::Save` shows the path as given (`"scenes/level.ron"`), while `Error::Asset` shows the resolved full path. When the folder is missing, the user cannot see where the save was attempted. | **Fixed in PP-034a (ADR-040):** `Error::Save` carries the resolved path. In the trial, a save into a missing folder now names `…/pie_catch/assets/scenes/level.ron`. |
+| U-11 | API issue | `fn main() -> purplepie::Result<()>` prints errors in `Debug` form (`Error: Asset { path: …, source: Os { code: 2, kind: NotFound, … } }`). It is readable, but raw for a player-facing failure. | **Fixed in PP-034a (ADR-040):** `Error`'s `Debug` prints the message and a "Caused by:" list, so `?` in `main` is readable. |
+| U-12 | API issue | Registered game components are written on one line without spaces (`(speed:420.0)`), unlike the pretty-printed engine parts of the same scene file. Cosmetic. | **Decided in ADR-040, built in PP-034b.** |
+| U-13 | doc fix + API issue | No engine message appeared in the trial: not the asset root, the GPU, the audio device, hot-reload results or warnings. PurplePie logs through the `log` crate and only the sandbox installs a backend; the README's `PURPLEPIE_LOG=info` works only for the sandbox, and the examples have no logger either. | **Doc part fixed:** README "Logs" bullet; `env_logger` + `RUST_LOG=info` was verified in the trial (the asset-root, audio and GPU lines appeared). **ADR-040** decides an opt-in console logger, **built in PP-034b**. |
 | U-14 | missing feature | There are no random numbers; the trial wrote a 10-line LCG. | **PP-036** (second game). Alternatively the guide recommends a small crate such as `fastrand`. |
 | U-15 | missing feature | There is no rectangle-overlap helper; the trial, like Breakout, checks boxes by hand. | **PP-036:** "collision helpers" is already on the P3.5 item 6 list. |
 | U-16 | observation | A fresh outside crate resolves newer patch versions than the engine's `Cargo.lock` (hecs 0.11.2, glam 0.33.12, zerocopy 0.8.62, cc 1.6.0, …). It built and ran, but CI only tests the committed lock file. | **PP-035** (release): add a latest-dependencies CI job. |
@@ -95,3 +95,21 @@ rectangle overlap (U-15), and section 12 shows a `Display`-printing `main` (U-11
 - **Starter template.** ADR-039: no template crate in the repository; the guide's section 1 and section 14 are the
   template. A trial template crate placed inside the repository failed `cargo check` ("believes it's in a
   workspace"), and a copied one needs its path edited anyway.
+
+## PP-034a: second API review (2026-10-09)
+
+ADR-040 reviewed every public item added since ADR-026 and fixed U-09, U-10 and U-11; U-12 and U-13 are decided and
+go to PP-034b. Checked in the trial crate `pie_catch`:
+
+- Its old `ScreenSpace::TOP` stopped compiling. This is the expected break; it is now `TOP_CENTER`.
+- Its `level.ron`, written before the rename with `screen_space: Top`, still loads with the title centred.
+- A missing `pie.png` now prints:
+
+  ```text
+  Error: failed to load asset `…/pie_catch/assets/textures/pie.png`
+
+  Caused by:
+      No such file or directory (os error 2)
+  ```
+
+- A save into a missing `scenes/` folder names the full resolved path.

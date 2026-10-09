@@ -3,6 +3,16 @@
 //! Third-party errors (winit, wgpu, image) are kept as boxed
 //! [`source`](std::error::Error::source)s, so their messages survive but their
 //! types are not part of PurplePie's public API.
+//!
+//! `Debug` prints the message and its chain of causes (ADR-040), so
+//! `fn main() -> purplepie::Result<()>` reports a failure readably:
+//!
+//! ```text
+//! Error: failed to load asset `/home/me/my_game/assets/textures/player.png`
+//!
+//! Caused by:
+//!     No such file or directory (os error 2)
+//! ```
 
 /// A boxed, thread-safe error. Used as the `source` of [`Error`] variants and
 /// accepted by [`Error::game`].
@@ -15,7 +25,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 ///
 /// Variants are added as stages introduce new failure domains, so the enum is
 /// `#[non_exhaustive]`: always keep a wildcard arm when matching.
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     /// [`EngineConfig`](crate::EngineConfig) contains an unusable value.
@@ -56,7 +66,8 @@ pub enum Error {
     /// not a supported format, or too large for the GPU. `source` says which.
     #[error("failed to load asset `{}`", .path.display())]
     Asset {
-        /// The path as the game passed it.
+        /// The file that was tried: the game's path resolved against the asset
+        /// root (or as given when no asset folder was found).
         path: std::path::PathBuf,
         /// The underlying I/O, decoding or size error.
         #[source]
@@ -68,7 +79,8 @@ pub enum Error {
     /// missing or read-only, or the data could not be encoded. `source` says which.
     #[error("failed to save `{}`", .path.display())]
     Save {
-        /// The path as the game passed it.
+        /// The file that was written: the game's path resolved against the
+        /// asset root (or as given when no asset folder was found).
         path: std::path::PathBuf,
         /// The underlying I/O or encoding error.
         #[source]
@@ -78,6 +90,24 @@ pub enum Error {
     /// An error returned by game code, e.g. from [`Game::init`](crate::Game::init).
     #[error("game error")]
     Game(#[source] BoxError),
+}
+
+/// The message, then each cause on its own line, like `anyhow` (ADR-040):
+/// this is what `fn main() -> purplepie::Result<()>` prints on failure. The
+/// variant and its fields are available by matching on the error.
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")?;
+        let mut source = std::error::Error::source(self);
+        if source.is_some() {
+            write!(f, "\n\nCaused by:")?;
+        }
+        while let Some(cause) = source {
+            write!(f, "\n    {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
+    }
 }
 
 impl Error {
@@ -108,6 +138,35 @@ mod tests {
         let err = Error::game("boom");
         let source = err.source().map(ToString::to_string);
         assert_eq!(source.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn debug_prints_the_message_and_every_cause() {
+        // What `fn main() -> purplepie::Result<()>` prints after "Error: ".
+        #[derive(Debug)]
+        struct Outer(std::io::Error);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("could not read the level")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "level.ron is missing");
+        let err = Error::game(Outer(io));
+        assert_eq!(
+            format!("{err:?}"),
+            "game error\n\nCaused by:\n    could not read the level\n    level.ron is missing"
+        );
+        let plain = Error::InvalidConfig("width must be greater than zero");
+        assert_eq!(
+            format!("{plain:?}"),
+            plain.to_string(),
+            "no causes: just the message"
+        );
     }
 
     #[test]

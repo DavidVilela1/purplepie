@@ -321,13 +321,18 @@ fn animation(a: AnimationFile) -> SpriteAnimation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum AnchorFile {
     TopLeft,
-    Top,
+    // The `alias`es read files written before ADR-040 renamed the edge anchors.
+    #[serde(alias = "Top")]
+    TopCenter,
     TopRight,
-    Left,
+    #[serde(alias = "Left")]
+    CenterLeft,
     Center,
-    Right,
+    #[serde(alias = "Right")]
+    CenterRight,
     BottomLeft,
-    Bottom,
+    #[serde(alias = "Bottom")]
+    BottomCenter,
     BottomRight,
 }
 
@@ -335,13 +340,13 @@ impl From<ScreenAnchor> for AnchorFile {
     fn from(a: ScreenAnchor) -> Self {
         match a {
             ScreenAnchor::TopLeft => Self::TopLeft,
-            ScreenAnchor::Top => Self::Top,
+            ScreenAnchor::TopCenter => Self::TopCenter,
             ScreenAnchor::TopRight => Self::TopRight,
-            ScreenAnchor::Left => Self::Left,
+            ScreenAnchor::CenterLeft => Self::CenterLeft,
             ScreenAnchor::Center => Self::Center,
-            ScreenAnchor::Right => Self::Right,
+            ScreenAnchor::CenterRight => Self::CenterRight,
             ScreenAnchor::BottomLeft => Self::BottomLeft,
-            ScreenAnchor::Bottom => Self::Bottom,
+            ScreenAnchor::BottomCenter => Self::BottomCenter,
             ScreenAnchor::BottomRight => Self::BottomRight,
         }
     }
@@ -351,13 +356,13 @@ impl From<AnchorFile> for ScreenAnchor {
     fn from(a: AnchorFile) -> Self {
         match a {
             AnchorFile::TopLeft => Self::TopLeft,
-            AnchorFile::Top => Self::Top,
+            AnchorFile::TopCenter => Self::TopCenter,
             AnchorFile::TopRight => Self::TopRight,
-            AnchorFile::Left => Self::Left,
+            AnchorFile::CenterLeft => Self::CenterLeft,
             AnchorFile::Center => Self::Center,
-            AnchorFile::Right => Self::Right,
+            AnchorFile::CenterRight => Self::CenterRight,
             AnchorFile::BottomLeft => Self::BottomLeft,
-            AnchorFile::Bottom => Self::Bottom,
+            AnchorFile::BottomCenter => Self::BottomCenter,
             AnchorFile::BottomRight => Self::BottomRight,
         }
     }
@@ -1143,6 +1148,37 @@ mod tests {
             TextureFilter::Nearest
         );
         assert!(!sprite_entity.has::<Layer>() && !sprite_entity.has::<Hidden>());
+    }
+
+    #[test]
+    fn edge_anchors_load_under_their_old_and_new_names() {
+        // ADR-040 renamed `Top`/`Left`/`Right`/`Bottom` to `TopCenter`/…; files
+        // written before keep loading, and saving writes the new names.
+        let quad = "quad: (size: (1.0, 1.0), color: (1.0, 1.0, 1.0, 1.0))";
+        let names = [
+            ("Top", "TopCenter", ScreenAnchor::TopCenter),
+            ("Left", "CenterLeft", ScreenAnchor::CenterLeft),
+            ("Right", "CenterRight", ScreenAnchor::CenterRight),
+            ("Bottom", "BottomCenter", ScreenAnchor::BottomCenter),
+        ];
+        for (old, new, anchor) in names {
+            for name in [old, new] {
+                let text = format!(
+                    "(version: 1, entities: [(transform: (), {quad}, screen_space: {name})])"
+                );
+                let scene = from_text(&text).expect("parse");
+                let (mut textures, mut fonts, mut world) =
+                    (Textures::default(), Fonts::default(), World::new());
+                let spawned = load(&scene, &mut textures, &mut fonts, &mut world).expect("load");
+                let e = world.entity(spawned[0]).expect("entity");
+                assert_eq!(
+                    e.get::<&ScreenSpace>().expect("screen space").anchor,
+                    anchor
+                );
+                let saved = to_text(&scene).expect("save");
+                assert!(saved.contains(&format!("screen_space: {new},")), "{saved}");
+            }
+        }
     }
 
     #[test]
