@@ -56,6 +56,7 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-16 | observation | A fresh outside crate resolves newer patch versions than the engine's `Cargo.lock` (hecs 0.11.2, glam 0.33.12, zerocopy 0.8.62, cc 1.6.0, …). It built and ran, but CI only tests the committed lock file. | **Addressed in PP-035a:** the new workflow `.github/workflows/latest-deps.yml` runs `cargo update` and then check and test, on every push and weekly. Run locally with the PP-035a updates (12 packages newer): 220 + 49 tests pass. |
 | U-17 | observation | `Cargo.toml` has no `repository` field, so the README cannot give a git URL. | **Fixed in PP-035b:** `repository` field set; README, guide and RELEASING give `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }` (the git form was built and run from GitHub). |
 | U-18 | observation | In a workspace, `cargo run -p purple-swarm` from the repository root runs with the root as the working directory, so the engine finds the engine's `assets/` and fails on the game's first texture (`failed to load asset …/PurplePie/assets/textures/floor.png`). Running from the game's folder works. The error is clear, but the cause isn't obvious. | **Documented** (ADR-042, README, the game's header). Possible engine follow-up: an asset-root fallback to the package's own folder for `cargo run` (revisit with ADR-042). |
+| U-19 | observation | `TextureId` has no public constructor (only `Context::load_texture*` makes one), so a game's unit test cannot build a `Sprite` without a GPU. Purple Swarm split its enemy logic so steering is tested on `Transform2D`/`Velocity`/`Enemy` only, and tinting lives in a separate function. | **Open, no change yet.** The split is reasonable design anyway. Revisit if a third game hits it; options: a documented placeholder id for tests, or `Default`. Adding either is additive (0.1.x-compatible). |
 
 **What worked without help:** the `Game` / `Context` / `EngineConfig` shape; sprites, quads, text and layers;
 `ScreenSpace` HUD text; keyboard input; `play_sound`; `save_scene` / `load_scene` with two registered components
@@ -137,3 +138,14 @@ The game lives in `games/purple-swarm` (ADR-042). Part 1 covers:
 - a HUD.
 
 It was written against the public API only and built with no warnings. The only new finding is U-18.
+
+## PP-036c2: Purple Swarm, part 2 (2026-10-09)
+
+Enemies, waves, collisions, hit points, score, orbs and sounds, still with the public API only. `math::Rng` and
+`math::circles_overlap` (PP-036b) covered every random choice and every collision; nothing was written by hand that
+the engine should own. New finding: U-19 (sprites need a loaded texture, so sprite code is hard to unit-test).
+
+Game-side notes for PP-036d (not engine findings):
+
+- The centred game-over banner overlaps the player sprite; it needs a backdrop.
+- The bot never loses a hit point in 60 s, while an idle player dies in about 10 s; a balance pass is due.

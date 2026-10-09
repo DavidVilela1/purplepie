@@ -30,8 +30,8 @@ policy in [RELEASING.md](RELEASING.md), `CHANGELOG.md`, CI jobs for the minimum 
 dependencies) and PP-035b made it: **version 0.1.0**, `repository` set, dependency by git tag. Items 1–5 of P3.5 are
 done. PP-036a specified the second game, Purple Swarm ([GAME2.md](GAME2.md)), and PP-036b
 added the two engine features it lacked: `math::Rng` and `math::Rect` (ADR-041). PP-036c1 started the game in
-`games/purple-swarm` (a workspace member built by CI, ADR-042): arena, player, camera, shooting. Next: **PP-036c2**,
-enemies and scoring. The long-term plan (in-game UI and an editor) is in
+`games/purple-swarm` (a workspace member built by CI, ADR-042): arena, player, camera, shooting. PP-036c2 made it
+playable: enemies, waves, collisions, score and sounds. Next: **PP-036d**, screens, best score and polish. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -112,6 +112,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-036c2: Purple Swarm playable: Drifters and Dashers in 20 s waves, circle collisions, 5 hit points with blinking invulnerability, score, health orbs, five sounds, game over; deterministic autoplay summary line.
 - PP-036c1: `games/purple-swarm` (ADR-042: example games as workspace members; CI `--workspace`): arena, player, camera, shooting, HUD, autoplay bot.
 - PP-036b: `math::Rng` (PCG32, seedable, deterministic) and `math::Rect` + `circles_overlap` (ADR-041); the guide's game uses them.
 - PP-036a: second game specified: Purple Swarm, a top-down arena shooter ([GAME2.md](GAME2.md)); engine gaps: random numbers and overlap tests (PP-036b); skeleton built from the v0.1.0 tag.
@@ -137,7 +138,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-036c2: Purple Swarm core, part 2** (enemies, waves, collisions, score). See [TASKS.md](TASKS.md#pp-036c2-purple-swarm-core-part-2--next).
+- **PP-036d: Purple Swarm screens, best score, polish** (title, pause, game over and restart, best-score file, balance). See [TASKS.md](TASKS.md#pp-036d-purple-swarm-screens-best-score-polish--next).
 
 ## Blocked
 
@@ -174,6 +175,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-09: PP-036c2 Purple Swarm, part 2.**
+  - The game is playable: Drifters and Dashers spawn on the arena edge in waves every 20 s; bullets, enemies, the player and health orbs collide with `circles_overlap`; 5 hit points with half a second of blinking invulnerability; score and wave in the HUD; game over stops the music and freezes the world.
+  - Autoplay is deterministic (`Rng::new(2026)`) and prints `swarm: autoplay finished: 60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5` (identical over three runs).
+  - New observation U-19 (no `TextureId` for headless tests). No engine code change.
 
 - **2026-10-09: PP-036c1 Purple Swarm, part 1 (ADR-042).**
   - Example games now live in `games/<name>/` as workspace members with their own `assets/`, using only the public API. The root package stays the only default member, so root commands are unchanged; CI uses `--workspace` in every job.
@@ -428,7 +434,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-036c1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-036c2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -437,6 +443,7 @@ after the final PP-036c1 change (CI additionally runs the latest stable clippy a
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 52 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Purple Swarm part 2 (PP-036c2) | ✅ `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 3 tests). Autoplay under Xvfb from `games/purple-swarm`: summary `60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5`, identical over three runs; frames at 30 s / 50 s show an enemy, bullets, `Score 160 Wave 2 0:30` / `Score 365 Wave 3 0:50` and `HP 5/5`. Idle manual run: `swarm: game over at 9.9 s; wave 1; score 0; …`, frame shows the banner and `HP 0/5`. ALSA capture (25 s): continuous music with louder effect transients |
 | Purple Swarm part 1 (PP-036c1) | ✅ `cargo fmt --all --check`, `cargo check/clippy --locked --workspace --all-targets --all-features` (+ `incompatible_msrv`), `cargo test --locked --workspace` pass. Under Xvfb from `games/purple-swarm`: asset root `…/games/purple-swarm/assets`; autoplay frame after ~8 s shows `Shots 62`, bullets, tiled floor, bottom wall with the camera clamped; manual run (mouse at top right, W + left button held 1 s) shows `Shots 8` and the camera moved. From the repository root: `Error: failed to load asset …/PurplePie/assets/textures/floor.png` (U-18). Both workflow files parse as YAML |
 | Rng + Rect (PP-036b) | ✅ PCG32 reference sequence for seed 42 matches (`a15c02b7 7b47f409 ba1d3330 83d2f293 bfa4784b cbed606e`); mutating the stream constant fails the test. Guide §14 game rebuilt as an outside crate (path to this tree): clippy clean; Xvfb: bricks placed by `Rng::new(7)`, moving right into one brick gives `Score 1` and a respawn. `clippy -W clippy::incompatible_msrv` clean |
 | Second game spec (PP-036a) | ✅ GitHub tag `v0.1.0` (`bf03aeb`) cloned: identical to this tree before PP-036a; a crate with `purplepie = { git = …, tag = "v0.1.0" }` builds and prints `purplepie 0.1.0`. Purple Swarm skeleton from that tag: 0 warnings, clippy clean; Xvfb frames before/after moving (player turns to the cursor, camera follows, HUD drawn); console logger shows asset root and GPU |
@@ -469,4 +476,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-036c1 done (Purple Swarm part 1; ADR-042). PP-036c2 (enemies, waves, score) is next.
+2026-10-09. PP-036c2 done (Purple Swarm part 2: playable). PP-036d (screens, best score, polish) is next.

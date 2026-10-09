@@ -188,7 +188,7 @@ PurplePie/
 ├── src/lib.rs        engine library (modules arrive stage by stage)
 ├── src/main.rs       `sandbox` binary: a game using only the public API
 ├── examples/         breakout.rs: a complete game on the public API; scene.rs: scene files
-├── games/            example games as workspace members with their own assets (ADR-042): purple-swarm/ (in progress, docs/GAME2.md)
+├── games/            example games as workspace members with their own assets (ADR-042): purple-swarm/ (playable; screens in progress, docs/GAME2.md)
 ├── assets/           textures/ (sandbox_quadrants.png, sandbox_sheet.png, breakout/), fonts/ (Poppins-Regular.ttf + OFL.txt), sounds/ (blip, hit, lose, loop .wav; loop.ogg), scenes/ (demo.ron), shaders/
 ├── .github/workflows/ CI (fmt, clippy, check, test)
 └── docs/

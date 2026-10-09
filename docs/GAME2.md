@@ -73,7 +73,7 @@ screen-space text and the console logger, from the published v0.1.0 tag.
 2. **PP-036c:** the game's core. Split in two:
    - **PP-036c1 (done):** the location decision (ADR-042: `games/purple-swarm/`, a workspace member built by CI),
      plus the arena, player, camera, shooting and HUD;
-   - **PP-036c2:** enemies, waves, collisions, hit points, score and sounds.
+   - **PP-036c2 (done):** enemies, waves, collisions, hit points, score, orbs and sounds (results below).
 
    The location options that were considered:
    - **Recommendation:** in the repository as `games/purple-swarm/`, a workspace member with its own `assets/` and
@@ -82,8 +82,8 @@ screen-space text and the console logger, from the published v0.1.0 tag.
    - **Alternative:** a separate repository.
 
    This changes the workspace layout and CI, so it gets an ADR in that task.
-3. **PP-036d:** screens (title, pause, game over, restart via `World::clear`), best-score file, polish, and an
-   autoplay mode for automated checks (like Breakout's). Its findings go into `docs/USABILITY.md`.
+3. **PP-036d:** screens (title, pause, game over, restart via `World::clear`), best-score file and polish (banner
+   backdrop, low-health colour, a balance pass). Its findings go into `docs/USABILITY.md`.
 
 ## Skeleton (PP-036a)
 
@@ -104,3 +104,26 @@ About 80 lines:
 It built with no warnings, and clippy was clean. Under Xvfb, the first frame showed the arena, the markers, the player
 and the title. After one second of W+D with the mouse at the top right, the player had turned toward the cursor and
 the grid had moved with the camera. The console logger reported the asset root and the GPU.
+
+## Core gameplay (PP-036c2)
+
+The game code is about 830 lines in three files: `main.rs` (the game loop and rules), `enemy.rs` (enemy kinds,
+waves, steering) and `level.rs` (arena, HUD, camera, spawn points).
+
+- **Waves:** a new wave every 20 s. Enemies spawn every 1.6 s in wave 1, 0.15 s faster per wave (never faster than
+  0.25 s), up to 120 alive. Dashers start in wave 2 (8 % more per wave, at most 40 %). Drifters speed up by 6 units/s
+  per wave.
+- **Collisions:** all three pairs (bullet ↔ enemy, enemy ↔ player, player ↔ orb) use `math::circles_overlap`; enemy
+  radii are 40 % of the sprite size. `Rect` is used for the arena (stray bullets, enemies kept inside, spawn edge).
+- **Feedback:** a hit enemy is drawn half transparent for 0.1 s; the player blinks with `Hidden` while invulnerable;
+  separate sounds for a shot, a wounding hit, an enemy death (`death.wav`, generated), a player hit and game over;
+  the music stops on game over.
+- **Game over** freezes the world and shows a banner. Screens and restart are PP-036d.
+- **Autoplay** (`PURPLE_SWARM_AUTOPLAY=1`) uses `Rng::new(2026)`: the bot circles the arena centre and shoots the
+  nearest enemy within 420 units. After 3600 fixed steps it prints
+  `swarm: autoplay finished: 60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5` and exits. The line was
+  identical over three runs.
+
+What the engine made easy: `Rng` and `circles_overlap` were exactly what the rules needed; `Hidden` made blinking a
+two-line insert/remove; despawning after collecting (guide §4) worked for bullets, enemies and orbs; debug builds
+stayed smooth under Xvfb with dozens of entities. One new finding: U-19 (testing code that creates sprites).
