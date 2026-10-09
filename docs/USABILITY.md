@@ -44,7 +44,7 @@ raises the score, and three misses end the round; Enter restarts and Escape quit
 | U-04 | doc fix | Scene components need `serde` (with `derive`) in the game's own `Cargo.toml`. The `register_scene_component` docs said so, but the README did not. `save_scene` also needs its folder to exist; the API docs said so, but the README did not. | **Fixed:** README dependency snippet and Scenes bullet. |
 | U-05 | doc fix | hecs 0.11 queries yield only the components. To get the entity (for example to despawn it) `Entity` goes into the query, and nothing in the `ecs` docs showed that. | **Fixed:** new `ecs` module doctest covering `query::<(Entity, …)>()`, collecting before despawning, and `query_mut`. |
 | U-06 | doc fix | `cargo doc` documents all of the roughly 140 dependencies, which took 6 minutes here. | **Fixed:** the README gives `cargo doc -p purplepie --no-deps --open` (1 min from cold). |
-| U-07 | doc fix | The crate page pointed only to repository-internal docs. Module pages are written for engine developers: they describe crate-private parts (mixer, sound store) and cite ADR numbers. Only `ecs` and `ui` have examples; `audio`, `input`, `math` and `render` have none. | **Partly fixed:** the crate page now explains the game-crate layout and points to `Context` and `ecs`. The guide (`docs/GUIDE.md`, PP-032a) now covers every feature with compiled examples. The module-page rewrite goes to **PP-032b**. |
+| U-07 | doc fix | The crate page pointed only to repository-internal docs. Module pages are written for engine developers: they describe crate-private parts (mixer, sound store) and cite ADR numbers. Only `ecs` and `ui` have examples; `audio`, `input`, `math` and `render` have none. | **Fixed:** the crate page now explains the game-crate layout and points to `Context` and `ecs`. The guide (`docs/GUIDE.md`, PP-032a) covers every feature with compiled examples. In PP-032b every public module page (`audio`, `ecs`, `input`, `math`, `render`, `ui`) gained a one-line summary for game authors, a paragraph with links to the guide, and a compiled example, with engine internals moved under "Engine notes". |
 | U-08 | doc fix | Coming from winit, the first guess for letter keys is `KeyCode::KeyA`; PurplePie names them `KeyCode::A`. The compiler error does not suggest the right name. | **Fixed in PP-032a:** GUIDE.md section 8 lists the key names. |
 | U-09 | API issue | `ScreenSpace::TOP` / `BOTTOM` / `LEFT` / `RIGHT` versus `TextAnchor::TOP_CENTER` / `BOTTOM_CENTER`. The natural guess `ScreenSpace::TOP_CENTER` does not exist, and the compiler suggests `CENTER`, which is wrong. | **PP-034** (API review). |
 | U-10 | API issue | `Error::Save` shows the path as given (`"scenes/level.ron"`), while `Error::Asset` shows the resolved full path. When the folder is missing, the user cannot see where the save was attempted. | **PP-034.** |
@@ -79,3 +79,19 @@ Results:
 
 No new findings. The guide names its own workarounds: the game writes its own random numbers (U-14) and its own
 rectangle overlap (U-15), and section 12 shows a `Display`-printing `main` (U-11).
+
+## PP-032b: module pages and starter template (2026-10-09)
+
+- **Module pages.** The crate page's module list now reads as a map for game authors:
+  - audio: "Sound effects and music";
+  - ecs: "Entities and components";
+  - input: "Keyboard and mouse";
+  - math: "Vectors and transforms";
+  - render: "What gets drawn";
+  - ui: "Clickable buttons".
+
+  Each page opens with what the module is for, which `Context` methods to use and the matching guide section,
+  followed by a compiled example. Doctests went from 43 to 47.
+- **Starter template.** ADR-039: no template crate in the repository; the guide's section 1 and section 14 are the
+  template. A trial template crate placed inside the repository failed `cargo check` ("believes it's in a
+  workspace"), and a copied one needs its path edited anyway.

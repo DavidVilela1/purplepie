@@ -1,11 +1,34 @@
-//! Keyboard and mouse input state (ADR-024).
+//! Keyboard and mouse: which keys are held, which were just pressed, where
+//! the cursor is.
+//!
+//! Read it through [`Context::input`](crate::Context::input) in `fixed_update` or
+//! `update`. Keys are named by their position on a US keyboard: `KeyCode::A` …
+//! `KeyCode::Z`, `Digit0` … `Digit9`, `ArrowLeft`, `Space`, `Enter`, `ShiftLeft`,
+//! `F1` and so on ([`KeyCode::ALL`] lists every one). For the cursor in world
+//! coordinates use [`Context::cursor_world`](crate::Context::cursor_world). Guide:
+//! section 8 (`docs/GUIDE.md`).
+//!
+//! ```
+//! use purplepie::Context;
+//! use purplepie::input::{KeyCode, MouseButton};
+//!
+//! /// Called from `fixed_update`.
+//! fn controls(ctx: &mut Context<'_>) -> (f32, bool, bool) {
+//!     let input = ctx.input();
+//!     let run = input.axis(KeyCode::ArrowLeft, KeyCode::ArrowRight); // -1, 0 or 1
+//!     let jump = input.just_pressed(KeyCode::Space); // once per press
+//!     let fire = input.pressed(KeyCode::ControlLeft) || input.mouse_pressed(MouseButton::Left);
+//!     (run, jump, fire)
+//! }
+//! ```
+//!
+//! # Engine notes
 //!
 //! [`Input`] answers three questions per [`KeyCode`]: is it held
 //! ([`pressed`](Input::pressed)), did it go down ([`just_pressed`](Input::just_pressed)),
 //! did it go up ([`just_released`](Input::just_released)). The engine feeds it
 //! from window events (the winit translation lives in `app`, so this module is
-//! platform-free) and lends it to the game through
-//! [`Context::input`](crate::Context::input).
+//! platform-free; ADR-024).
 //!
 //! **Edges and the fixed timestep.** A frame runs 0, 1 or several
 //! `fixed_update`s, then one `update`. Every key edge is reported:

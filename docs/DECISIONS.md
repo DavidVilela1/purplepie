@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
 | ADR-038 | Workspace layout: no split yet; the root package is also the Cargo workspace root (`[workspace] members = []`); future crates (debug overlay, editor) go under `crates/`, the engine and `assets/` stay at the root | Accepted | Yes (PP-030) |
 | ADR-037 | Asset hot reload: opt-in `EngineConfig::hot_reload`; the runner polls file modification time + size every 0.5 s (no file-watcher dependency); changed textures, fonts and sounds are replaced under the same id (texture revision → GPU re-upload; font revision → glyph atlas cleared; sounds: new `Arc`, running voices keep the old); broken or oversized files keep the old asset | Accepted | Yes (PP-028 textures, PP-029 fonts + sounds) |
 | ADR-036 | Game components in scenes: `Context::register_scene_component::<T>(name)` with `serde` bounds (serde enters the public API through this one bound); values stored as plain RON under stable names; unknown names are load errors; no entity references | Accepted | Yes (PP-027) |
@@ -2079,6 +2080,49 @@ move that has no beneficiary yet.
 ## Revisit Conditions
 A second engine-level crate, publishing multiple crates, or the first `crates/` member (then check that CI runs with
 `--workspace`).
+
+---
+
+# ADR-039: Starter template: the guide is the template, no template crate yet
+
+## Status
+Accepted (2026-10-09, PP-032b). Builds on ADR-038 (workspace layout).
+
+## Context
+P3.5 item 2 asked whether a starter template (the shape of the PP-031 trial game) should ship with the repository, so a
+newcomer can copy a ready game crate. Two facts shape the answer:
+- A template crate inside the repository sits inside the PurplePie workspace. Tried in a scratch copy
+  (`templates/starter/` with `purplepie = { path = "../.." }`), `cargo check` there fails: "current package believes
+  it's in a workspace when it's not". It would have to be a workspace member (then CI builds it and its path dependency
+  only works in place) or listed in `workspace.exclude` / given its own `[workspace]` table, and then nothing builds it.
+  In every case the copied template's `path` must be edited, because it depends on where the user puts it.
+- PP-032a made `docs/GUIDE.md` the newcomer path. Section 1 gives the `Cargo.toml` lines and the asset folders,
+  section 14 a complete game, and `cargo test` compiles every block. A fresh crate built from it was checked
+  under Xvfb.
+
+## Decision
+- **No template crate in the repository for now.** The guide's section 1 (setup) and section 14 (a complete game)
+  are the template: copy them into a new crate.
+- The guide stays compiled by `cargo test` (PP-032a), so the template cannot fall behind the API. The DEVELOPMENT §8
+  "outside-crate check" re-runs it as an outside crate whenever section 14 changes.
+
+## Alternatives Considered
+- **`templates/starter/` as a workspace member:** built by CI, but only correct in place; users would copy it and fix
+  the path anyway.
+- **`templates/starter/` excluded from the workspace:** builds nowhere automatically, so it can rot unseen.
+- **A `cargo generate` template repository:** the usual answer once the dependency line is stable (git URL or
+  crates.io). That needs the repository URL (PP-035, U-17) and a release.
+
+## Rationale
+One maintained source for newcomers instead of two, and the source that exists is already tested.
+
+## Consequences
+- Newcomers copy two snippets instead of a folder; the guide says exactly which.
+- No new files in the workspace; CI and commands unchanged.
+
+## Revisit Conditions
+At release 0.1.0 (PP-035), when a git or crates.io dependency line exists: then a separate template repository (for
+`cargo generate`) or a `templates/` folder with `workspace.exclude` plus a CI job that builds it becomes worthwhile.
 
 ---
 

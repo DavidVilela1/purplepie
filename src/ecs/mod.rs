@@ -1,12 +1,13 @@
-//! Entity-component-system support (ADR-006), built on `hecs`.
+//! Entities and components: the game's world, queries, and the built-in
+//! movement system.
 //!
-//! The engine owns one [`World`] and lends it to the game through
-//! [`Context::world_mut`](crate::Context::world_mut). Systems are plain
-//! functions that the game calls explicitly, usually from `fixed_update`.
-//! The engine never runs gameplay systems on its own.
-//!
-//! This module depends only on `hecs` and [`crate::math`]. It must never
-//! depend on windowing or rendering code (ADR-003).
+//! The engine owns one [`World`] (from [`hecs`]) and lends it to the game
+//! through [`Context::world`](crate::Context::world) and
+//! [`Context::world_mut`](crate::Context::world_mut). An entity is a bundle of
+//! components; any `'static + Send + Sync` type of the game's can be one. Systems
+//! are plain functions that the game calls explicitly, usually from
+//! `fixed_update`; the engine never runs gameplay systems on its own. Guide:
+//! section 4 (`docs/GUIDE.md`).
 //!
 //! ```
 //! use purplepie::ecs::{self, Velocity, World};
@@ -53,6 +54,11 @@
 //! }
 //! assert_eq!(world.len(), 1);
 //! ```
+//!
+//! # Engine notes
+//!
+//! Built on `hecs` (ADR-006). This module depends only on `hecs` and
+//! [`crate::math`]; it must never depend on windowing or rendering code (ADR-003).
 
 pub use hecs::{Entity, World};
 

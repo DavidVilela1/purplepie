@@ -480,7 +480,7 @@ with the font.
 
 A complete little game: move the ball with the arrows or A/D, touch the bricks to score, and click Restart (or
 press R) to start over; an animated sprite plays in the corner. It uses only files copied in section 1. Paste it into
-`src/main.rs` and `cargo run`.
+`src/main.rs` and `cargo run`. Together with section 1, this is the starter template: grow your own game from it.
 
 ```rust no_run
 use purplepie::audio::SoundId;

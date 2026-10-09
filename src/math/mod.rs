@@ -1,7 +1,29 @@
-//! 2D math types (ADR-007).
+//! Vectors and transforms: [`Vec2`] for positions, sizes and velocities, and
+//! the [`Transform2D`] component that places an entity.
 //!
-//! Built on `glam` (f32 types only). Independent of windowing, ECS and GPU
-//! code. Conversion to GPU matrices happens in the renderer (Stage 4+).
+//! Coordinates: +X right, **+Y up**, the origin at the window centre, one unit is
+//! one logical pixel at zoom 1. A `Transform2D` is the entity's centre, its
+//! rotation in radians (counter-clockwise) and its scale (negative mirrors).
+//! `Vec2` is [`glam`](https://docs.rs/glam)'s, with all its methods
+//! (`length`, `normalize_or_zero`, `clamp`, `abs`, `lerp` …). Guide: section 3
+//! (`docs/GUIDE.md`).
+//!
+//! ```
+//! use purplepie::math::{Transform2D, Vec2};
+//!
+//! let mut ship = Transform2D::from_position(Vec2::new(0.0, -200.0))
+//!     .with_rotation(std::f32::consts::FRAC_PI_2) // a quarter turn counter-clockwise
+//!     .with_scale(Vec2::splat(2.0));
+//! let velocity = Vec2::new(30.0, 40.0);
+//! ship.position += velocity * 0.5; // half a second later
+//! assert_eq!(ship.position, Vec2::new(15.0, -180.0));
+//! assert_eq!(velocity.length(), 50.0);
+//! ```
+//!
+//! # Engine notes
+//!
+//! Built on `glam` (f32 types only; ADR-007). Independent of windowing, ECS and
+//! GPU code; conversion to GPU matrices ([`Transform2D::to_mat4`]) is used by the renderer.
 
 pub use glam::{Mat4, Vec2};
 

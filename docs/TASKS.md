@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-032b: Module docs for game authors + starter-template decision (phase P3.5, item 2, part 2)** · P1 · TODO ← **next task**
+- [ ] **PP-033: Windows/macOS verification checklist (phase P3.5, item 3; Claude writes it, the owner runs it)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -58,10 +58,10 @@ _None._
 - [x] **PP-030: Workspace layout decision (ADR-038; phase P3 complete)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
+- [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
 
 ## Future
 
-- [ ] **PP-033: Windows/macOS verification checklist (phase P3.5, item 3; owner)** · P2 · TODO
 - [ ] **PP-034: Second public API review (phase P3.5, item 4)** · P2 · TODO
 - [ ] **PP-035: Release 0.1.0 (phase P3.5, item 5)** · P2 · TODO
 - [ ] **PP-036: A second game as an outside crate (phase P3.5, item 6)** · P2 · TODO
@@ -389,14 +389,12 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Scope (as built) | ADR-038. A scratch trial of moving the engine to `crates/purplepie` measured the cost (library stops compiling: 3 `include_bytes!`; 25 `CARGO_MANIFEST_DIR` asset paths in 7 files; 8 tests still failing after a naive rewrite; changed run commands). Decision: no move; the root `Cargo.toml` gains `[workspace] members = []` (engine stays the only, default member; future crates under `crates/`). No source, API, dependency, `Cargo.lock` or CI change. |
 | Result | ✅ 1. Gates unchanged with and without `--workspace`; `Cargo.lock` byte-identical; `cargo metadata`: workspace root = repository root, single default member `purplepie`. ✅ 2. A copy nested inside a folder with its own `[workspace]` failed to build before ("believes it's in a workspace when it's not") and builds after. ✅ 3. Regressions: GPU tests 12/12; sandbox model 0 mismatches and asset root found at `assets/`; scene example identical to PP-027's frame; Breakout autoplay unchanged, lose screen identical. |
 
-### PP-032b: Module docs for game authors + starter-template decision ← NEXT
+### PP-032b: Module docs for game authors + starter-template decision
 | Field | Value |
 |---|---|
-| Stage | Post-portfolio phase P3.5 (Usability and first release), item 2, part 2 · Priority P1 · TODO |
-| Dependencies | PP-032a (DONE; the guide exists and is compiled) |
-| Why now | Second half of the original PP-032 (split 2026-10-08 because guide + module docs + template did not fit one session). The guide now teaches every feature, but `cargo doc` pages still speak to engine developers: `audio`, `input`, `math` and `render` have no example and describe crate-private parts (U-07). |
-| Scope | Rewrite the module-level docs of `audio`, `input`, `math` and `render` for game authors: one paragraph on what the module is for, a short example (doctest), links to the guide section; move engine-internal notes (private types, ADR trail) below that, to item docs, or to ARCHITECTURE. Decide (and record) whether a starter template ships with the repository; if yes it must build outside the package (ADR-038). No engine API changes. |
-| Acceptance criteria | Each public module page (`audio`, `ecs`, `input`, `math`, `render`, `ui`) starts with a game-author paragraph and a compiled example; `cargo doc --no-deps` with `-D warnings` clean; U-07 marked fixed in USABILITY.md; template decision recorded; CI green. |
+| Stage | Post-portfolio phase P3.5, item 2, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux) |
+| Dependencies | PP-032a (DONE) |
+| Acceptance criteria | ✅ Every public module page (`audio`, `ecs`, `input`, `math`, `render`, `ui`) starts with a one-line summary for game authors, a paragraph naming the `Context` methods and guide section, and a compiled example (4 new doctests: 43 → 47); engine internals and the ADR trail moved under "Engine notes". ✅ `cargo doc --no-deps` with `-D warnings` clean; rendered crate page checked. ✅ U-07 marked fixed. ✅ Template decision recorded as ADR-039 (no template crate; the guide is the template), backed by a scratch trial: a template crate inside the repository fails `cargo check` ("believes it's in a workspace"). No API change. |
 
 ### PP-032a: Newcomer guide, compiled by `cargo test`
 | Field | Value |
@@ -412,12 +410,14 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Dependencies | PP-030 (DONE; phase P3 complete) |
 | Acceptance criteria | ✅ A trial crate `pie_catch` outside the package (path dependency, own `assets/`) built from the README and API docs alone: sprites, text, keyboard, a sound, a scene file with two registered game components; ran under Xvfb (screenshots checked: play, game over, restart; sound captured), and its release build ran shipped with `assets/` from another working directory. ✅ `docs/USABILITY.md` lists 17 findings (U-01…U-17) with class and owner task. ✅ README ("A new game crate", font copying, serde, scene folder, `cargo doc --no-deps`), crate-page and `ecs` docs fixed (new doctest); re-checked by a fresh `cargo new` crate following the README word for word. ✅ Follow-ups recorded (PP-032…PP-036). No engine API change. |
 
-### PP-033: Windows/macOS verification checklist (owner)
+### PP-033: Windows/macOS verification checklist ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 3 · Priority P2 · TODO · owner-run |
-| Dependencies | PP-032b (the guide's steps are part of the checklist) |
-| Scope | A short checklist the owner runs on Windows (and macOS if available): sandbox, Breakout, scene example, sound, hot reload, a fresh crate from the guide; results recorded in PROJECT_STATUS. Closes the "Stages 5–10 not seen on Windows" limitation. |
+| Stage | Phase P3.5, item 3 · Priority P1 · TODO · Claude writes the checklist, the owner runs it |
+| Dependencies | PP-032b (DONE; the guide's steps are part of the checklist) |
+| Why now | Stages 5–10 and every post-portfolio feature have only been seen on Linux (Xvfb + software GPU); Windows has confirmed only the purple window, `cargo test`, Escape and the close button. A release (PP-035) must not ship unseen on its owner's own platform. |
+| Scope | A short, numbered checklist (new `docs/CHECKLIST.md`, linked from DEVELOPMENT) the owner runs in PowerShell on Windows (and macOS if available): sandbox (sprites, text, HUD button, wheel zoom, music key, hot reload by editing a PNG), Breakout (play + autoplay), scene example, a fresh crate from GUIDE.md, release build shipped with `assets/`. Each step states the exact command and what to see, with a place to record pass/fail; results go into PROJECT_STATUS as owner-reported. |
+| Acceptance criteria | CHECKLIST.md exists, every command in it was run on Linux by Claude (Linux equivalents noted), the owner's run is recorded (or the task stays open waiting for it, with PP-034 allowed to proceed). |
 
 ### PP-034: Second public API review
 | Field | Value |

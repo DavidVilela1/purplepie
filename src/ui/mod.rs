@@ -1,4 +1,4 @@
-//! In-game UI building blocks (ADR-031).
+//! Clickable buttons for menus and HUDs.
 //!
 //! UI elements are ordinary entities in screen space
 //! ([`ScreenSpace`]). This module adds the
@@ -22,6 +22,9 @@
 //!     }
 //! }
 //! ```
+//!
+//! Guide: section 9 (`docs/GUIDE.md`), with a complete button. Engine notes:
+//! ADR-031 (topmost visible button wins; click = press and release over it).
 
 use crate::ecs::hecs::Without;
 use crate::ecs::{Entity, World};

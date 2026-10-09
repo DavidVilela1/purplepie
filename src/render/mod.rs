@@ -1,20 +1,58 @@
-//! Rendering (ADR-005, ADR-009).
+//! What gets drawn: rectangles, images and text, their order, the camera,
+//! colours and textures.
 //!
-//! Public: plain-data types that games use (`Color`, `Camera2D`, the `Quad`,
-//! `Sprite`, `Text`, `Layer` and `Hidden` components, `TextureId`, `FontId`,
-//! `TextAnchor`, `TextMetrics`, `TextureRegion`, `SpriteGrid`, `SpriteAnimation`,
-//! `TextureFilter`, `TextureOptions`) and the
-//! `advance_animations` system.
-//! Crate-private: the `Renderer`, which owns every `wgpu` object, the CPU-side
-//! texture and font stores, and the glyph atlas. Game code never touches the
-//! GPU. The engine draws whatever the game state describes.
+//! Drawing is declarative: every entity with a
+//! [`Transform2D`](crate::math::Transform2D) and a [`Quad`] (solid rectangle),
+//! [`Sprite`] (image) or [`Text`] is drawn each frame, until it is despawned or
+//! given [`Hidden`]. [`Layer`] orders drawing (higher on top), [`ScreenSpace`] pins
+//! an entity to the window for HUDs, and the [`Camera2D`]
+//! ([`Context::camera_mut`](crate::Context::camera_mut)) moves and zooms the
+//! world. Textures come from [`Context::load_texture`](crate::Context::load_texture)
+//! (PNG), fonts from [`Context::load_font`](crate::Context::load_font). Sprite
+//! sheets: [`SpriteGrid`] and [`SpriteAnimation`] with [`advance_animations`].
+//! Guide: sections 5–7 and 9 (`docs/GUIDE.md`).
+//!
+//! ```
+//! use purplepie::Context;
+//! use purplepie::math::{Transform2D, Vec2};
+//! use purplepie::render::{Color, Layer, Quad, ScreenSpace, Sprite, Text, TextAnchor};
+//!
+//! fn spawn_title_screen(ctx: &mut Context<'_>) -> purplepie::Result<()> {
+//!     let logo = ctx.load_texture("textures/logo.png")?;
+//!     let font = ctx.load_font("fonts/Poppins-Regular.ttf")?;
+//!     let world = ctx.world_mut();
+//!     world.spawn((
+//!         Transform2D::default(),
+//!         Quad::new(Vec2::new(640.0, 360.0), Color::hex(0x1D3557)),
+//!         Layer(-1), // behind the logo
+//!     ));
+//!     world.spawn((
+//!         Transform2D::from_position(Vec2::new(0.0, 60.0)),
+//!         Sprite::new(logo, Vec2::new(256.0, 128.0)), // drawn at this size
+//!     ));
+//!     world.spawn((
+//!         Transform2D::from_position(Vec2::new(0.0, 40.0)), // 40 px above the bottom edge
+//!         Text::new("Press Space", font, 24.0).with_anchor(TextAnchor::BOTTOM_CENTER),
+//!         ScreenSpace::BOTTOM, // follows the window, not the camera
+//!     ));
+//!     ctx.camera_mut().zoom = 1.5;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Engine notes
+//!
+//! Public: plain-data types (ADR-005, ADR-009). Crate-private: the `Renderer`,
+//! which owns every `wgpu` object, the CPU-side texture and font stores, and the
+//! glyph atlas. Game code never touches the GPU; the engine draws whatever the game
+//! state describes.
 //!
 //! Each frame the window is cleared to
 //! [`EngineConfig::clear_color`](crate::EngineConfig::clear_color), then every
-//! entity with [`Transform2D`](crate::math::Transform2D) + [`Quad`], [`Sprite`]
-//! or [`Text`] is drawn, lowest [`Layer`] first; within a layer, quads, then
-//! sprites, then text. Coordinates: ADR-018. Camera: ADR-022. Textures:
-//! ADR-020, sampling per texture: ADR-034. Draw order: ADR-021. Text: ADR-027.
+//! drawable is drawn, lowest [`Layer`] first; within a layer, quads, then
+//! sprites, then text; screen-space entities after all world entities.
+//! Coordinates: ADR-018. Camera: ADR-022. Textures: ADR-020, sampling per
+//! texture: ADR-034. Draw order: ADR-021. Text: ADR-027. Screen space: ADR-029.
 
 mod animation;
 mod atlas;
