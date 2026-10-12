@@ -17,7 +17,8 @@ break compatibility and a patch version (0.x.**y**) may not.
   overlap tests (ADR-041).
 - Optional `debug-overlay` Cargo feature with `EngineConfig::with_debug_overlay(true)`: an egui window drawn over
   the game, shown and hidden with F12, which never reaches the game while the overlay is on (ADR-043). The feature
-  needs Rust 1.95 and adds egui 0.36; without it nothing changes. Part 1: a placeholder window; statistics and an
+  needs Rust 1.95 and adds egui 0.36; without it nothing changes. Clicks and wheel turns on the overlay's window stay
+  with it; the game still gets every key and every other click. Part 1: a placeholder window; statistics and an
   entity inspector follow.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,

@@ -222,7 +222,9 @@ $env:PURPLEPIE_LOG="info"; cargo run --features debug-overlay; Remove-Item Env:P
 ```
 
 **Expect:** `test result: ok. 13 passed`. The sandbox shows a small dark window titled "PurplePie" at the top left
-("PurplePie 0.1.0", "F12 hides this overlay"). F12 hides it and shows it again; everything else works as in step 3.
+("PurplePie 0.1.0", "F12 hides this overlay"). Click the small ▼ arrow in its title bar: the window collapses to its
+title bar and no square is stamped under it; a click elsewhere still stamps one. Turning the wheel over the window
+does not zoom; elsewhere it does. F12 hides it and shows it again; everything else works as in step 3.
 The console prints `debug overlay on (F12 toggles); drawing through …` with the format egui draws through (on most
 GPUs the surface format without `Srgb`). Report that format, and whether the window is dark grey with light text.
 

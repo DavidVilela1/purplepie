@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer, wheel, keys to egui while the overlay is visible; events egui consumes do not reach `Input`)** · P1 · TODO ← **next task**
+- [ ] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps per frame, entities, draw batches and instances, camera, cursor in screen and world)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer events the overlay consumes stay with it; releases of held buttons and all keys reach the game); egui scale fix** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037b1: Debug overlay, part 1a: `debug-overlay` feature (egui + egui-wgpu 0.36), `EngineConfig::with_debug_overlay`, F12 toggle, overlay pass through a non-sRGB view, placeholder window; CI `msrv` without the feature** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037a: Debug overlay design: ADR-043 (egui inside the engine behind an off-by-default `debug-overlay` feature), measured in a throwaway spike; P4 split into PP-037b–d** · DONE (2026-10-12; spike verified on Linux)
 - [x] **PP-036d2: Purple Swarm best-score file, difficulty curve (bot benchmark), `survive` autoplay mode, findings (phase P3.5, item 6 and the phase complete)** · DONE (2026-10-12; verified on Linux)
@@ -76,7 +77,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps per frame, entities, draw batches and instances, camera, cursor in world)** · P2 · TODO
 - [ ] **PP-037d: Debug overlay, part 3: read-only entity inspector (entity list, engine components, registered game components as RON)** · P2 · TODO
 - [ ] **P5 Scene editor** · P3 · TODO (one coarse task until P4 is done)
 
@@ -464,13 +464,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037b2: Debug overlay, part 1b: input routing ← NEXT
+### PP-037c: Debug overlay, part 2: stats window ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 2b · Priority P1 · TODO |
+| Stage | Phase P4, item 3 · Priority P1 · TODO |
+| Dependencies | PP-037b2 (DONE) |
+| Scope | Replace the placeholder with a "PurplePie" stats window: frame time (last and smoothed) and FPS, fixed steps run in the last frame and the fixed step length, entity count, draw batches and instances of the last frame, camera position and zoom, viewport size and DPI scale, cursor in screen and world coordinates. A crate-private `DebugStats` snapshot is filled by the runner (time, input, camera, world) and the renderer (draw list counts) and handed to `OverlayUi::run`; no egui type outside `debug`. Values are formatted by plain functions (unit-tested without egui). Keep it read-only and the window collapsible; consider where it sits (it covers the top-left corner, where games often put HUDs). |
+| Acceptance criteria | Unit tests for the formatting and for what the runner puts into `DebugStats` (e.g. fixed steps per frame from `Time`). Xvfb: sandbox frame with the window showing plausible numbers (entity count equal to the world's, zoom changing after a wheel turn, cursor matching a known position). Without the feature: frames and tests unchanged. |
+
+### PP-037b2: Debug overlay, part 1b: input routing
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 2b · Priority P1 · **DONE** (2026-10-12; verified on Linux) |
 | Dependencies | PP-037b1 (DONE) |
 | Scope | Add `egui-winit` 0.36 (`default-features = false`, `x11` + `wayland`; recorded in TECH_STACK, `Cargo.lock` delta measured). While the overlay is visible, the runner gives each window event to egui-winit's `State` first (cursor, buttons, wheel, keys, text, focus, scale); events egui consumes (pointer over an overlay window, a focused overlay field) do not reach `Input`, everything else does, unchanged. Hidden overlay: no routing at all. The overlay uses the collected `RawInput` instead of the hand-built one; the cursor icon egui asks for is applied. Decide and test the edge cases: a press that started on the game and is released over the overlay (the game must still see the release), focus loss, and F12 (still the engine's). |
-| Acceptance criteria | Unit tests for the routing decision (consumed / not consumed, release always delivered). Xvfb: a click on the overlay's collapse arrow collapses it and the sandbox does not stamp a square there; a click elsewhere stamps as before; the wheel over the overlay does not zoom the camera. Without the feature or with the overlay off: frames and input unchanged. |
+| Acceptance criteria | ✅ `egui-winit` 0.36.2 (`x11`, `wayland`): `Cargo.lock` +2, +1 crate per platform with the feature; TECH_STACK. ✅ `debug::reaches_game` + `Routed`: 2 unit tests (consumed pointer events withheld; a held button's release and keys always delivered). Keys deliberately always reach the game (egui claims Tab and keeps focus after a click; ADR-043 note). ✅ Scale: PP-037b1's `set_pixels_per_point` would double the scale with egui-winit's native scale; removed, and `OverlayUi` (layout without GPU) has a unit test at 2× that fails with the old call put back. ✅ Xvfb, sandbox with the feature: click on the overlay body and on the collapse arrow → no stamp, window collapsed; wheel over the overlay → no `wheel` line in the debug log, over the game → delivered (zoom 4); press on the game, drag onto the overlay, release → the next click still counts; after F12 a click where the overlay was stamps: `left clicks seen: 4 in fixed_update, 4 in update`. Same session without the feature: 6 clicks, both wheel turns (zoom 8). ✅ Frames without the feature and with it compiled in but off: Breakout lose screen and frozen scene frame pixel-identical to the baselines. |
 
 ### PP-037b1: Debug overlay, part 1a: feature, pass, toggle
 | Field | Value |

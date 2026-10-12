@@ -52,6 +52,9 @@ pub(crate) struct Runner<G: Game> {
     /// The debug overlay's F12 state, when the game turned it on (ADR-043).
     #[cfg(feature = "debug-overlay")]
     overlay: Option<crate::debug::Toggle>,
+    /// Window events → egui for the visible overlay; created with the renderer.
+    #[cfg(feature = "debug-overlay")]
+    overlay_input: Option<crate::debug::OverlayInput>,
 }
 
 impl<G: Game> Runner<G> {
@@ -88,6 +91,8 @@ impl<G: Game> Runner<G> {
             last_reload_check: None,
             #[cfg(feature = "debug-overlay")]
             overlay: config.debug_overlay.then(crate::debug::Toggle::new),
+            #[cfg(feature = "debug-overlay")]
+            overlay_input: None,
             config,
         }
     }
@@ -151,6 +156,12 @@ impl<G: Game> Runner<G> {
             && overlay.key(key, pressed, event.repeat || is_synthetic)
         {
             log::debug!("debug overlay visible: {}", overlay.visible());
+            // egui may have left a resize or grab cursor behind.
+            if !overlay.visible()
+                && let Some(window) = &self.window
+            {
+                window.set_cursor(winit::window::CursorIcon::Default);
+            }
             return;
         }
         log::debug!(
@@ -199,6 +210,14 @@ impl<G: Game> Runner<G> {
             self.config.clear_color,
             self.config.debug_overlay,
         )?;
+        #[cfg(feature = "debug-overlay")]
+        let mut renderer = renderer;
+        #[cfg(feature = "debug-overlay")]
+        {
+            self.overlay_input = renderer
+                .overlay_mut()
+                .map(|overlay| crate::debug::OverlayInput::new(overlay.context(), window));
+        }
         self.renderer = Some(renderer);
         Ok(())
     }
@@ -211,6 +230,13 @@ impl<G: Game> Runner<G> {
         let state = &self.state;
         #[cfg(feature = "debug-overlay")]
         let overlay_visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
+        // The overlay's input for this frame: everything since the last one.
+        #[cfg(feature = "debug-overlay")]
+        if overlay_visible
+            && let (Some(input), Some(overlay)) = (&mut self.overlay_input, renderer.overlay_mut())
+        {
+            overlay.set_input(input.take(window));
+        }
         #[cfg(not(feature = "debug-overlay"))]
         let overlay_visible = false;
         if let Err(error) = renderer.render(
@@ -225,6 +251,48 @@ impl<G: Game> Runner<G> {
         ) {
             self.fail(event_loop, error);
         }
+        // Apply what the overlay asked of the window (its cursor icon).
+        #[cfg(feature = "debug-overlay")]
+        if let (Some(input), Some(renderer), Some(window)) =
+            (&mut self.overlay_input, &mut self.renderer, &self.window)
+            && let Some(output) = renderer
+                .overlay_mut()
+                .and_then(crate::debug::Overlay::take_platform_output)
+        {
+            input.apply(window, output);
+        }
+    }
+
+    /// While the overlay is visible, gives `event` to egui first and returns
+    /// whether the game should still see it (ADR-043, [`crate::debug::reaches_game`]).
+    #[cfg(feature = "debug-overlay")]
+    fn game_sees(&mut self, event: &WindowEvent) -> bool {
+        use crate::debug::Routed;
+        let visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
+        let (true, Some(input), Some(window)) = (visible, &mut self.overlay_input, &self.window)
+        else {
+            return true;
+        };
+        let consumed = input.on_event(window, event);
+        let routed = match event {
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button,
+                ..
+            } => Routed::Release {
+                game_holds: keymap::translate_button(*button)
+                    .is_some_and(|button| self.state.input.mouse_pressed(button)),
+            },
+            WindowEvent::MouseInput { .. }
+            | WindowEvent::MouseWheel { .. }
+            | WindowEvent::CursorMoved { .. } => Routed::Pointer,
+            _ => Routed::Other,
+        };
+        let reaches = crate::debug::reaches_game(routed, consumed);
+        if !reaches {
+            log::trace!("debug overlay took {routed:?}");
+        }
+        reaches
     }
 
     /// One frame (ADR-010): measure time → fixed updates × n → update → render.
@@ -324,6 +392,10 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         if self.window.as_ref().map(|w| w.id()) != Some(window_id) {
             return;
         }
+        #[cfg(feature = "debug-overlay")]
+        if !self.game_sees(&event) {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput {
@@ -404,6 +476,10 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         // Platforms may invalidate surfaces while suspended. Drop the renderer
         // and recreate it in `resumed`. Game state (world, time) is kept.
         self.renderer = None;
+        #[cfg(feature = "debug-overlay")]
+        {
+            self.overlay_input = None;
+        }
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {

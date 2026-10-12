@@ -310,6 +310,14 @@ impl Renderer {
     }
 }
 
+#[cfg(feature = "debug-overlay")]
+impl Renderer {
+    /// The debug overlay, when the game turned it on (ADR-043).
+    pub(crate) fn overlay_mut(&mut self) -> Option<&mut crate::debug::Overlay> {
+        self.overlay.as_mut()
+    }
+}
+
 /// The format the debug overlay draws through (ADR-043): the surface format
 /// without its sRGB suffix, registered as an allowed view format, when the
 /// surface is sRGB and the platform supports surface view formats (not GLES or

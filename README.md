@@ -32,8 +32,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   `derive` feature) as human-readable RON, with textures and fonts referenced by asset path. The folder a scene is
   saved into (e.g. `assets/scenes/`) must exist.
 - **Debug overlay (optional):** with the `debug-overlay` Cargo feature (Rust 1.95) and
-  `EngineConfig::with_debug_overlay(true)`, a small egui window is drawn over the game and F12 shows or hides it
-  (ADR-043; its stats and entity inspector are in progress). Try it with `cargo run --features debug-overlay`.
+  `EngineConfig::with_debug_overlay(true)`, a small egui window is drawn over the game and F12 shows or hides it;
+  clicks and the wheel on that window do not reach the game (ADR-043; its stats and entity inspector are in progress). Try it with `cargo run --features debug-overlay`.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).

@@ -52,16 +52,19 @@ lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.r
 ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
 # PP-037b1: debug overlay (ADR-043), only with the optional `debug-overlay` feature, used only in
-# `debug` and the render pass that draws it. Both need Rust 1.95 (the engine without the feature
+# `debug` and the render pass that draws it (egui-winit, PP-037b2: in the runner's event routing). Both need Rust 1.95 (the engine without the feature
 # keeps 1.90). Pinned with wgpu/winit: egui-wgpu 0.36 is built against wgpu 30 (R-30). egui-wgpu's
 # default features would turn on extra wgpu backends (WebGL, Metal workarounds), so they are off.
 egui = { version = "0.36.2", optional = true }
 egui-wgpu = { version = "0.36.2", optional = true, default-features = false }
+# PP-037b2: window events → egui (pointer, wheel, keys), used only in `debug`. No clipboard, links or
+# accessibility bridge (default features off); only the X11/Wayland backends the engine already has.
+egui-winit = { version = "0.36.2", optional = true, default-features = false, features = ["wayland", "x11"] }
 
 [features]
 # Debug overlay (ADR-043): an egui window drawn over the game, shown and hidden with F12; turned on
 # with `EngineConfig::with_debug_overlay(true)`. Off by default. Needs Rust 1.95.
-debug-overlay = ["dep:egui", "dep:egui-wgpu"]
+debug-overlay = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 
 # PP-030 (ADR-038): this package is also the root of a Cargo workspace. The engine stays at the
 # repository root (paths, commands and `assets/` unchanged); future engine crates (e.g. the

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; input routing PP-037b2) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; contents PP-037c/d) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2327,8 +2327,8 @@ option based on the manifest directory, which would make `cargo run -p` from the
 
 ## Status
 Accepted (2026-10-12, PP-037a). Implemented in part by PP-037b1 (2026-10-12): the feature with `egui` and
-`egui-wgpu`, `EngineConfig::with_debug_overlay`, F12, the overlay pass and the non-sRGB view; `egui-winit` and input
-routing come with PP-037b2. Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
+`egui-wgpu`, `EngineConfig::with_debug_overlay`, F12, the overlay pass and the non-sRGB view; and by PP-037b2
+(2026-10-12): `egui-winit` and mouse routing (keys refined below). Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
 the overlay is a feature or a `crates/` member: it is a feature. Applies ADR-013: the dependencies are added in
 PP-037b, the first task that uses them, not in this decision.
 
@@ -2380,7 +2380,8 @@ Measured in a scratch copy of the repository (a throwaway spike, not merged):
   - No egui type appears in the public API.
 - **Input:** window events go to egui first while the overlay is visible. An event egui consumes (a click on an overlay
   window, typing into one of its fields) does not reach the game's `Input`. F12 itself never reaches the game while
-  the overlay is enabled.
+  the overlay is enabled. *Refined by PP-037b2:* only pointer events are withheld; keys always reach the game until
+  the overlay has a text field (see the implementation notes).
 - **First contents** (PP-037c): frame time and FPS, fixed steps run in the last frame, entity count, draw batches and
   instances, camera position and zoom, and the cursor in world coordinates. **Then** (PP-037d) a read-only entity
   inspector: choose an entity from a list, see its engine components and its registered game components (as RON, via
@@ -2438,6 +2439,27 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
   its first frame (egui measures it then).
 - Binaries built with the feature embed egui's fonts (OFL-1.1 and Ubuntu Font Licence 1.0, R-26): keep the feature
   for development builds, or ship those licences with the game.
+
+## Implementation notes (PP-037b2)
+- `egui-winit` 0.36.2 without default features (`x11`, `wayland`; no clipboard, links or accessibility bridge):
+  `Cargo.lock` +2 entries (itself and the Apple-only `objc2-ui-kit`), +1 crate per platform with the feature.
+- The runner owns an `OverlayInput` (egui-winit's `State`, sharing the renderer's egui context). While the overlay is
+  visible every window event goes to it first, and `debug::reaches_game` decides whether the game's `Input` also gets
+  it. Hidden: egui gets nothing, so no stale clicks pile up for the next time it is shown.
+- **Pointer** (press, wheel, cursor move): withheld when egui consumes it, which egui-winit reports for presses and
+  wheel turns over an overlay window and for moves while egui is dragging. The empty full-screen root `Ui` of
+  `run_ui` does not count as egui, so the game keeps every click outside overlay windows.
+- **Release:** always delivered when the game's `Input` holds that button (it saw the press), whatever egui says, so
+  a drag that starts in the game and ends over the overlay never leaves a button stuck. A release without a press
+  is ignored by `Input` anyway.
+- **Keys:** always delivered (F12 excepted). egui-winit reports Tab as consumed, and egui keeps keyboard focus on a
+  widget after it is clicked, so withholding "consumed" keys would swallow game keys after one click on the overlay.
+  Revisit when the overlay gets a text field.
+- **Scale:** egui's scale is the input's native scale times its zoom factor. PP-037b1 set the scale on the context
+  (which changes the zoom factor); with egui-winit's native scale that would have applied it twice, so the context
+  is never told the scale any more and the hand-built input carries it as the native scale. A unit test runs the
+  overlay's layout at 2× and fails if the scale is applied twice (checked by putting the old call back).
+- The cursor icon egui asks for is applied each frame; hiding the overlay with F12 resets it to the default.
 
 ## Revisit Conditions
 - egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.
