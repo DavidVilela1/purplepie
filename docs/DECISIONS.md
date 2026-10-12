@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | No (decided in PP-037a; implemented from PP-037b) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2319,6 +2320,115 @@ delivery with the repository, without changing anything for the engine's own com
 ## Revisit Conditions
 More than two or three example games (consider a separate examples repository); or the engine gains an asset-root
 option based on the manifest directory, which would make `cargo run -p` from the root work (U-18).
+
+---
+
+# ADR-043: Debug overlay: egui inside the engine behind a `debug-overlay` feature
+
+## Status
+Accepted (2026-10-12, PP-037a). Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
+the overlay is a feature or a `crates/` member: it is a feature. Applies ADR-013: the dependencies are added in
+PP-037b, the first task that uses them, not in this decision.
+
+## Context
+P4's goal is to inspect a running game: frame timings, entity count, camera and cursor first, then entities and their
+components. Four facts constrain the approach:
+- The overlay needs the renderer's device, queue, command encoder and the frame's surface view, and the raw window
+  events. All of these are crate-private by design: wgpu is used only in `render` (ADR-005), winit only in `app`
+  (ADR-004), and games never see either.
+- It must not live in the game's ECS world. Overlay text spawned as entities would change entity counts, appear in the
+  game's queries, be removed by `World::clear` and be written by `save_scene`.
+- P5 (scene editor) needs real widgets: lists, trees, scroll areas and text fields. Whatever P4 picks is the likely
+  base for it.
+- 0.1 promises Rust 1.90 (RELEASING), and the CI `msrv` job checks `--all-features` with 1.90.
+
+Measured in a scratch copy of the repository (a throwaway spike, not merged):
+- egui, egui-wgpu and egui-winit **0.36.2** resolve against exactly the engine's **wgpu 30.0.1** and **winit
+  0.30.13**, with no second wgpu or winit in the tree.
+- With lean features (egui with its default fonts; egui-wgpu without default features; egui-winit with only `x11` and
+  `wayland`, so no clipboard, links or accessibility bridge), `Cargo.lock` gains **32 entries**. These are 30 new
+  crates, including egui's text stack (`skrifa`, `read-fonts`, `harfrust`) and a CPU vector renderer (`vello_cpu`,
+  `kurbo`, `peniko`), plus a second `rustc-hash` and the Apple-only `objc2-ui-kit`. The lock lists them even when
+  the feature is off, but nothing is compiled then.
+- **Build cost:** a release `sandbox` build took 1 min 4 s without the feature and 3 min 56 s with it (egui's crates
+  compiled from cold). The first debug build with the feature compiled egui's crates in about 1.5 minutes.
+- **Binary size:** the release `sandbox` grew from 12.8 MB to 18.9 MB (+6.1 MB) with the feature; the debug one from
+  205 MB to 305 MB. Without the feature both are unchanged.
+- **Rust version:** egui 0.36 declares `rust-version = 1.95`.
+- **Rendering:** the spike hooked egui into `Renderer::render` as a second render pass (`LoadOp::Load`) after the
+  game's pass, about 50 lines. On lavapipe the sandbox frame showed an egui window over the game, with the live entity
+  count ("entities: 19"), a collapsing header and a button. egui-wgpu warned that the surface is sRGB
+  (`Bgra8UnormSrgb`) and that it prefers a non-sRGB target; it renders through its linear-framebuffer path, and the
+  colours looked right. Input was not part of the spike. One egui debug assertion also has to be respected: every
+  frame's texture changes must be applied, then cleared.
+
+## Decision
+- **egui, inside the `purplepie` crate, behind an optional Cargo feature `debug-overlay`, off by default.** The code
+  lives in a crate-private `src/debug/` module, with feature-gated hooks in `render` (the pass) and `app` (events and
+  per-frame state). Dependencies (added in PP-037b): `egui`, `egui-wgpu` without default features, `egui-winit` with
+  `x11` and `wayland` only, all 0.36.x, pinned and upgraded together with wgpu and winit.
+- **Engine-owned, outside the ECS world.** The overlay never spawns entities. It reads the world and engine state and
+  draws in its own render pass after the game's (screen-space content included), so it is always on top and leaves
+  game frames unchanged when hidden.
+- **Game-facing API:**
+  - A game enables the feature in its `Cargo.toml` and turns the overlay on with
+    `EngineConfig::with_debug_overlay(true)`. **F12** then shows or hides it.
+  - The config method exists with or without the feature, so game code needs no `cfg`. Without the feature it logs one
+    warning and does nothing.
+  - No egui type appears in the public API.
+- **Input:** window events go to egui first while the overlay is visible. An event egui consumes (a click on an overlay
+  window, typing into one of its fields) does not reach the game's `Input`. F12 itself never reaches the game while
+  the overlay is enabled.
+- **First contents** (PP-037c): frame time and FPS, fixed steps run in the last frame, entity count, draw batches and
+  instances, camera position and zoom, and the cursor in world coordinates. **Then** (PP-037d) a read-only entity
+  inspector: choose an entity from a list, see its engine components and its registered game components (as RON, via
+  the scene registry, ADR-036).
+- **Rust version:** the feature needs Rust 1.95 (egui's minimum); the engine without it keeps 1.90. The CI `msrv` job
+  checks all features except `debug-overlay`; the latest-stable jobs keep `--all-features`. RELEASING says so.
+- **sRGB:** PP-037b draws egui into a non-sRGB view of the surface texture when the surface allows that view format
+  (`view_formats`), and otherwise into the sRGB view through egui's linear-framebuffer path. A pixel test checks the
+  overlay's colours either way.
+- **P5:** the editor is expected to build on this integration; its own ADR decides how (for example a public egui hook
+  behind a feature).
+
+## Alternatives Considered
+- **Own overlay from the engine's text and quads, no dependency.** No new crates, no change to the minimum Rust
+  version, no version coupling, and the same look as game text. Fine for read-only numbers, but lists, scrolling,
+  selection, collapsible trees and text fields would all be hand-written, and P5 would still need a UI toolkit, which
+  means two UI systems. It would also need a new draw path outside the world. Not chosen; it is the fallback if egui's
+  coupling becomes a problem (see Revisit Conditions).
+- **A separate crate `crates/purplepie-overlay`** (ADR-038's placeholder). It would need public hooks exposing the wgpu
+  device, queue, encoder and surface view and the raw winit events, which are exactly the internals the engine hides
+  from games. Rejected.
+- **Overlay as game entities through the public API** (`Text`, `Quad`, `ScreenSpace`). It pollutes the world (counts,
+  queries, `World::clear`, `save_scene`) and cannot reach frame timings. Rejected.
+- **Other UI libraries.** Dear ImGui bindings need a C++ toolchain, and iced is a full application framework. Not
+  measured: egui is the established immediate-mode UI for wgpu and winit, and its current release matches the
+  engine's versions exactly.
+
+## Rationale
+egui matches the engine's wgpu and winit exactly, rendered correctly in the existing frame with a small hook, and gives
+P4 and P5 real widgets. Behind an off-by-default feature, games that do not use it pay nothing at build or run time
+beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgpu and winit stay private.
+
+## Consequences
+### Positive
+- Inspecting a running game needs one feature flag and one config line, with no change to game code.
+- Overlay windows are interactive (collapse, scroll, select) from the first version, and the editor has a starting
+  point.
+- Games without the feature are unaffected: same build time, binary size and minimum Rust version.
+### Negative
+- **Version coupling (R-30):** every future wgpu or winit upgrade also waits for a matching egui-wgpu/egui-winit
+  release.
+- Builds with the feature need Rust 1.95, so the `msrv` CI job excludes it.
+- `Cargo.lock` gains 32 entries for everyone, and `--all-features` CI jobs compile egui (minutes per job).
+- The overlay uses egui's own fonts and look, which differ from game text.
+
+## Revisit Conditions
+- egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.
+- After P4 the overlay is still only read-only numbers: then the own-overlay alternative is cheaper.
+- P5's ADR chooses a different UI approach.
+- egui's minimum Rust version rises above the stable Rust that CI and the owner use.
 
 ---
 

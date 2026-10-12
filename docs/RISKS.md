@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-06 (PP-017 API review, Stages 0–10 complete).
+Last reviewed: 2026-10-12 (PP-037a: R-30 added for the debug overlay's UI dependency).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -39,6 +39,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-27 | Audio: platform builds, devices and the audio thread | OPEN | Medium | Medium | PP-022 |
 | R-28 | OGG Vorbis decoding: memory, load time and a slow-moving decoder | OPEN | Medium | Low | PP-024b |
 | R-29 | Scene files: format compatibility and silent loss of unsaved components | OPEN | Medium | Medium | PP-026a |
+| R-30 | Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight | OPEN | Medium | Medium | PP-037a |
 
 ## Details
 
@@ -255,4 +256,15 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Occurred (2026-10-07, after PP-026a):** the byte-for-byte test failed on Windows because `ron`'s pretty printer
   defaults to `\r\n` there. Fixed by writing `\n` explicitly and asserting it in a test. Lesson: dependency defaults can
   differ per OS, and Cowork only runs Linux, so new file output needs an explicit line-ending (and path-separator) choice.
+
+### R-30: Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight
+- **Trigger:** ADR-043 puts egui 0.36 behind the `debug-overlay` feature. egui-wgpu and egui-winit pin wgpu and winit
+  major versions, so a wgpu or winit upgrade the engine needs can be blocked until egui releases a matching version.
+  egui 0.36 also needs Rust 1.95 (the engine promises 1.90) and adds 32 `Cargo.lock` entries and minutes of build time
+  to `--all-features` builds.
+- **Mitigation:** the feature is off by default, so games that do not enable it compile none of it and keep Rust 1.90;
+  the CI `msrv` job excludes the feature; egui is upgraded together with wgpu and winit, never separately; no egui type
+  appears in the public API, so swapping the overlay's implementation does not break games.
+- **Fallback:** the alternative recorded in ADR-043, an overlay drawn with the engine's own text and quads (no
+  dependency), or keeping the overlay on the last compatible wgpu until egui catches up.
 

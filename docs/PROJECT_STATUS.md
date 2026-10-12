@@ -10,7 +10,8 @@ commands, and the evidence is listed below.
 GitHub (`v0.1.0`), and a second game, Purple Swarm, was built on the public API with only two small engine additions.
 M10 (Engine API Stabilization) and the portfolio scope were reached earlier; since then the engine gained runtime
 essentials (P1–P2) and editor foundations (P3). Windows: the owner's checklist passed (PP-033b). macOS is built and
-tested in CI but has not been seen running. Next milestone: **P4, debug overlay**.
+tested in CI but has not been seen running. Current milestone: **P4, debug overlay**. Its approach is decided
+(ADR-043, PP-037a); implementation starts with PP-037b.
 
 ## Current Stage
 
@@ -34,7 +35,9 @@ added the two engine features it lacked: `math::Rng` and `math::Rect` (ADR-041).
 `games/purple-swarm` (a workspace member built by CI, ADR-042): arena, player, camera, shooting. PP-036c2 made it
 playable: enemies, waves, collisions, score and sounds. PP-036d1 added the title, pause and game-over screens with
 restart, and PP-036d2 the best-score file and a difficulty curve measured with the bot, which completes item 6 and
-the phase. Next: **PP-037a**, the design decision for the P4 debug overlay. The long-term plan (in-game UI and an editor) is in
+the phase. **Phase P4 (debug overlay): in progress.** PP-037a decided the approach after a measured throwaway spike:
+egui inside the engine behind an off-by-default `debug-overlay` feature (ADR-043). Next: **PP-037b**, the feature,
+the overlay's render pass, the F12 toggle and input routing. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -115,6 +118,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-037a: debug overlay design (ADR-043): egui 0.36 inside the engine behind an off-by-default `debug-overlay` feature, engine-owned and outside the ECS world; measured in a throwaway spike (exact wgpu 30 / winit 0.30 match, +32 lock entries, +6.1 MB release, Rust 1.95 for the feature); R-30.
 - PP-036d2: Purple Swarm best score (file next to the executable, written via temporary file + rename, broken or missing = 0) and difficulty curve (bot survives 208 s / wave 11 instead of 373 s / wave 19; `survive` autoplay mode). Phase P3.5 complete.
 - PP-036d1: Purple Swarm screens: title, pause (world frozen, music muted), game over with restart via `World::clear`; engine-free, unit-tested screen flow; banner backdrop; red HP at 2 or fewer.
 - PP-036c2: Purple Swarm playable: Drifters and Dashers in 20 s waves, circle collisions, 5 hit points with blinking invulnerability, score, health orbs, five sounds, game over; deterministic autoplay summary line.
@@ -143,7 +147,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-037a: Debug overlay design** (phase P4, item 1; ADR-043: own screen-space text/quads vs. egui behind a feature). See [TASKS.md](TASKS.md#pp-037a-debug-overlay-design--next).
+- **PP-037b: Debug overlay, part 1** (`debug-overlay` feature, egui pass after the game's, F12 toggle, input routing, CI for the feature's Rust 1.95). See [TASKS.md](TASKS.md#pp-037b-debug-overlay-part-1-feature-pass-toggle-input--next).
 
 ## Blocked
 
@@ -180,6 +184,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-12: PP-037a Debug overlay design (ADR-043); phase P4 started.**
+  - Decision: egui inside the engine behind an optional, off-by-default `debug-overlay` feature. The overlay is engine-owned and drawn in its own pass after the game's; it never spawns entities. Games turn it on with `EngineConfig::with_debug_overlay(true)` (from PP-037b), and F12 toggles it.
+  - Measured in a throwaway spike on a scratch copy: egui 0.36.2 matches wgpu 30.0.1 and winit 0.30.13 exactly; +32 lock entries; release sandbox 12.8 → 18.9 MB and about 3 extra minutes of cold release build with the feature; egui needs Rust 1.95, so the feature will be excluded from the 1.90 `msrv` job. An egui window rendered over the sandbox frame on lavapipe.
+  - Rejected: an own text/quad overlay (fallback if egui's coupling hurts), a `crates/` overlay crate (would need public wgpu/winit hooks), overlay entities in the game's world. New risk R-30. No repository code changed.
 
 - **2026-10-12: PP-036d2 Purple Swarm best score and difficulty; phase P3.5 complete.**
   - Best score in `purple-swarm-best.txt` next to the executable (under `target/` for `cargo run`): shown on the title and game-over screens; a missing or broken file is 0; written through a temporary file and a rename; autoplay never touches it. 4 new unit tests (the game has 10).
@@ -450,7 +459,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-12,
-after the final PP-036d2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after PP-037a (documentation and a throwaway spike only; the last code change is PP-036d2) (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -459,6 +468,7 @@ after the final PP-036d2 change (CI additionally runs the latest stable clippy a
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 52 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Debug overlay spike (PP-037a; scratch copy, not merged) | ✅ `cargo info`: egui/egui-wgpu/egui-winit 0.36.2, `rust-version` 1.95. Resolver: wgpu 30.0.1 and winit 0.30.13 only (one version each). Scratch copy with the optional feature: `cargo build` without it unchanged; `Cargo.lock` +32 entries; `cargo build --release --bin sandbox` 1 min 4 s → 3 min 56 s with `--features debug-overlay`, 12 763 312 → 18 866 072 bytes; debug 204 900 112 → 305 093 912. Sandbox under Xvfb with the spike: egui window with `entities: 19` drawn over the frame; egui-wgpu warning about the `Bgra8UnormSrgb` surface. GitHub `main` (`0a50e14`) identical to this tree before the task |
 | Purple Swarm best score + difficulty (PP-036d2) | ✅ GitHub `main` (`a35d4fe`, PP-036d1) byte-identical to this tree before the task. `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 10 tests). `survive` autoplay: `208.4 s; wave 11; score 6550; kills 421; shots 1062; hit points 0` twice (before retuning: `373.3 s; wave 19`; at 15 %/wave: `308.7 s; wave 16`); 60 s line `60.0 s; wave 4; score 475; kills 43; shots 151; hit points 5` twice; no best-score file after four autoplay runs. Xvfb sessions: sweep-firing round → `New best! Score 20`, file `20`; idle round → `Score 0   Best 20`, file unchanged; fresh launch → `Best 20` on the title; file `garbage` → plain title, one warning, file untouched |
 | Purple Swarm screens (PP-036d1) | ✅ `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 6 tests). Autoplay summary unchanged: `60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5` (two runs). Scripted Xvfb session: title frame → click → Escape: pause frames 1.5 s apart pixel-identical → click → idle until `swarm: game over at 11.5 s; …` (pause not counted), `HP 0/5` red → click: fresh round (`Score 0 Wave 1 0:01`, `HP 5/5`, no enemies) → Escape → Q: exit 0. Escape on the title: exit 0 |
 | Purple Swarm part 2 (PP-036c2) | ✅ `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 3 tests). Autoplay under Xvfb from `games/purple-swarm`: summary `60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5`, identical over three runs; frames at 30 s / 50 s show an enemy, bullets, `Score 160 Wave 2 0:30` / `Score 365 Wave 3 0:50` and `HP 5/5`. Idle manual run: `swarm: game over at 9.9 s; wave 1; score 0; …`, frame shows the banner and `HP 0/5`. ALSA capture (25 s): continuous music with louder effect transients |
@@ -494,4 +504,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-12. PP-036d2 done (Purple Swarm best score and difficulty); phase P3.5 complete. PP-037a (P4 debug overlay design, ADR-043) is next.
+2026-10-12. PP-037a done (debug overlay design, ADR-043; phase P4 started). PP-037b (feature, pass, toggle, input) is next.

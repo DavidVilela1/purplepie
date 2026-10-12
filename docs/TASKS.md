@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037a: Debug overlay design (phase P4, item 1): ADR-043 on the approach (built from the engine's own screen-space text and quads vs. egui behind a feature), crate placement, first contents and toggle; split into implementation tasks** · P1 · TODO ← **next task**
+- [ ] **PP-037b: Debug overlay, part 1: `debug-overlay` feature with egui 0.36 (ADR-043), `EngineConfig::with_debug_overlay`, F12 toggle, egui pass after the game's, input routing, CI/RELEASING for the feature's Rust 1.95** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037a: Debug overlay design: ADR-043 (egui inside the engine behind an off-by-default `debug-overlay` feature), measured in a throwaway spike; P4 split into PP-037b–d** · DONE (2026-10-12; spike verified on Linux)
 - [x] **PP-036d2: Purple Swarm best-score file, difficulty curve (bot benchmark), `survive` autoplay mode, findings (phase P3.5, item 6 and the phase complete)** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-036d1: Purple Swarm screens: title, pause, game over with restart (`World::clear`), banner backdrop, low-health colour** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036c2: Purple Swarm core, part 2: enemies (Drifter, Dasher), waves, collisions, hit points, score, orbs, sounds, deterministic autoplay summary** · DONE (2026-10-09; verified on Linux)
@@ -74,7 +75,8 @@ _None._
 
 ## Future
 
-- [ ] **P4 Debug overlay: implementation tasks** · P2 · TODO (defined by PP-037a)
+- [ ] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps per frame, entities, draw batches and instances, camera, cursor in world)** · P2 · TODO
+- [ ] **PP-037d: Debug overlay, part 3: read-only entity inspector (entity list, engine components, registered game components as RON)** · P2 · TODO
 - [ ] **P5 Scene editor** · P3 · TODO (one coarse task until P4 is done)
 
 ---
@@ -461,14 +463,22 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037a: Debug overlay design ← NEXT
+### PP-037b: Debug overlay, part 1: feature, pass, toggle, input ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 1 · Priority P1 · TODO |
+| Stage | Phase P4, item 2 · Priority P1 · TODO |
+| Dependencies | PP-037a (DONE, ADR-043) |
+| Scope | Optional feature `debug-overlay` (off by default) adding `egui`, `egui-wgpu` (no default features) and `egui-winit` (`x11`, `wayland`) 0.36.x, recorded in TECH_STACK. Crate-private `src/debug/` holding the egui context, the egui-winit state and the egui-wgpu renderer. `EngineConfig::with_debug_overlay(bool)` exists with or without the feature (without it: one warning, no effect); the sandbox turns it on only when built with the feature. The renderer draws egui in a second pass (`LoadOp::Load`) after the game's, into a non-sRGB view of the surface texture when the surface allows it. The runner passes window events to egui first while the overlay is visible; consumed events do not reach `Input`; F12 toggles and never reaches the game while the overlay is enabled. Content: one small "PurplePie" window (version, "F12 hides"), since the real contents are PP-037c. CI: the `msrv` job checks every feature except `debug-overlay` (it needs Rust 1.95); RELEASING notes it. |
+| Acceptance criteria | Without the feature: no new code compiled, frames byte-identical to before, MSRV 1.90 check still clean. With it: clippy clean; unit tests for the toggle and event routing decisions; an ignored GPU test renders a frame with and without the overlay (pixels outside the overlay window identical, inside changed, colours as expected on an sRGB target); Xvfb sandbox frames with the overlay shown, hidden by F12, and a click on the overlay window not reaching the game. |
+
+### PP-037a: Debug overlay design
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 1 · Priority P1 · **DONE** (2026-10-12; spike verified on Linux) |
 | Dependencies | P3.5 complete (PP-036d2) |
 | Why now | P3.5 is done; P4 (inspect a running game) is the next phase. Its biggest open question is the approach: ROADMAP names egui behind a feature, which is the largest dependency candidate (ADR-013, R-13), while the engine can already draw screen-space text and quads. That decision shapes everything after it, so it comes first. |
 | Scope | ADR-043: approach (own screen-space text/quads vs. egui or another immediate-mode UI behind a Cargo feature), with the measured dependency and build-time cost of the candidates; where it lives (inside `purplepie` behind a feature, or a `crates/purplepie-debug` crate per ADR-038); the first contents (frame and fixed-step timings, entity count, camera, cursor world position; later an entity list and component values via the scene registry, ADR-036); how a game turns it on (config flag and toggle key). Then split the implementation into small tasks. No engine code in this task beyond throwaway spikes. |
-| Acceptance criteria | ADR-043 recorded with alternatives and measured costs; ROADMAP P4 row lists the implementation tasks; TASKS has the first implementation task as next. |
+| Acceptance criteria | ✅ ADR-043: egui inside the engine behind an off-by-default `debug-overlay` feature, engine-owned and outside the ECS world; alternatives (own text/quad overlay, a `crates/` overlay crate needing public wgpu/winit hooks, overlay entities, other UI libraries) with reasons. ✅ Measured in a throwaway scratch-copy spike (not merged): egui/egui-wgpu/egui-winit 0.36.2 resolve against exactly wgpu 30.0.1 and winit 0.30.13; +32 `Cargo.lock` entries with lean features; release `sandbox` 1 min 4 s → 3 min 56 s cold build, 12.8 → 18.9 MB; egui needs Rust 1.95; an egui window drawn in a second pass over the sandbox frame on lavapipe (entity count 19, collapsing header, button), with egui's warning about the sRGB surface. ✅ ROADMAP P4 row lists PP-037b–d; R-30 (egui version coupling) added; PP-037b is next. No repository code changed. |
 
 ### PP-036d2: Purple Swarm best score, balance, findings
 | Field | Value |
