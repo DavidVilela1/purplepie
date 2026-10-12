@@ -85,7 +85,7 @@ screen-space text and the console logger, from the published v0.1.0 tag.
 3. **PP-036d:** split in two:
    - **PP-036d1 (done):** title, pause and game-over screens, restart via `World::clear`, banner backdrop and a
      low-health colour (results below);
-   - **PP-036d2:** the best-score file, a balance pass and the final findings, which close P3.5 item 6.
+   - **PP-036d2 (done):** the best-score file, a balance pass and the final findings; P3.5 item 6 is complete.
 
 ## Skeleton (PP-036a)
 
@@ -144,3 +144,36 @@ stayed smooth under Xvfb with dozens of entities. One new finding: U-19 (testing
 - **Banner:** the title, pause and game-over texts sit on a dark screen-space panel that is hidden with `Hidden`
   during play. The HP text turns red at 2 hit points or fewer.
 - Autoplay skips the title, so its summary line did not change.
+
+## Best score and difficulty (PP-036d2)
+
+- **Best score:** `best.rs` keeps one number in `purple-swarm-best.txt` next to the executable. For a shipped game
+  that is its own folder; with `cargo run` it is `target/debug/`, so it never shows up in `git status`. A missing
+  or broken file counts as 0 (a broken one prints one warning and is left alone until beaten). Writes go to a
+  temporary file that is renamed over the old one, and a failed write only prints a warning. The title shows
+  "Best N"; game over shows "New best!" or "Score N   Best M". Autoplay never reads or writes the file.
+- **Measuring difficulty:** `PURPLE_SWARM_AUTOPLAY=survive` lets the bot play until it dies (at most 15 minutes).
+  The bot aims perfectly at the nearest enemy within 420 units but never dodges, so it is a rough stand-in for a
+  competent player, not a replacement for playing.
+
+  | Tuning | Bot survives |
+  |---|---|
+  | PP-036c2: spawn interval 1.6 s − 0.15 s per wave (min 0.25 s), Drifters 90 + 6 × wave | 373.3 s, wave 19 |
+  | 15 % shorter per wave (min 0.15 s), Drifters 90 + 10 × wave | 308.7 s, wave 16 |
+  | **Kept:** 20 % shorter per wave (min 0.15 s), Drifters 90 + 10 × wave (max 230, always slower than the player) | **208.4 s, wave 11** |
+
+  The old curve stopped getting harder at wave 10, when spawning reached 4 enemies a second, well under the 8 shots a
+  second the player can fire. Now enemies arrive faster than they can be shot from about wave 10. Wave 1 is
+  unchanged, so a new player still has time to learn (standing still loses in about 11 s). The 60 s autoplay line is
+  now `60.0 s; wave 4; score 475; kills 43; shots 151; hit points 5`; the `survive` line is
+  `208.4 s; wave 11; score 6550; kills 421; shots 1062; hit points 0`. Both were identical over two runs.
+- **Still open:** a human playtest. The curve is tuned against the bot only.
+
+## Outcome (P3.5 item 6)
+
+Purple Swarm is complete: about 1300 lines in five files (`main.rs`, `enemy.rs`, `level.rs`, `screen.rs`,
+`best.rs`), public API only, 10 unit tests. Of the roadmap's candidate engine features, only random numbers and
+overlap tests were added (PP-036b). World clearing (`World::clear`), timers, the tiled floor and the camera clamp were
+a few lines of game code each, and gamepad support was not needed. Three observations remain in
+[USABILITY.md](USABILITY.md): U-18 (asset root under `cargo run -p`, documented), U-19 (no `TextureId` in headless
+tests) and U-20 (no sound pause). None blocked the game.

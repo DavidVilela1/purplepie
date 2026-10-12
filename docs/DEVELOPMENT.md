@@ -132,7 +132,9 @@ cargo run            # sandbox
 
 `--workspace` includes the example games under `games/` (ADR-042), as CI does. Plain root commands build only the
 engine. Purple Swarm has an autoplay bot for automated runs: `PURPLE_SWARM_AUTOPLAY=1` (fixed seed; after 60
-simulated seconds it prints `swarm: autoplay finished: …` and exits, so two runs can be compared line for line).
+simulated seconds it prints `swarm: autoplay finished: …` and exits, so two runs can be compared line for line;
+`PURPLE_SWARM_AUTOPLAY=survive` plays until the bot dies, to measure difficulty). Purple Swarm keeps its best score
+in `target/debug/purple-swarm-best.txt` when run with `cargo run`; delete it to start from 0.
 
 The repository root is also a Cargo workspace root (ADR-038), with the engine as its only member, so these commands
 are unchanged. Once a crate exists under `crates/`, run the gates with `--workspace` (and update CI the same way); tests

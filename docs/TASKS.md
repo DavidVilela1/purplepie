@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-036d2: Purple Swarm best-score file, balance pass, findings; closes P3.5 item 6** · P1 · TODO ← **next task**
+- [ ] **PP-037a: Debug overlay design (phase P4, item 1): ADR-043 on the approach (built from the engine's own screen-space text and quads vs. egui behind a feature), crate placement, first contents and toggle; split into implementation tasks** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-036d2: Purple Swarm best-score file, difficulty curve (bot benchmark), `survive` autoplay mode, findings (phase P3.5, item 6 and the phase complete)** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-036d1: Purple Swarm screens: title, pause, game over with restart (`World::clear`), banner backdrop, low-health colour** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036c2: Purple Swarm core, part 2: enemies (Drifter, Dasher), waves, collisions, hit points, score, orbs, sounds, deterministic autoplay summary** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-036c1: Purple Swarm core, part 1: `games/purple-swarm` workspace member (ADR-042), arena, player, camera, shooting, HUD; CI `--workspace`** · DONE (2026-10-09; verified on Linux)
@@ -73,7 +74,8 @@ _None._
 
 ## Future
 
-_None in this phase beyond PP-036d2 (the last part of P3.5 item 6)._
+- [ ] **P4 Debug overlay: implementation tasks** · P2 · TODO (defined by PP-037a)
+- [ ] **P5 Scene editor** · P3 · TODO (one coarse task until P4 is done)
 
 ---
 
@@ -459,13 +461,22 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-036d2: Purple Swarm best score, balance, findings ← NEXT
+### PP-037a: Debug overlay design ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6, part 4b (last) · Priority P1 · TODO |
+| Stage | Phase P4, item 1 · Priority P1 · TODO |
+| Dependencies | P3.5 complete (PP-036d2) |
+| Why now | P3.5 is done; P4 (inspect a running game) is the next phase. Its biggest open question is the approach: ROADMAP names egui behind a feature, which is the largest dependency candidate (ADR-013, R-13), while the engine can already draw screen-space text and quads. That decision shapes everything after it, so it comes first. |
+| Scope | ADR-043: approach (own screen-space text/quads vs. egui or another immediate-mode UI behind a Cargo feature), with the measured dependency and build-time cost of the candidates; where it lives (inside `purplepie` behind a feature, or a `crates/purplepie-debug` crate per ADR-038); the first contents (frame and fixed-step timings, entity count, camera, cursor world position; later an entity list and component values via the scene registry, ADR-036); how a game turns it on (config flag and toggle key). Then split the implementation into small tasks. No engine code in this task beyond throwaway spikes. |
+| Acceptance criteria | ADR-043 recorded with alternatives and measured costs; ROADMAP P4 row lists the implementation tasks; TASKS has the first implementation task as next. |
+
+### PP-036d2: Purple Swarm best score, balance, findings
+| Field | Value |
+|---|---|
+| Stage | Phase P3.5, item 6, part 4b (last) · Priority P1 · **DONE** (2026-10-12; verified on Linux; phase P3.5 complete) |
 | Dependencies | PP-036d1 (DONE) |
 | Scope | In `games/purple-swarm` (public API only): best score kept in a small text file next to the game (one number; a missing or broken file counts as 0 and is never fatal; written only when beaten; autoplay never writes it), shown on the title and game-over screens ("Best N", "New best!"). Balance pass: the bot ends 60 s at 5/5 hit points and an idle player dies in ~10–12 s; tune spawn rate / speeds / contact so both feel fair, then re-record the autoplay summary line. Final findings in USABILITY (U-19, U-20 and anything new); GAME2 results; P3.5 item 6 closed in ROADMAP. |
-| Acceptance criteria | `--workspace` clippy clean; unit tests for reading/writing the score file (missing, broken, valid); Xvfb: a round beats the best, the file holds the score, a restart and a fresh start show it; the new autoplay summary is identical over two runs; ROADMAP item 6 done. |
+| Acceptance criteria | ✅ `--workspace` clippy clean (+ `incompatible_msrv`). ✅ New `best.rs` (`path` next to the executable, `read`, `write` via a temporary file and rename): 4 unit tests (missing → 0; written value reads back, no temporary file left; broken contents → 0, `" 250 \r\n"` → 250; a blocked path is an error, not a panic). The game has 10 tests. ✅ Xvfb: sweep-firing round → `New best! Score 20`, file `20`; idle round → `Score 0   Best 20`, file still `20`; fresh launch → title `Best 20`; file `garbage` → plain title and one warning, file left alone; four autoplay runs created no file. ✅ Balance measured with the new `PURPLE_SWARM_AUTOPLAY=survive` (bot plays until it dies, cap 15 min): before, death at 373.3 s in wave 19 (spawning plateaued at 4/s from wave 10, below the bot's 8 shots/s); 15 % per wave → 308.7 s, wave 16; final 20 % per wave (min 0.15 s) and Drifters +10 units/s per wave (cap 230) → `208.4 s; wave 11; score 6550; kills 421; shots 1062`, identical over two runs. Wave 1 unchanged (idle player dies in ~11 s). New 60 s line `60.0 s; wave 4; score 475; kills 43; shots 151; hit points 5`, identical over two runs. ✅ ROADMAP: item 6 and P3.5 complete. Engine unchanged. |
 
 ### PP-036d1: Purple Swarm screens and restart
 | Field | Value |
@@ -507,8 +518,9 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 ### PP-036: A second game as an outside crate (umbrella)
 | Field | Value |
 |---|---|
-| Stage | Phase P3.5, item 6 · Split into PP-036a (spec) and follow-ups |
+| Stage | Phase P3.5, item 6 · **DONE** (2026-10-12): PP-036a, b, c1, c2, d1, d2 |
 | Scope | A second, different game written as an outside crate, adding only the engine features it needs. Candidates from the trial: random numbers (U-14) and rectangle-overlap helpers (U-15); from the roadmap: world clearing / scene replacement, tilemaps, timers, camera helpers, gamepad. |
+| Outcome | Purple Swarm (`games/purple-swarm`, ~1300 lines, public API only). Engine additions: only `math::Rng` and `math::Rect`/`circles_overlap` (PP-036b). World clearing (`World::clear`), the tiled floor, timers and the camera clamp were plain game code; gamepad was not needed. Open observations U-18, U-19, U-20 ([USABILITY.md](USABILITY.md)). |
 
 ### PP-013: Choose project license
 | Owner decision · P3 · **DONE** (2026-10-01) | No dependencies. |

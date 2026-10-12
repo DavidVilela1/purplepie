@@ -18,7 +18,8 @@ break compatibility and a patch version (0.x.**y**) may not.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,
-  pause and game over with restart.
+  pause and game over with restart. A best score kept next to the executable, and a difficulty curve measured with
+  the bot (`PURPLE_SWARM_AUTOPLAY=survive`).
 
 ### Changed
 

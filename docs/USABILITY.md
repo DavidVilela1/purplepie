@@ -163,3 +163,13 @@ Title, pause and game over with restart, using the public API only. What worked 
 One snag, already a known limitation: click and key edges must be read in `update`, because an edge can reach
 `fixed_update` a frame late, or not at all when a frame runs no fixed step. The game does this and says why in a
 comment. New finding: U-20 (sounds cannot be paused, only muted).
+
+## PP-036d2: best score and difficulty (2026-10-12)
+
+The best-score file needed only `std::fs`, which confirms the PP-036a decision that one number does not justify an
+engine save-data API. The balance pass needed a way to measure difficulty, so the game gained a `survive` autoplay
+mode, game code only. No new findings.
+
+**P3.5 is complete.** Of the 20 findings, U-01 to U-17 were fixed or addressed during the phase. U-18 is documented
+with a possible engine follow-up, and U-19 and U-20 are open observations. None blocked a game, and each has a revisit
+condition in the table.

@@ -6,10 +6,11 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**Release 0.1.0 (2026-10-09): prepared and verified (Linux); the owner pushes the `v0.1.0` tag.** M10 (Engine API
-Stabilization) and the portfolio scope were reached earlier. Since then the engine gained runtime essentials (P1–P2)
-and editor foundations (P3), and was made usable from outside crates (P3.5). Windows: the owner's checklist passed
-(PP-033b). macOS is built and tested in CI but has not been seen running.
+**Phase P3.5 (usability and first release): complete (2026-10-12, verified on Linux).** Release 0.1.0 is tagged on
+GitHub (`v0.1.0`), and a second game, Purple Swarm, was built on the public API with only two small engine additions.
+M10 (Engine API Stabilization) and the portfolio scope were reached earlier; since then the engine gained runtime
+essentials (P1–P2) and editor foundations (P3). Windows: the owner's checklist passed (PP-033b). macOS is built and
+tested in CI but has not been seen running. Next milestone: **P4, debug overlay**.
 
 ## Current Stage
 
@@ -18,7 +19,7 @@ PP-020 sprite animation, PP-021 screen-space drawing, PP-022 sound effects, PP-0
 control, PP-024b OGG Vorbis decoding and PP-025 per-texture sampling. Stages 0–10 and phase P1 (Text) were completed
 earlier. **Phase P3 (editor foundations): complete** (2026-10-08): scene files (PP-026a/b, ADR-035), game components in
 scenes (PP-027, ADR-036), asset hot reload for textures, fonts and sounds (PP-028/029, ADR-037) and the workspace layout
-decision (PP-030, ADR-038). **Phase P3.5 (usability and first release): in progress.** PP-031, the outside-crate
+decision (PP-030, ADR-038). **Phase P3.5 (usability and first release): complete** (2026-10-12). PP-031, the outside-crate
 trial, is done: a small game built from the README alone worked after three README gaps were fixed, and its 17
 findings are in [USABILITY.md](USABILITY.md). PP-032a added the newcomer guide [GUIDE.md](GUIDE.md), compiled by
 `cargo test`, and PP-032b rewrote the API module pages for game authors (item 2 complete; no template crate, ADR-039).
@@ -32,7 +33,8 @@ done. PP-036a specified the second game, Purple Swarm ([GAME2.md](GAME2.md)), an
 added the two engine features it lacked: `math::Rng` and `math::Rect` (ADR-041). PP-036c1 started the game in
 `games/purple-swarm` (a workspace member built by CI, ADR-042): arena, player, camera, shooting. PP-036c2 made it
 playable: enemies, waves, collisions, score and sounds. PP-036d1 added the title, pause and game-over screens with
-restart. Next: **PP-036d2**, the best-score file and a balance pass, which closes item 6. The long-term plan (in-game UI and an editor) is in
+restart, and PP-036d2 the best-score file and a difficulty curve measured with the bot, which completes item 6 and
+the phase. Next: **PP-037a**, the design decision for the P4 debug overlay. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -113,6 +115,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-036d2: Purple Swarm best score (file next to the executable, written via temporary file + rename, broken or missing = 0) and difficulty curve (bot survives 208 s / wave 11 instead of 373 s / wave 19; `survive` autoplay mode). Phase P3.5 complete.
 - PP-036d1: Purple Swarm screens: title, pause (world frozen, music muted), game over with restart via `World::clear`; engine-free, unit-tested screen flow; banner backdrop; red HP at 2 or fewer.
 - PP-036c2: Purple Swarm playable: Drifters and Dashers in 20 s waves, circle collisions, 5 hit points with blinking invulnerability, score, health orbs, five sounds, game over; deterministic autoplay summary line.
 - PP-036c1: `games/purple-swarm` (ADR-042: example games as workspace members; CI `--workspace`): arena, player, camera, shooting, HUD, autoplay bot.
@@ -140,7 +143,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-036d2: Purple Swarm best score, balance, findings** (closes P3.5 item 6). See [TASKS.md](TASKS.md#pp-036d2-purple-swarm-best-score-balance-findings--next).
+- **PP-037a: Debug overlay design** (phase P4, item 1; ADR-043: own screen-space text/quads vs. egui behind a feature). See [TASKS.md](TASKS.md#pp-037a-debug-overlay-design--next).
 
 ## Blocked
 
@@ -177,6 +180,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-12: PP-036d2 Purple Swarm best score and difficulty; phase P3.5 complete.**
+  - Best score in `purple-swarm-best.txt` next to the executable (under `target/` for `cargo run`): shown on the title and game-over screens; a missing or broken file is 0; written through a temporary file and a rename; autoplay never touches it. 4 new unit tests (the game has 10).
+  - Difficulty measured with a new `PURPLE_SWARM_AUTOPLAY=survive` mode: the bot used to survive 373 s (wave 19) because spawning stopped speeding up at wave 10; spawning now speeds up 20 % per wave (min 0.15 s) and Drifters by 10 units/s per wave, and the bot dies at 208 s (wave 11). Wave 1 is unchanged. New 60 s line `60.0 s; wave 4; score 475; kills 43; shots 151; hit points 5`.
+  - P3.5 item 6 and the phase are complete (ROADMAP). Next phase: P4 debug overlay, starting with its design decision (PP-037a). No engine code change.
 
 - **2026-10-09: PP-036d1 Purple Swarm screens.**
   - PP-036d was split: screens and restart now, best score and balance in PP-036d2.
@@ -441,8 +449,8 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-08,
-after the final PP-036d1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-12,
+after the final PP-036d2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -451,6 +459,7 @@ after the final PP-036d1 change (CI additionally runs the latest stable clippy a
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 52 doctests (13 of them the guide's blocks), 12 ignored (GPU) |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12 |
+| Purple Swarm best score + difficulty (PP-036d2) | ✅ GitHub `main` (`a35d4fe`, PP-036d1) byte-identical to this tree before the task. `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 10 tests). `survive` autoplay: `208.4 s; wave 11; score 6550; kills 421; shots 1062; hit points 0` twice (before retuning: `373.3 s; wave 19`; at 15 %/wave: `308.7 s; wave 16`); 60 s line `60.0 s; wave 4; score 475; kills 43; shots 151; hit points 5` twice; no best-score file after four autoplay runs. Xvfb sessions: sweep-firing round → `New best! Score 20`, file `20`; idle round → `Score 0   Best 20`, file unchanged; fresh launch → `Best 20` on the title; file `garbage` → plain title, one warning, file untouched |
 | Purple Swarm screens (PP-036d1) | ✅ `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 6 tests). Autoplay summary unchanged: `60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5` (two runs). Scripted Xvfb session: title frame → click → Escape: pause frames 1.5 s apart pixel-identical → click → idle until `swarm: game over at 11.5 s; …` (pause not counted), `HP 0/5` red → click: fresh round (`Score 0 Wave 1 0:01`, `HP 5/5`, no enemies) → Escape → Q: exit 0. Escape on the title: exit 0 |
 | Purple Swarm part 2 (PP-036c2) | ✅ `cargo clippy --locked --workspace --all-targets --all-features -D warnings` (+ `incompatible_msrv`), `cargo test --locked --workspace` (game: 3 tests). Autoplay under Xvfb from `games/purple-swarm`: summary `60.0 s; wave 4; score 415; kills 37; shots 133; hit points 5`, identical over three runs; frames at 30 s / 50 s show an enemy, bullets, `Score 160 Wave 2 0:30` / `Score 365 Wave 3 0:50` and `HP 5/5`. Idle manual run: `swarm: game over at 9.9 s; wave 1; score 0; …`, frame shows the banner and `HP 0/5`. ALSA capture (25 s): continuous music with louder effect transients |
 | Purple Swarm part 1 (PP-036c1) | ✅ `cargo fmt --all --check`, `cargo check/clippy --locked --workspace --all-targets --all-features` (+ `incompatible_msrv`), `cargo test --locked --workspace` pass. Under Xvfb from `games/purple-swarm`: asset root `…/games/purple-swarm/assets`; autoplay frame after ~8 s shows `Shots 62`, bullets, tiled floor, bottom wall with the camera clamped; manual run (mouse at top right, W + left button held 1 s) shows `Shots 8` and the camera moved. From the repository root: `Error: failed to load asset …/PurplePie/assets/textures/floor.png` (U-18). Both workflow files parse as YAML |
@@ -485,4 +494,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-09. PP-036d1 done (Purple Swarm screens and restart). PP-036d2 (best score, balance; closes P3.5 item 6) is next.
+2026-10-12. PP-036d2 done (Purple Swarm best score and difficulty); phase P3.5 complete. PP-037a (P4 debug overlay design, ADR-043) is next.

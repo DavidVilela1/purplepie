@@ -1,8 +1,8 @@
 //! Purple Swarm: a top-down arena shooter built on PurplePie's public API only
 //! (docs/GAME2.md): arena, player, camera, shooting, two enemy types in
 //! growing waves, collisions, hit points, score, health orbs and sound
-//! (PP-036c1/c2), and the title, pause and game-over screens with restart
-//! (PP-036d1). The best-score file follows in PP-036d2.
+//! (PP-036c1/c2); title, pause and game-over screens with restart (PP-036d1);
+//! the best score and the difficulty curve (PP-036d2).
 //!
 //! Run it from this folder, so its own `assets/` is found:
 //!
@@ -14,13 +14,21 @@
 //! Click to start. WASD or the arrows move, the mouse aims, the left button
 //! shoots, Escape pauses. On the title, pause and game-over screens a click
 //! starts, resumes or plays again, and Escape or Q quits.
+//! The best score is kept in `purple-swarm-best.txt` next to the executable.
+//!
 //! `PURPLE_SWARM_AUTOPLAY=1` skips the title and lets a bot play with a fixed
 //! random seed: it prints a summary after 60 simulated seconds (or when it
 //! dies) and exits, and two runs print the same line.
+//! `PURPLE_SWARM_AUTOPLAY=survive` lets the bot play until it dies (at most
+//! 15 minutes), to measure the difficulty. Autoplay never touches the
+//! best-score file.
 
+mod best;
 mod enemy;
 mod level;
 mod screen;
+
+use std::path::PathBuf;
 
 use purplepie::audio::{PlaybackId, SoundId};
 use purplepie::ecs::{self, Entity, Velocity};
@@ -50,6 +58,9 @@ const ORB_DROP_CHANCE: f32 = 0.1;
 const SPAWN_DISTANCE: f32 = 300.0;
 /// Fixed steps the autoplay bot plays before printing its summary (60 s).
 const AUTOPLAY_STEPS: u64 = 60 * 60;
+/// Cap for `PURPLE_SWARM_AUTOPLAY=survive`, which plays until the bot dies
+/// (15 min, so a too-easy balance cannot run forever).
+const SURVIVE_STEPS: u64 = 15 * 60 * 60;
 const AUTOPLAY_SEED: u64 = 2026;
 /// How far the autoplay bot looks for targets.
 const BOT_RANGE: f32 = 420.0;
@@ -119,21 +130,36 @@ struct Swarm {
     assets: Option<Assets>,
     rng: Rng,
     autoplay: bool,
+    /// Autoplay stops after this many fixed steps.
+    step_limit: u64,
     screen: Screen,
     round: Round,
     music: Option<PlaybackId>,
+    /// The best score so far and the file that keeps it (`None` in autoplay,
+    /// which never reads or writes it).
+    best: u32,
+    best_file: Option<PathBuf>,
 }
 
 impl Swarm {
-    fn new(autoplay: bool) -> Self {
+    /// `autoplay` is the bot's step limit, `None` for a human player.
+    fn new(autoplay: Option<u64>) -> Self {
+        let best_file = if autoplay.is_some() {
+            None
+        } else {
+            best::path()
+        };
         Self {
+            best: best_file.as_deref().map_or(0, best::read),
+            best_file,
             assets: None,
-            rng: if autoplay {
+            rng: if autoplay.is_some() {
                 Rng::new(AUTOPLAY_SEED)
             } else {
                 Rng::from_entropy()
             },
-            autoplay,
+            autoplay: autoplay.is_some(),
+            step_limit: autoplay.unwrap_or(0),
             screen: Screen::Title,
             round: Round::new(),
             music: None,
@@ -402,10 +428,25 @@ impl Swarm {
         if let Some(assets) = &self.assets {
             ctx.play_sound(assets.game_over, 0.8);
         }
-        let prompt = format!(
-            "Score {}   Wave {}\nClick to play again   Esc quits",
-            self.round.score, self.round.wave
-        );
+        let score = self.round.score;
+        let first_line = if score > self.best {
+            self.best = score;
+            if let Some(file) = &self.best_file
+                && let Err(error) = best::write(file, score)
+            {
+                eprintln!(
+                    "swarm: could not save the best score to {}: {error}",
+                    file.display()
+                );
+            }
+            format!("New best! Score {score}   Wave {}", self.round.wave)
+        } else {
+            format!(
+                "Score {score}   Best {}   Wave {}",
+                self.best, self.round.wave
+            )
+        };
+        let prompt = format!("{first_line}\nClick to play again   Esc quits");
         level::show_banner(ctx, "GAME OVER", &prompt);
         println!("swarm: game over at {}", self.summary(ctx));
     }
@@ -517,7 +558,12 @@ impl Game for Swarm {
         if self.autoplay {
             self.apply(ctx, Action::Start);
         } else {
-            level::show_banner(ctx, "PURPLE SWARM", "Click to start   Esc quits");
+            let prompt = if self.best > 0 {
+                format!("Best {}\nClick to start   Esc quits", self.best)
+            } else {
+                "Click to start   Esc quits".to_owned()
+            };
+            level::show_banner(ctx, "PURPLE SWARM", &prompt);
         }
         Ok(())
     }
@@ -562,7 +608,7 @@ impl Game for Swarm {
             if self.autoplay {
                 ctx.request_exit();
             }
-        } else if self.autoplay && self.round.steps == AUTOPLAY_STEPS {
+        } else if self.autoplay && self.round.steps == self.step_limit {
             println!("swarm: autoplay finished: {}", self.summary(ctx));
             ctx.request_exit();
         }
@@ -570,7 +616,11 @@ impl Game for Swarm {
 }
 
 fn main() -> purplepie::Result<()> {
-    let autoplay = std::env::var("PURPLE_SWARM_AUTOPLAY").is_ok_and(|v| v == "1");
+    let autoplay = match std::env::var("PURPLE_SWARM_AUTOPLAY").as_deref() {
+        Ok("1") => Some(AUTOPLAY_STEPS),
+        Ok("survive") => Some(SURVIVE_STEPS),
+        _ => None,
+    };
     let config = EngineConfig::new("Purple Swarm")
         .with_size(WINDOW.0, WINDOW.1)
         .with_clear_color(purplepie::render::Color::hex(0x0B0618))

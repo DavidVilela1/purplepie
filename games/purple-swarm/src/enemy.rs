@@ -76,9 +76,16 @@ impl Enemy {
     }
 }
 
-/// Seconds between spawns during `wave` (1, 2, …): faster each wave.
+/// Seconds between spawns during `wave` (1, 2, …): 20 % shorter each wave,
+/// never under 0.15 s. From about wave 10 enemies arrive faster than 8 shots a
+/// second can clear them (PP-036d2 balance).
 pub fn spawn_interval(wave: u32) -> f32 {
-    (1.6 - 0.15 * wave.saturating_sub(1) as f32).max(0.25)
+    (1.6 * 0.8_f32.powi(wave.saturating_sub(1) as i32)).max(0.15)
+}
+
+/// Drifter speed during `wave`: always slower than the player (260).
+pub fn drift_speed(wave: u32) -> f32 {
+    (90.0 + 10.0 * wave as f32).min(230.0)
 }
 
 /// Chance that a new enemy is a Dasher during `wave`: none in wave 1.
@@ -98,7 +105,7 @@ pub fn pick_kind(rng: &mut Rng, wave: u32) -> Kind {
 /// Steers every enemy for one step toward `player`: Drifters walk at it,
 /// Dashers wait and then dash at where it was. Also counts down hit flashes.
 pub fn steer(world: &mut World, player: Vec2, wave: u32, dt: f32) {
-    let drift_speed = 90.0 + 6.0 * wave as f32;
+    let drift_speed = drift_speed(wave);
     for (t, enemy, velocity) in world.query_mut::<(&Transform2D, &mut Enemy, &mut Velocity)>() {
         let to_player = (player - t.position).normalize_or_zero();
         velocity.0 = match enemy.kind {
@@ -146,7 +153,12 @@ mod tests {
     fn waves_get_faster_and_bring_dashers_later() {
         assert_eq!(spawn_interval(1), 1.6);
         assert!(spawn_interval(2) < spawn_interval(1));
-        assert_eq!(spawn_interval(50), 0.25, "never faster than 4 per second");
+        assert_eq!(spawn_interval(50), 0.15, "never faster than ~7 per second");
+        assert!(drift_speed(1) < drift_speed(5));
+        assert!(
+            drift_speed(100) < 260.0,
+            "the player can always outrun a Drifter"
+        );
         assert_eq!(dasher_chance(1), 0.0, "wave 1 is Drifters only");
         assert!(dasher_chance(3) > 0.0);
         assert_eq!(dasher_chance(30), 0.4);
