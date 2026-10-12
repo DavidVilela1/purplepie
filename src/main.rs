@@ -449,7 +449,9 @@ fn main() -> ExitCode {
     // Console log (ADR-040): PURPLEPIE_LOG=info shows the GPU, audio and reloads.
     let config = EngineConfig::new("PurplePie Sandbox")
         .with_hot_reload(true)
-        .with_console_log(true);
+        .with_console_log(true)
+        // The debug overlay (F12) when built with `--features debug-overlay` (ADR-043).
+        .with_debug_overlay(cfg!(feature = "debug-overlay"));
     let result = Engine::new(config).and_then(|e| e.run(game));
 
     match result {

@@ -49,6 +49,9 @@ pub(crate) struct Runner<G: Game> {
     error: Option<Error>,
     /// When hot reload last checked the texture files (ADR-037).
     last_reload_check: Option<Instant>,
+    /// The debug overlay's F12 state, when the game turned it on (ADR-043).
+    #[cfg(feature = "debug-overlay")]
+    overlay: Option<crate::debug::Toggle>,
 }
 
 impl<G: Game> Runner<G> {
@@ -59,6 +62,11 @@ impl<G: Game> Runner<G> {
             AssetRoot::NotFound { searched } => {
                 log::warn!("no asset folder found (looked for {searched:?})");
             }
+        }
+        if config.debug_overlay && !cfg!(feature = "debug-overlay") {
+            log::warn!(
+                "debug overlay requested, but PurplePie was built without its `debug-overlay` feature"
+            );
         }
         Self {
             game,
@@ -78,6 +86,8 @@ impl<G: Game> Runner<G> {
             last_frame: None,
             error: None,
             last_reload_check: None,
+            #[cfg(feature = "debug-overlay")]
+            overlay: config.debug_overlay.then(crate::debug::Toggle::new),
             config,
         }
     }
@@ -135,6 +145,14 @@ impl<G: Game> Runner<G> {
         let Some(key) = keymap::translate(event.physical_key) else {
             return;
         };
+        // F12 belongs to the debug overlay while it is on (ADR-043).
+        #[cfg(feature = "debug-overlay")]
+        if let Some(overlay) = &mut self.overlay
+            && overlay.key(key, pressed, event.repeat || is_synthetic)
+        {
+            log::debug!("debug overlay visible: {}", overlay.visible());
+            return;
+        }
         log::debug!(
             "key {key:?} {} (repeat: {}, synthetic: {is_synthetic})",
             if pressed { "down" } else { "up" },
@@ -179,6 +197,7 @@ impl<G: Game> Runner<G> {
             size.height,
             window.scale_factor(),
             self.config.clear_color,
+            self.config.debug_overlay,
         )?;
         self.renderer = Some(renderer);
         Ok(())
@@ -190,11 +209,16 @@ impl<G: Game> Runner<G> {
             return;
         };
         let state = &self.state;
+        #[cfg(feature = "debug-overlay")]
+        let overlay_visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
+        #[cfg(not(feature = "debug-overlay"))]
+        let overlay_visible = false;
         if let Err(error) = renderer.render(
             &state.world,
             &state.textures,
             &state.fonts,
             &state.camera,
+            overlay_visible,
             || {
                 window.pre_present_notify();
             },

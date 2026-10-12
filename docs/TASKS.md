@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037b: Debug overlay, part 1: `debug-overlay` feature with egui 0.36 (ADR-043), `EngineConfig::with_debug_overlay`, F12 toggle, egui pass after the game's, input routing, CI/RELEASING for the feature's Rust 1.95** · P1 · TODO ← **next task**
+- [ ] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer, wheel, keys to egui while the overlay is visible; events egui consumes do not reach `Input`)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037b1: Debug overlay, part 1a: `debug-overlay` feature (egui + egui-wgpu 0.36), `EngineConfig::with_debug_overlay`, F12 toggle, overlay pass through a non-sRGB view, placeholder window; CI `msrv` without the feature** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037a: Debug overlay design: ADR-043 (egui inside the engine behind an off-by-default `debug-overlay` feature), measured in a throwaway spike; P4 split into PP-037b–d** · DONE (2026-10-12; spike verified on Linux)
 - [x] **PP-036d2: Purple Swarm best-score file, difficulty curve (bot benchmark), `survive` autoplay mode, findings (phase P3.5, item 6 and the phase complete)** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-036d1: Purple Swarm screens: title, pause, game over with restart (`World::clear`), banner backdrop, low-health colour** · DONE (2026-10-09; verified on Linux)
@@ -463,13 +464,22 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037b: Debug overlay, part 1: feature, pass, toggle, input ← NEXT
+### PP-037b2: Debug overlay, part 1b: input routing ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 2 · Priority P1 · TODO |
+| Stage | Phase P4, item 2b · Priority P1 · TODO |
+| Dependencies | PP-037b1 (DONE) |
+| Scope | Add `egui-winit` 0.36 (`default-features = false`, `x11` + `wayland`; recorded in TECH_STACK, `Cargo.lock` delta measured). While the overlay is visible, the runner gives each window event to egui-winit's `State` first (cursor, buttons, wheel, keys, text, focus, scale); events egui consumes (pointer over an overlay window, a focused overlay field) do not reach `Input`, everything else does, unchanged. Hidden overlay: no routing at all. The overlay uses the collected `RawInput` instead of the hand-built one; the cursor icon egui asks for is applied. Decide and test the edge cases: a press that started on the game and is released over the overlay (the game must still see the release), focus loss, and F12 (still the engine's). |
+| Acceptance criteria | Unit tests for the routing decision (consumed / not consumed, release always delivered). Xvfb: a click on the overlay's collapse arrow collapses it and the sandbox does not stamp a square there; a click elsewhere stamps as before; the wheel over the overlay does not zoom the camera. Without the feature or with the overlay off: frames and input unchanged. |
+
+### PP-037b1: Debug overlay, part 1a: feature, pass, toggle
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 2a · Priority P1 · **DONE** (2026-10-12; verified on Linux) |
 | Dependencies | PP-037a (DONE, ADR-043) |
+| Split | PP-037b was too large for one verified session: input routing (`egui-winit`) moved to PP-037b2, so this task adds only `egui` and `egui-wgpu` (ADR-013: a dependency arrives with the task that uses it). |
 | Scope | Optional feature `debug-overlay` (off by default) adding `egui`, `egui-wgpu` (no default features) and `egui-winit` (`x11`, `wayland`) 0.36.x, recorded in TECH_STACK. Crate-private `src/debug/` holding the egui context, the egui-winit state and the egui-wgpu renderer. `EngineConfig::with_debug_overlay(bool)` exists with or without the feature (without it: one warning, no effect); the sandbox turns it on only when built with the feature. The renderer draws egui in a second pass (`LoadOp::Load`) after the game's, into a non-sRGB view of the surface texture when the surface allows it. The runner passes window events to egui first while the overlay is visible; consumed events do not reach `Input`; F12 toggles and never reaches the game while the overlay is enabled. Content: one small "PurplePie" window (version, "F12 hides"), since the real contents are PP-037c. CI: the `msrv` job checks every feature except `debug-overlay` (it needs Rust 1.95); RELEASING notes it. |
-| Acceptance criteria | Without the feature: no new code compiled, frames byte-identical to before, MSRV 1.90 check still clean. With it: clippy clean; unit tests for the toggle and event routing decisions; an ignored GPU test renders a frame with and without the overlay (pixels outside the overlay window identical, inside changed, colours as expected on an sRGB target); Xvfb sandbox frames with the overlay shown, hidden by F12, and a click on the overlay window not reaching the game. |
+| Acceptance criteria | ✅ Without the feature: `cargo tree -i egui` finds no egui; Breakout's lose screen pixel-identical to the PP-036 baseline and the frozen scene frame pixel-identical to a build of GitHub `main` (`bf98e71`), also with the feature compiled in but the overlay off; `incompatible_msrv` clean. ✅ With it: clippy clean (also `incompatible_msrv`); 2 unit tests (F12 toggles on fresh presses, press/repeat/release consumed; other keys pass through); 1 ignored GPU test drawing through an `Rgba8Unorm` and an `Rgba8UnormSrgb` view of an sRGB target: egui's window fill within 2/255 both ways, every pixel away from the window untouched; 233 + 13 ignored with `--all-features`, 13/13 GPU tests. ✅ Sandbox under Xvfb (`--features debug-overlay`): surface `Bgra8UnormSrgb` with `view_formats: [Bgra8Unorm]`, no egui sRGB warning; window shown → F12 hidden → F12 shown; debug log shows the toggles and no `key F12` reaching `Input`, while `A` does. ✅ A game asking for the overlay without the feature gets one warning. ✅ CI `msrv` job without features; README, DEVELOPMENT, RELEASING, TECH_STACK, CHECKLIST step 9, CHANGELOG. Click routing moved to PP-037b2. |
 
 ### PP-037a: Debug overlay design
 | Field | Value |

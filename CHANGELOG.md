@@ -15,6 +15,10 @@ break compatibility and a patch version (0.x.**y**) may not.
 - `math::Rect` (centre + half size: `from_center_size`, `from_corners`, `min`, `max`, `size`, `contains`,
   `overlaps`, `intersection`, `closest_point`, `overlaps_circle`, `expand`) and `math::circles_overlap` for gameplay
   overlap tests (ADR-041).
+- Optional `debug-overlay` Cargo feature with `EngineConfig::with_debug_overlay(true)`: an egui window drawn over
+  the game, shown and hidden with F12, which never reaches the game while the overlay is on (ADR-043). The feature
+  needs Rust 1.95 and adds egui 0.36; without it nothing changes. Part 1: a placeholder window; statistics and an
+  entity inspector follow.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,

@@ -51,10 +51,21 @@ lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.r
 # public bound (`Context::register_scene_component`, ADR-036); engine types still do not derive them.
 ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
+# PP-037b1: debug overlay (ADR-043), only with the optional `debug-overlay` feature, used only in
+# `debug` and the render pass that draws it. Both need Rust 1.95 (the engine without the feature
+# keeps 1.90). Pinned with wgpu/winit: egui-wgpu 0.36 is built against wgpu 30 (R-30). egui-wgpu's
+# default features would turn on extra wgpu backends (WebGL, Metal workarounds), so they are off.
+egui = { version = "0.36.2", optional = true }
+egui-wgpu = { version = "0.36.2", optional = true, default-features = false }
+
+[features]
+# Debug overlay (ADR-043): an egui window drawn over the game, shown and hidden with F12; turned on
+# with `EngineConfig::with_debug_overlay(true)`. Off by default. Needs Rust 1.95.
+debug-overlay = ["dep:egui", "dep:egui-wgpu"]
 
 # PP-030 (ADR-038): this package is also the root of a Cargo workspace. The engine stays at the
-# repository root (paths, commands and `assets/` unchanged); future engine crates (debug overlay,
-# editor) go under `crates/`. Example games written only against the public API live under
+# repository root (paths, commands and `assets/` unchanged); future engine crates (e.g. the
+# editor) go under `crates/` (the debug overlay is a feature instead, ADR-043). Example games written only against the public API live under
 # `games/` (ADR-042). Plain `cargo build`/`test` at the root still builds only the engine;
 # `--workspace` includes the games (CI does). Declaring the workspace also keeps Cargo from
 # attaching this project to a workspace in a parent folder.

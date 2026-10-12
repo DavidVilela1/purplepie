@@ -71,6 +71,12 @@ pub struct EngineConfig {
     /// asset folder, the GPU, the audio device and hot reloads. Does nothing
     /// if the game installed its own logger first (e.g. `env_logger`).
     pub console_log: bool,
+    /// Show the debug overlay (default `false`; ADR-043): a small egui window
+    /// drawn over the game, shown and hidden with **F12**. While it is on, F12
+    /// never reaches the game. It needs PurplePie's optional `debug-overlay`
+    /// Cargo feature (which needs Rust 1.95); without the feature, turning it on
+    /// only logs a warning. The overlay never adds entities to the world.
+    pub debug_overlay: bool,
 }
 
 impl EngineConfig {
@@ -101,6 +107,7 @@ impl EngineConfig {
             audio: true,
             hot_reload: false,
             console_log: false,
+            debug_overlay: false,
         }
     }
 
@@ -199,6 +206,33 @@ impl EngineConfig {
         self
     }
 
+    /// Turns the debug overlay on or off (default off; see
+    /// [`debug_overlay`](Self::debug_overlay)).
+    ///
+    /// Enable the feature in the game's `Cargo.toml` (it is newer than the
+    /// 0.1.0 release, so depend on a later tag or on `branch = "main"`):
+    ///
+    /// ```toml
+    /// purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main", features = ["debug-overlay"] }
+    /// ```
+    ///
+    /// ```no_run
+    /// use purplepie::{Engine, EngineConfig, Game};
+    ///
+    /// struct MyGame;
+    /// impl Game for MyGame {}
+    ///
+    /// fn main() -> purplepie::Result<()> {
+    ///     let config = EngineConfig::new("My Game").with_debug_overlay(true);
+    ///     Engine::new(config)?.run(MyGame)
+    /// }
+    /// ```
+    #[must_use]
+    pub fn with_debug_overlay(mut self, debug_overlay: bool) -> Self {
+        self.debug_overlay = debug_overlay;
+        self
+    }
+
     /// Checks the configuration for values the engine cannot use.
     pub(crate) fn validate(&self) -> Result<()> {
         if self.width == 0 {
@@ -273,8 +307,11 @@ mod tests {
             .with_max_frame_dt(2.0)
             .with_max_fixed_steps(3)
             .with_clear_color(Color::BLACK)
-            .with_hot_reload(true);
+            .with_hot_reload(true)
+            .with_debug_overlay(true);
         assert!(config.hot_reload);
+        assert!(config.debug_overlay);
+        assert!(!EngineConfig::new("Test").debug_overlay, "off by default");
         assert_eq!(config.clear_color, Color::BLACK);
         assert_eq!(
             (config.fixed_dt, config.max_frame_dt, config.max_fixed_steps),

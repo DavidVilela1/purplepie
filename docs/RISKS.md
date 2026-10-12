@@ -218,6 +218,9 @@ Likelihood and impact are qualitative: Low, Medium or High.
   `assets/fonts/OFL.txt`, and the README's License section says assets may carry their own licences. Games that ship it
   must include `OFL.txt`; the OFL allows bundling with software, including commercial software.
 - **Fallback:** replace it with any other OFL/public-domain font; nothing in the engine depends on this specific font.
+- **Since PP-037b1:** a game built with the optional `debug-overlay` feature also embeds egui's default fonts
+  (`epaint_default_fonts`: Ubuntu-Light under the Ubuntu Font Licence 1.0, Hack under MIT/Bitstream Vera terms, Noto
+  Emoji under OFL-1.1). Recommended: build shipped games without the feature; otherwise include those licences.
 
 ### R-27: Audio: platform builds, devices and the audio thread
 - **Trigger:** `cpal` needs the ALSA headers to build on Linux (CI and Linux developers); Windows/macOS audio code is
@@ -260,8 +263,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 ### R-30: Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight
 - **Trigger:** ADR-043 puts egui 0.36 behind the `debug-overlay` feature. egui-wgpu and egui-winit pin wgpu and winit
   major versions, so a wgpu or winit upgrade the engine needs can be blocked until egui releases a matching version.
-  egui 0.36 also needs Rust 1.95 (the engine promises 1.90) and adds 32 `Cargo.lock` entries and minutes of build time
-  to `--all-features` builds.
+  egui 0.36 also needs Rust 1.95 (the engine promises 1.90) and adds `Cargo.lock` entries (30 since PP-037b1, more
+  with `egui-winit` in PP-037b2) and minutes of build time to `--all-features` builds.
 - **Mitigation:** the feature is off by default, so games that do not enable it compile none of it and keep Rust 1.90;
   the CI `msrv` job excludes the feature; egui is upgraded together with wgpu and winit, never separately; no egui type
   appears in the public API, so swapping the overlay's implementation does not break games.

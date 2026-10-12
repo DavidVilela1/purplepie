@@ -44,6 +44,9 @@ pub(crate) struct Renderer {
     /// The font store revision the atlas was filled from; when hot reload
     /// replaces a font the atlas is cleared (ADR-037).
     font_revision: u32,
+    /// The debug overlay, when the game turned it on (ADR-043).
+    #[cfg(feature = "debug-overlay")]
+    overlay: Option<crate::debug::Overlay>,
 }
 
 impl Renderer {
@@ -51,7 +54,9 @@ impl Renderer {
     ///
     /// `display` must be the display connection the window belongs to (winit's
     /// `OwnedDisplayHandle`). `width`/`height` are the window's physical size,
-    /// and `scale_factor` is physical pixels per logical pixel.
+    /// and `scale_factor` is physical pixels per logical pixel. `debug_overlay`
+    /// creates the debug overlay's renderer (ADR-043); it is ignored when the
+    /// `debug-overlay` feature is off.
     pub(crate) fn new(
         display: impl wgpu::wgt::WgpuHasDisplayHandle,
         window: Arc<dyn wgpu::WindowHandle>,
@@ -59,6 +64,7 @@ impl Renderer {
         height: u32,
         scale_factor: f64,
         clear_color: Color,
+        debug_overlay: bool,
     ) -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
             Box::new(display),
@@ -91,6 +97,12 @@ impl Renderer {
         // The default is the adapter's first present mode, which can be `Immediate`
         // (no vsync; observed with lavapipe). Request vsync explicitly (ADR-014).
         config.present_mode = wgpu::PresentMode::AutoVsync;
+        // The overlay draws through a non-sRGB view of the surface texture when
+        // the platform allows one; this must be set before `configure`.
+        #[cfg(feature = "debug-overlay")]
+        let overlay_format = debug_overlay.then(|| overlay_view_format(&adapter, &mut config));
+        #[cfg(not(feature = "debug-overlay"))]
+        let _ = debug_overlay;
 
         let clear = clear_color.to_wgpu(config.format.is_srgb());
         let minimized = width == 0 || height == 0;
@@ -101,6 +113,13 @@ impl Renderer {
         let quads = QuadPipeline::new(&device, config.format);
         let glyph_atlas = GlyphAtlas::default();
         let sprites = SpritePipeline::new(&device, config.format, glyph_atlas.size());
+        check(&faults)?;
+
+        #[cfg(feature = "debug-overlay")]
+        let overlay = overlay_format.map(|format| {
+            log::info!("debug overlay on (F12 toggles); drawing through {format:?}");
+            crate::debug::Overlay::new(&device, format)
+        });
         check(&faults)?;
 
         let info = adapter.get_info();
@@ -129,6 +148,8 @@ impl Renderer {
             instances: InstanceBuffer::new("purplepie instances"),
             glyph_atlas,
             font_revision: 0,
+            #[cfg(feature = "debug-overlay")]
+            overlay,
         })
     }
 
@@ -166,6 +187,7 @@ impl Renderer {
         textures: &Textures,
         fonts: &Fonts,
         camera: &Camera2D,
+        overlay_visible: bool,
         before_present: impl FnOnce(),
     ) -> Result<()> {
         // Faults raised since the last frame (e.g. by `resize`) are reported first.
@@ -264,10 +286,49 @@ impl Renderer {
                 );
             }
         }
+        #[cfg(feature = "debug-overlay")]
+        if overlay_visible && let Some(overlay) = &mut self.overlay {
+            let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
+                format: Some(overlay.format()),
+                ..Default::default()
+            });
+            overlay.draw(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &view,
+                [self.config.width, self.config.height],
+                self.scale_factor as f32,
+            );
+        }
+        #[cfg(not(feature = "debug-overlay"))]
+        let _ = overlay_visible;
         self.queue.submit(std::iter::once(encoder.finish()));
         before_present();
         self.queue.present(frame);
         check(&self.faults)
+    }
+}
+
+/// The format the debug overlay draws through (ADR-043): the surface format
+/// without its sRGB suffix, registered as an allowed view format, when the
+/// surface is sRGB and the platform supports surface view formats (not GLES or
+/// Vulkan on Android); otherwise the surface format itself.
+#[cfg(feature = "debug-overlay")]
+fn overlay_view_format(
+    adapter: &wgpu::Adapter,
+    config: &mut wgpu::SurfaceConfiguration,
+) -> wgpu::TextureFormat {
+    let linear = config.format.remove_srgb_suffix();
+    let supported = adapter
+        .get_downlevel_capabilities()
+        .flags
+        .contains(wgpu::DownlevelFlags::SURFACE_VIEW_FORMATS);
+    if linear != config.format && supported {
+        config.view_formats.push(linear);
+        linear
+    } else {
+        config.format
     }
 }
 

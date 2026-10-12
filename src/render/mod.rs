@@ -63,6 +63,9 @@ mod faults;
 mod font;
 mod instance;
 mod quad;
+/// A headless GPU for the debug overlay's ignored tests (ADR-043).
+#[cfg(all(test, feature = "debug-overlay"))]
+pub(crate) use quad::tests::headless_device_and_queue;
 mod region;
 mod renderer;
 mod screen;

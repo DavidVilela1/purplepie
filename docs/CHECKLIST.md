@@ -32,8 +32,8 @@ git status --short
 cargo test
 ```
 
-**Expect:** `test result: ok. 231 passed; 0 failed; 12 ignored` and `test result: ok. 52 passed`. The guide's code
-blocks are part of the 52. **Report** the two `test result` lines.
+**Expect:** `test result: ok. 231 passed; 0 failed; 12 ignored` and `test result: ok. 53 passed`. The guide's code
+blocks are part of the 53. **Report** the two `test result` lines.
 
 ## 2. GPU tests on your real graphics card
 
@@ -212,6 +212,19 @@ git status --short
 ```
 
 **Expect:** `git status` prints nothing.
+
+## 9. Debug overlay (optional; needs Rust 1.95)
+
+```powershell
+cd $pp
+cargo test --features debug-overlay -- --ignored
+$env:PURPLEPIE_LOG="info"; cargo run --features debug-overlay; Remove-Item Env:PURPLEPIE_LOG
+```
+
+**Expect:** `test result: ok. 13 passed`. The sandbox shows a small dark window titled "PurplePie" at the top left
+("PurplePie 0.1.0", "F12 hides this overlay"). F12 hides it and shows it again; everything else works as in step 3.
+The console prints `debug overlay on (F12 toggles); drawing through …` with the format egui draws through (on most
+GPUs the surface format without `Srgb`). Report that format, and whether the window is dark grey with light text.
 
 ## macOS or Linux
 

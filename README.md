@@ -31,6 +31,9 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   components registered with `Context::register_scene_component` (serde types; the game adds `serde` with the
   `derive` feature) as human-readable RON, with textures and fonts referenced by asset path. The folder a scene is
   saved into (e.g. `assets/scenes/`) must exist.
+- **Debug overlay (optional):** with the `debug-overlay` Cargo feature (Rust 1.95) and
+  `EngineConfig::with_debug_overlay(true)`, a small egui window is drawn over the game and F12 shows or hides it
+  (ADR-043; its stats and entity inspector are in progress). Try it with `cargo run --features debug-overlay`.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -165,6 +168,7 @@ cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_E
 (cd games/purple-swarm && cargo run)   # the second example game, run from its folder (docs/GAME2.md)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
+cargo run --features debug-overlay   # the sandbox with the debug overlay (F12 toggles; needs Rust 1.95)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets

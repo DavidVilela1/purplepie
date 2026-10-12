@@ -125,8 +125,10 @@ cargo fmt --all --check
 cargo check --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo test --workspace --all-features   # also the debug overlay (needs Rust 1.95; CI does this)
 cargo build
 cargo run            # sandbox
+cargo run --features debug-overlay      # sandbox with the debug overlay (F12)
 (cd games/purple-swarm && cargo run)   # example game, from its own folder (ADR-042)
 ```
 

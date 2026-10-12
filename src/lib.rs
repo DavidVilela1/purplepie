@@ -42,6 +42,8 @@
 mod app;
 mod assets;
 pub mod audio;
+#[cfg(feature = "debug-overlay")]
+mod debug;
 pub mod ecs;
 mod error;
 pub mod input;

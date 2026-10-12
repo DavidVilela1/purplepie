@@ -111,5 +111,8 @@ jobs:
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
 
+      # Every feature except `debug-overlay`, whose egui needs Rust 1.95
+      # (ADR-043; RELEASING). It is the only feature today, so: no features.
+      # The other jobs build it on the latest stable with `--all-features`.
       - name: Check with the minimum version
-        run: cargo +1.90 check --locked --workspace --all-targets --all-features
+        run: cargo +1.90 check --locked --workspace --all-targets

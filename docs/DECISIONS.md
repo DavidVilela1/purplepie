@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | No (decided in PP-037a; implemented from PP-037b) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; input routing PP-037b2) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2326,7 +2326,9 @@ option based on the manifest directory, which would make `cargo run -p` from the
 # ADR-043: Debug overlay: egui inside the engine behind a `debug-overlay` feature
 
 ## Status
-Accepted (2026-10-12, PP-037a). Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
+Accepted (2026-10-12, PP-037a). Implemented in part by PP-037b1 (2026-10-12): the feature with `egui` and
+`egui-wgpu`, `EngineConfig::with_debug_overlay`, F12, the overlay pass and the non-sRGB view; `egui-winit` and input
+routing come with PP-037b2. Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
 the overlay is a feature or a `crates/` member: it is a feature. Applies ADR-013: the dependencies are added in
 PP-037b, the first task that uses them, not in this decision.
 
@@ -2423,6 +2425,19 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
 - Builds with the feature need Rust 1.95, so the `msrv` CI job excludes it.
 - `Cargo.lock` gains 32 entries for everyone, and `--all-features` CI jobs compile egui (minutes per job).
 - The overlay uses egui's own fonts and look, which differ from game text.
+
+## Implementation notes (PP-037b1)
+- PP-037b was split: `egui-winit` and input routing move to PP-037b2, so PP-037b1 adds only `egui` and `egui-wgpu`
+  (`Cargo.lock` +30 entries; +31 crates on Linux and Windows, +32 on macOS with the feature; none without).
+- The surface gets the non-sRGB view format only when the overlay is on, so frames without it are unchanged
+  (verified pixel-identical). With it, the sandbox surface is `Bgra8UnormSrgb` with view format `Bgra8Unorm`, and
+  egui-wgpu's sRGB warning is gone. A GPU test draws the overlay through both an sRGB and a non-sRGB view and gets
+  egui's window fill within 2/255 either way.
+- egui's animations are off (`animation_time = 0`): windows fade in over about 0.1 s by default, so a frame depended
+  on frame timing. Off, F12 shows and hides at once and frames are reproducible. A new window is still invisible on
+  its first frame (egui measures it then).
+- Binaries built with the feature embed egui's fonts (OFL-1.1 and Ubuntu Font Licence 1.0, R-26): keep the feature
+  for development builds, or ship those licences with the game.
 
 ## Revisit Conditions
 - egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.
