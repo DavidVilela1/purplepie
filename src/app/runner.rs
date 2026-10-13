@@ -55,6 +55,11 @@ pub(crate) struct Runner<G: Game> {
     /// Window events → egui for the visible overlay; created with the renderer.
     #[cfg(feature = "debug-overlay")]
     overlay_input: Option<crate::debug::OverlayInput>,
+    /// Smoothed frame time and this frame's numbers, for the overlay's stats.
+    #[cfg(feature = "debug-overlay")]
+    frame_timer: crate::debug::FrameTimer,
+    #[cfg(feature = "debug-overlay")]
+    frame_numbers: crate::debug::FrameNumbers,
 }
 
 impl<G: Game> Runner<G> {
@@ -93,6 +98,10 @@ impl<G: Game> Runner<G> {
             overlay: config.debug_overlay.then(crate::debug::Toggle::new),
             #[cfg(feature = "debug-overlay")]
             overlay_input: None,
+            #[cfg(feature = "debug-overlay")]
+            frame_timer: crate::debug::FrameTimer::default(),
+            #[cfg(feature = "debug-overlay")]
+            frame_numbers: crate::debug::FrameNumbers::default(),
             config,
         }
     }
@@ -236,6 +245,13 @@ impl<G: Game> Runner<G> {
             && let (Some(input), Some(overlay)) = (&mut self.overlay_input, renderer.overlay_mut())
         {
             overlay.set_input(input.take(window));
+            overlay.set_stats(crate::debug::Stats::gather(
+                self.frame_numbers,
+                &state.world,
+                &state.camera,
+                state.viewport,
+                &state.input,
+            ));
         }
         #[cfg(not(feature = "debug-overlay"))]
         let overlay_visible = false;
@@ -311,6 +327,16 @@ impl<G: Game> Runner<G> {
 
         let steps = self.fixed.advance(delta);
         let fixed_dt = self.config.fixed_dt;
+        #[cfg(feature = "debug-overlay")]
+        {
+            self.frame_numbers = crate::debug::FrameNumbers {
+                frame_seconds: raw_delta,
+                average_frame_seconds: self.frame_timer.record(raw_delta),
+                fixed_steps: steps,
+                fixed_dt,
+                scale_factor: self.scale_factor,
+            };
+        }
         for _ in 0..steps {
             self.state.time.record_fixed_step();
             // Key edges are visible to the first fixed step after they happened

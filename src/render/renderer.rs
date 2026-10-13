@@ -288,6 +288,10 @@ impl Renderer {
         }
         #[cfg(feature = "debug-overlay")]
         if overlay_visible && let Some(overlay) = &mut self.overlay {
+            overlay.set_draw_counts(
+                self.draw_list.batches().len(),
+                self.draw_list.instances().len(),
+            );
             let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
                 format: Some(overlay.format()),
                 ..Default::default()

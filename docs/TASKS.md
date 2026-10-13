@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps per frame, entities, draw batches and instances, camera, cursor in screen and world)** · P1 · TODO ← **next task**
+- [ ] **PP-037d: Debug overlay, part 3: read-only entity inspector (entity list, engine components, registered game components as RON)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps, entities, draw batches and instances, camera, window, cursor)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer events the overlay consumes stay with it; releases of held buttons and all keys reach the game); egui scale fix** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037b1: Debug overlay, part 1a: `debug-overlay` feature (egui + egui-wgpu 0.36), `EngineConfig::with_debug_overlay`, F12 toggle, overlay pass through a non-sRGB view, placeholder window; CI `msrv` without the feature** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037a: Debug overlay design: ADR-043 (egui inside the engine behind an off-by-default `debug-overlay` feature), measured in a throwaway spike; P4 split into PP-037b–d** · DONE (2026-10-12; spike verified on Linux)
@@ -77,7 +78,6 @@ _None._
 
 ## Future
 
-- [ ] **PP-037d: Debug overlay, part 3: read-only entity inspector (entity list, engine components, registered game components as RON)** · P2 · TODO
 - [ ] **P5 Scene editor** · P3 · TODO (one coarse task until P4 is done)
 
 ---
@@ -464,13 +464,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037c: Debug overlay, part 2: stats window ← NEXT
+### PP-037d: Debug overlay, part 3: entity inspector ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 3 · Priority P1 · TODO |
+| Stage | Phase P4, item 4 · Priority P1 · TODO |
+| Dependencies | PP-037c (DONE) |
+| Scope | A second overlay window, "Entities": a scrollable list of the world's entities (id plus a short summary such as the drawable kind and position), one selectable at a time; for the selected entity, its engine components (transform, quad, sprite, text, layer, hidden, screen space, animation, velocity, button) with their values, and its game components registered for scenes (ADR-036) shown as RON through the registry; unregistered game components counted but not shown. Read-only: no editing (that is editor work, P5). The world is read while the overlay is drawn, so the data must be collected before the render call (no borrow of the world inside egui). Likely too large for one session: split into PP-037d1 (list + engine components) and PP-037d2 (registered components as RON) when it starts. |
+| Acceptance criteria | Unit tests for the per-entity summaries and component formatting (headless world). Xvfb: in the sandbox, selecting an entity shows its components, and a stamped square appears in the list. Large worlds stay usable (list virtualized or capped, measured with a few thousand entities). Without the feature: unchanged. |
+
+### PP-037c: Debug overlay, part 2: stats window
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 3 · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-037b2 (DONE) |
 | Scope | Replace the placeholder with a "PurplePie" stats window: frame time (last and smoothed) and FPS, fixed steps run in the last frame and the fixed step length, entity count, draw batches and instances of the last frame, camera position and zoom, viewport size and DPI scale, cursor in screen and world coordinates. A crate-private `DebugStats` snapshot is filled by the runner (time, input, camera, world) and the renderer (draw list counts) and handed to `OverlayUi::run`; no egui type outside `debug`. Values are formatted by plain functions (unit-tested without egui). Keep it read-only and the window collapsible; consider where it sits (it covers the top-left corner, where games often put HUDs). |
-| Acceptance criteria | Unit tests for the formatting and for what the runner puts into `DebugStats` (e.g. fixed steps per frame from `Time`). Xvfb: sandbox frame with the window showing plausible numbers (entity count equal to the world's, zoom changing after a wheel turn, cursor matching a known position). Without the feature: frames and tests unchanged. |
+| Acceptance criteria | ✅ `debug::Stats` (+ `FrameNumbers`) gathered from the world, camera, viewport and input by `Stats::gather`; the renderer adds the frame's batch and instance counts; `FrameTimer` (moving average, skips frames without a duration); `stats_rows` formats eight rows. ✅ 3 unit tests: the timer (first frame, smoothing, skipped values, settling), exact row strings (and the empty state), `gather` on a headless world (3 entities, camera (100, 50) × 2, cursor at the window centre → world = camera position; cursor outside → none). The overlay GPU test target grew to 640 × 400 for the bigger window. ✅ Xvfb, sandbox with the feature: cursor at (640, 360) → `(640.0, 360.0) px, world (0.0, 0.0)`; after one click and one wheel notch: entities 19 → 20, batches 8 → 9, instances 104 → 105, zoom 1.00 → 4.00 (X11 delivers each synthetic notch twice), matching the sandbox's own exit line. ✅ Cost of the visible overlay, 600 sandbox frames on lavapipe: debug 58.8 → 43.4 fps, release 56.3 → 53.3 fps (60 Hz cap). |
 
 ### PP-037b2: Debug overlay, part 1b: input routing
 | Field | Value |

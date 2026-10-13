@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; contents PP-037c/d) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; PP-037c: stats window; inspector PP-037d) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2460,6 +2460,17 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
   is never told the scale any more and the hand-built input carries it as the native scale. A unit test runs the
   overlay's layout at 2× and fails if the scale is applied twice (checked by putting the old call back).
 - The cursor icon egui asks for is applied each frame; hiding the overlay with F12 resets it to the default.
+
+## Implementation notes (PP-037c)
+- The stats window shows what the decision listed, plus the last frame's time, the fixed step length and the window's
+  size and DPI scale. The numbers travel as a crate-private `debug::Stats` value (no egui type): the runner gathers
+  it while the overlay is visible, the renderer adds the draw counts of the same frame, and egui only formats rows
+  produced by `stats_rows`. Nothing is gathered while the overlay is hidden except the frame-time average, so it is
+  already settled when F12 shows the window.
+- Cost (sandbox, 600 frames, lavapipe): debug build 58.8 fps without the feature, 43.4 with the overlay visible;
+  release build 56.3 vs 53.3 (both near the 60 Hz cap). The debug-build cost is mostly unoptimized egui; per-package
+  `[profile.dev.package.<name>] opt-level` overrides would help the engine's own sandbox but not games (a dependency's
+  profiles are ignored), so they are left out for now.
 
 ## Revisit Conditions
 - egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.

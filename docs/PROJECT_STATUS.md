@@ -11,8 +11,8 @@ GitHub (`v0.1.0`), and a second game, Purple Swarm, was built on the public API 
 M10 (Engine API Stabilization) and the portfolio scope were reached earlier; since then the engine gained runtime
 essentials (P1–P2) and editor foundations (P3). Windows: the owner's checklist passed (PP-033b). macOS is built and
 tested in CI but has not been seen running. Current milestone: **P4, debug overlay**. Its approach is decided
-(ADR-043, PP-037a); PP-037b1/b2 added the optional `debug-overlay` feature: a placeholder window, F12, and mouse
-routing to the overlay.
+(ADR-043, PP-037a); PP-037b1/b2 added the optional `debug-overlay` feature (F12, mouse routing to the overlay)
+and PP-037c its stats window.
 
 ## Current Stage
 
@@ -39,8 +39,9 @@ restart, and PP-036d2 the best-score file and a difficulty curve measured with t
 the phase. **Phase P4 (debug overlay): in progress.** PP-037a decided the approach after a measured throwaway spike:
 egui inside the engine behind an off-by-default `debug-overlay` feature (ADR-043). PP-037b1 implemented the feature,
 `EngineConfig::with_debug_overlay`, the F12 toggle and the overlay's render pass (a placeholder window); PP-037b2
-routed the mouse to it (clicks and the wheel on the overlay's window stay with it). Next: **PP-037c**, the stats
-window. The long-term plan (in-game UI and an editor) is in
+routed the mouse to it (clicks and the wheel on the overlay's window stay with it); PP-037c replaced the placeholder
+with a stats window (frame time and FPS, fixed steps, entities, draws, camera, window, cursor). Next: **PP-037d**,
+a read-only entity inspector. The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -121,6 +122,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-037c: debug overlay stats window: frame time (last, smoothed) and FPS, fixed steps per frame, entity count, draw batches and instances, camera, window size and scale, cursor in screen and world coordinates.
 - PP-037b2: debug overlay input routing (egui-winit): pointer events the overlay consumes stay with it; releases of buttons the game holds and all keys reach the game; egui scale applied once.
 - PP-037b1: optional `debug-overlay` feature (egui + egui-wgpu 0.36; Rust 1.95 for the feature), `EngineConfig::with_debug_overlay`, F12 toggle (never reaches the game), overlay pass through a non-sRGB view of the surface, placeholder window; frames without it unchanged; CI `msrv` without features.
 - PP-037a: debug overlay design (ADR-043): egui 0.36 inside the engine behind an off-by-default `debug-overlay` feature, engine-owned and outside the ECS world; measured in a throwaway spike (exact wgpu 30 / winit 0.30 match, +32 lock entries, +6.1 MB release, Rust 1.95 for the feature); R-30.
@@ -152,7 +154,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-037c: Debug overlay stats window** (frame time/FPS, fixed steps, entities, draw batches, camera, cursor). See [TASKS.md](TASKS.md#pp-037c-debug-overlay-part-2-stats-window--next).
+- **PP-037d: Debug overlay entity inspector** (read-only entity list and component values; likely split into d1/d2). See [TASKS.md](TASKS.md#pp-037d-debug-overlay-part-3-entity-inspector--next).
 
 ## Blocked
 
@@ -186,10 +188,15 @@ executable, else `assets/` in the working directory (ADR-025).
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
-- Debug overlay (optional feature): a placeholder window only (stats in PP-037c), at the top left over any HUD there (it can be collapsed); keys always reach the game, so an overlay text field would need key routing first; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
+- Debug overlay (optional feature): a stats window only (entity inspector in PP-037d), at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys always reach the game, so an overlay text field would need key routing first; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-13: PP-037c Debug overlay stats window.**
+  - The overlay's placeholder is now a "PurplePie" window with eight rows: frame time (smoothed) and FPS, the last frame's time, fixed steps × step length, entity count, draw batches and instances, camera position and zoom, window size and DPI scale, and the cursor in window pixels and world units.
+  - The runner gathers the numbers into a crate-private `Stats` snapshot each visible frame (the renderer adds the draw counts); formatting and gathering are unit-tested without a GPU or window.
+  - Measured cost of the visible overlay in the sandbox (lavapipe): debug 58.8 → 43.4 fps, release 56.3 → 53.3 fps. No engine API or dependency change.
 
 - **2026-10-12: PP-037b2 Debug overlay, part 1b: input routing.**
   - New optional dependency `egui-winit` 0.36.2 (`x11`, `wayland` only; +2 lock entries). While the overlay is visible, window events go to egui first: clicks, wheel turns and drags on its window stay with it; the game still gets every key, every click elsewhere, and the release of any button it saw pressed. Hidden, nothing changes.
@@ -474,16 +481,17 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Validation
 
-Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-12,
-after the final PP-037b2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
+after the final PP-037c change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 236 + 53, 13 ignored |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 239 + 53, 13 ignored |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Debug overlay stats (PP-037c) | ✅ GitHub `main` (`b53551a`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); 3 new `debug` unit tests (timer, rows, gather). Sandbox with the feature under Xvfb: stats window shows cursor `(640.0, 360.0) px, world (0.0, 0.0)`, entities 19 → 20 and batches 8 → 9 after a click, zoom 1.00 → 4.00 after a wheel notch (the sandbox's exit line agrees). 600-frame timing, lavapipe: debug 58.8 fps without the feature vs 43.4 with the overlay visible; release 56.3 vs 53.3 |
 | Debug overlay input routing (PP-037b2) | ✅ clippy with and without `--all-features` (+ `incompatible_msrv`). 5 `debug` unit tests incl. routing and the 2× scale test (fails with PP-037b1's `set_pixels_per_point` put back). Sandbox with the feature under Xvfb: overlay body and collapse-arrow clicks withheld (window collapsed, no stamp), wheel over the overlay withheld (0 `wheel` lines) and over the game delivered (zoom 4), drag-release over the overlay delivered (next click counted), F12 then a click where the overlay was: `left clicks seen: 4 in fixed_update, 4 in update`. Same session without the feature: 6 clicks, zoom 8. Breakout lose frame and frozen scene frame pixel-identical to the baselines without the feature and with it compiled in but off |
 | Debug overlay part 1a (PP-037b1) | ✅ `cargo clippy --locked --workspace --all-targets` with and without `--all-features`, also `-W clippy::incompatible_msrv`; `cargo tree -e normal -i egui`: absent without the feature. Overlay GPU test (sRGB and non-sRGB views): fill within 2/255, rest untouched. Breakout lose frame pixel-identical to the PP-036 baseline and frozen scene frame pixel-identical to GitHub `main` (`bf98e71`), both without the feature and with it compiled in but off. Sandbox with the feature under Xvfb: `view_formats: [Bgra8Unorm]`, overlay shown → F12 hidden → F12 shown, no `key F12` in `Input`'s debug log, `A` delivered. Throwaway example asking for the overlay without the feature: one warning, exit 0. Both workflow files parse as YAML |
 | Debug overlay spike (PP-037a; scratch copy, not merged) | ✅ `cargo info`: egui/egui-wgpu/egui-winit 0.36.2, `rust-version` 1.95. Resolver: wgpu 30.0.1 and winit 0.30.13 only (one version each). Scratch copy with the optional feature: `cargo build` without it unchanged; `Cargo.lock` +32 entries; `cargo build --release --bin sandbox` 1 min 4 s → 3 min 56 s with `--features debug-overlay`, 12 763 312 → 18 866 072 bytes; debug 204 900 112 → 305 093 912. Sandbox under Xvfb with the spike: egui window with `entities: 19` drawn over the frame; egui-wgpu warning about the `Bgra8UnormSrgb` surface. GitHub `main` (`0a50e14`) identical to this tree before the task |
@@ -522,4 +530,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-12. PP-037b2 done (debug overlay input routing). PP-037c (stats window) is next.
+2026-10-13. PP-037c done (debug overlay stats window). PP-037d (entity inspector) is next.

@@ -14,12 +14,19 @@
 //!   by the runner), and [`reaches_game`] decides which events the game still
 //!   sees while the overlay is visible (no egui, unit-tested).
 //!
-//! PP-037b1 drew a placeholder window; PP-037b2 routes the mouse to it. The
-//! real contents are PP-037c/d.
+//! - [`Stats`] is one frame's numbers for the stats window, gathered from the
+//!   engine's state ([`Stats::gather`]) with a smoothed frame time
+//!   ([`FrameTimer`]) and formatted by [`stats_rows`] (no egui, unit-tested).
+//!
+//! PP-037b1 drew the window, PP-037b2 routed the mouse to it, PP-037c filled
+//! it with statistics; an entity inspector is PP-037d.
 
 use std::time::Instant;
 
-use crate::input::KeyCode;
+use crate::ecs::World;
+use crate::input::{Input, KeyCode};
+use crate::math::Vec2;
+use crate::render::Camera2D;
 
 /// The key that shows and hides the overlay.
 pub(crate) const TOGGLE_KEY: KeyCode = KeyCode::F12;
@@ -53,6 +60,146 @@ impl Toggle {
         }
         true
     }
+}
+
+/// One frame's numbers for the stats window. The runner fills it with
+/// [`gather`](Self::gather); the renderer adds this frame's draw counts.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct Stats {
+    /// Real time since the previous frame, in seconds (not clamped).
+    pub(crate) frame_seconds: f64,
+    /// [`FrameTimer`]'s smoothed frame time, in seconds.
+    pub(crate) average_frame_seconds: f64,
+    /// Fixed steps run in this frame.
+    pub(crate) fixed_steps: u32,
+    /// Length of one fixed step, in seconds.
+    pub(crate) fixed_dt: f64,
+    pub(crate) entities: u32,
+    /// Draw calls and instances (quads, sprites and glyphs) of this frame.
+    pub(crate) batches: usize,
+    pub(crate) instances: usize,
+    pub(crate) camera_position: Vec2,
+    /// The camera's effective zoom.
+    pub(crate) camera_zoom: f32,
+    /// The window's size in logical pixels and its DPI scale.
+    pub(crate) viewport: Vec2,
+    pub(crate) scale_factor: f64,
+    /// The cursor in logical window pixels and in world units (`None`
+    /// outside the window).
+    pub(crate) cursor_screen: Option<Vec2>,
+    pub(crate) cursor_world: Option<Vec2>,
+}
+
+/// Inputs to [`Stats::gather`] that only the runner's frame loop knows.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct FrameNumbers {
+    pub(crate) frame_seconds: f64,
+    pub(crate) average_frame_seconds: f64,
+    pub(crate) fixed_steps: u32,
+    pub(crate) fixed_dt: f64,
+    pub(crate) scale_factor: f64,
+}
+
+impl Stats {
+    /// This frame's numbers from the engine's state (draw counts stay 0
+    /// until the renderer sets them).
+    pub(crate) fn gather(
+        frame: FrameNumbers,
+        world: &World,
+        camera: &Camera2D,
+        viewport: Vec2,
+        input: &Input,
+    ) -> Self {
+        let cursor_screen = input.cursor_position();
+        Self {
+            frame_seconds: frame.frame_seconds,
+            average_frame_seconds: frame.average_frame_seconds,
+            fixed_steps: frame.fixed_steps,
+            fixed_dt: frame.fixed_dt,
+            entities: world.len(),
+            batches: 0,
+            instances: 0,
+            camera_position: camera.position,
+            camera_zoom: camera.effective_zoom(),
+            viewport,
+            scale_factor: frame.scale_factor,
+            cursor_screen,
+            cursor_world: cursor_screen.map(|screen| camera.screen_to_world(screen, viewport)),
+        }
+    }
+}
+
+/// A smoothed frame time: an exponential moving average, so the shown FPS
+/// does not flicker from frame to frame.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct FrameTimer {
+    average: Option<f64>,
+}
+
+impl FrameTimer {
+    /// How much each new frame moves the average (about the last 10 frames).
+    const WEIGHT: f64 = 0.1;
+
+    /// Adds one frame's real duration and returns the new average. Zero,
+    /// negative and non-finite durations (the first frame has none) are
+    /// skipped.
+    pub(crate) fn record(&mut self, seconds: f64) -> f64 {
+        if seconds.is_finite() && seconds > 0.0 {
+            self.average = Some(match self.average {
+                None => seconds,
+                Some(average) => average + (seconds - average) * Self::WEIGHT,
+            });
+        }
+        self.average.unwrap_or(0.0)
+    }
+}
+
+/// The stats window's rows, as (label, value).
+pub(crate) fn stats_rows(stats: &Stats) -> Vec<(&'static str, String)> {
+    let ms = |seconds: f64| seconds * 1000.0;
+    let frame = if stats.average_frame_seconds > 0.0 {
+        format!(
+            "{:.2} ms ({:.0} FPS)",
+            ms(stats.average_frame_seconds),
+            1.0 / stats.average_frame_seconds
+        )
+    } else {
+        "-".to_owned()
+    };
+    let point = |p: Vec2| format!("({:.1}, {:.1})", p.x, p.y);
+    let cursor = match (stats.cursor_screen, stats.cursor_world) {
+        (Some(screen), Some(world)) => format!("{} px, world {}", point(screen), point(world)),
+        _ => "outside the window".to_owned(),
+    };
+    vec![
+        ("Frame", frame),
+        ("Last frame", format!("{:.2} ms", ms(stats.frame_seconds))),
+        (
+            "Fixed steps",
+            format!("{} × {:.2} ms", stats.fixed_steps, ms(stats.fixed_dt)),
+        ),
+        ("Entities", stats.entities.to_string()),
+        (
+            "Drawn",
+            format!("{} batches, {} instances", stats.batches, stats.instances),
+        ),
+        (
+            "Camera",
+            format!(
+                "{} zoom {:.2}",
+                point(stats.camera_position),
+                stats.camera_zoom
+            ),
+        ),
+        (
+            "Window",
+            format!(
+                "{:.0} × {:.0} px, scale {:.2}",
+                stats.viewport.x, stats.viewport.y, stats.scale_factor
+            ),
+        ),
+        ("Cursor", cursor),
+    ]
 }
 
 /// What kind of window event the game's input might receive, for
@@ -138,6 +285,8 @@ pub(crate) struct OverlayUi {
     /// Where the overlay's window was laid out last frame, in points.
     #[cfg_attr(not(test), allow(dead_code))]
     last_window: Option<egui::Rect>,
+    /// The numbers the next frame shows.
+    stats: Stats,
 }
 
 impl OverlayUi {
@@ -152,6 +301,7 @@ impl OverlayUi {
             pending_input: None,
             platform_output: None,
             last_window: None,
+            stats: Stats::default(),
         }
     }
 
@@ -175,14 +325,28 @@ impl OverlayUi {
                 self.started.elapsed().as_secs_f64(),
             )
         });
+        let rows = stats_rows(&self.stats);
         let mut window = None;
         let mut output = self.context.run_ui(input, |ui| {
             window = egui::Window::new("PurplePie")
                 .default_pos([12.0, 12.0])
                 .resizable(false)
                 .show(ui.ctx(), |ui| {
-                    ui.label(concat!("PurplePie ", env!("CARGO_PKG_VERSION")));
-                    ui.label("F12 hides this overlay");
+                    egui::Grid::new("purplepie stats")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (label, value) in &rows {
+                                ui.label(*label);
+                                ui.monospace(value.as_str());
+                                ui.end_row();
+                            }
+                        });
+                    ui.small(concat!(
+                        "PurplePie ",
+                        env!("CARGO_PKG_VERSION"),
+                        " - F12 hides"
+                    ));
                 })
                 .map(|response| response.response.rect);
         });
@@ -245,6 +409,18 @@ impl Overlay {
     /// Sets the input for the next [`draw`](Self::draw).
     pub(crate) fn set_input(&mut self, input: egui::RawInput) {
         self.ui.pending_input = Some(input);
+    }
+
+    /// Sets the numbers the next [`draw`](Self::draw) shows.
+    pub(crate) fn set_stats(&mut self, stats: Stats) {
+        self.ui.stats = stats;
+    }
+
+    /// Adds this frame's draw counts to the numbers set with
+    /// [`set_stats`](Self::set_stats).
+    pub(crate) fn set_draw_counts(&mut self, batches: usize, instances: usize) {
+        self.ui.stats.batches = batches;
+        self.ui.stats.instances = instances;
     }
 
     /// What the last frame asked of the window, once.
@@ -342,8 +518,8 @@ mod tests {
         assert!(toggle.visible(), "the next press shows it again");
     }
 
-    const WIDTH: u32 = 320;
-    const HEIGHT: u32 = 200;
+    const WIDTH: u32 = 640;
+    const HEIGHT: u32 = 400;
     /// What the target holds before the overlay draws (bytes, written through
     /// the non-sRGB view so they are exact).
     const CLEAR: [u8; 4] = [64, 16, 128, 255];
@@ -555,6 +731,113 @@ mod tests {
             windows.windows(2).all(|pair| pair[0] == pair[1]),
             "same place and size in points every frame: {windows:?}"
         );
+    }
+
+    #[test]
+    fn the_frame_timer_smooths_and_skips_frames_without_a_duration() {
+        let mut timer = FrameTimer::default();
+        assert_eq!(timer.record(0.0), 0.0, "the first frame has no duration");
+        assert_eq!(
+            timer.record(0.020),
+            0.020,
+            "the first real frame is the average"
+        );
+        let average = timer.record(0.010);
+        assert!(
+            (average - 0.019).abs() < 1e-12,
+            "{average}: moves 10 % of the way"
+        );
+        for skipped in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(timer.record(skipped), average, "{skipped} is skipped");
+        }
+        for _ in 0..200 {
+            timer.record(0.010);
+        }
+        assert!(
+            (timer.record(0.010) - 0.010).abs() < 1e-9,
+            "settles on a steady rate"
+        );
+    }
+
+    #[test]
+    fn stats_rows_read_as_the_window_shows_them() {
+        let stats = Stats {
+            frame_seconds: 0.0175,
+            average_frame_seconds: 0.016_667,
+            fixed_steps: 2,
+            fixed_dt: 1.0 / 60.0,
+            entities: 19,
+            batches: 7,
+            instances: 120,
+            camera_position: Vec2::new(-12.5, 40.0),
+            camera_zoom: 2.0,
+            viewport: Vec2::new(1280.0, 720.0),
+            scale_factor: 1.25,
+            cursor_screen: Some(Vec2::new(640.0, 360.0)),
+            cursor_world: Some(Vec2::new(-12.5, 40.0)),
+        };
+        let rows = stats_rows(&stats);
+        let expected = [
+            ("Frame", "16.67 ms (60 FPS)"),
+            ("Last frame", "17.50 ms"),
+            ("Fixed steps", "2 × 16.67 ms"),
+            ("Entities", "19"),
+            ("Drawn", "7 batches, 120 instances"),
+            ("Camera", "(-12.5, 40.0) zoom 2.00"),
+            ("Window", "1280 × 720 px, scale 1.25"),
+            ("Cursor", "(640.0, 360.0) px, world (-12.5, 40.0)"),
+        ];
+        assert_eq!(rows.len(), expected.len());
+        for ((label, value), (want_label, want_value)) in rows.iter().zip(expected) {
+            assert_eq!((*label, value.as_str()), (want_label, want_value));
+        }
+
+        let empty = stats_rows(&Stats::default());
+        assert_eq!(empty[0].1, "-", "no FPS before the first timed frame");
+        assert_eq!(empty[7].1, "outside the window");
+    }
+
+    #[test]
+    fn gather_reads_the_world_camera_and_cursor() {
+        let mut world = World::new();
+        for i in 0..3 {
+            world.spawn((i,));
+        }
+        let camera = Camera2D::new(Vec2::new(100.0, 50.0), 2.0);
+        let viewport = Vec2::new(800.0, 600.0);
+        let mut input = Input::default();
+        input.set_cursor(Some(Vec2::new(400.0, 300.0)));
+        let frame = FrameNumbers {
+            frame_seconds: 0.02,
+            average_frame_seconds: 0.016,
+            fixed_steps: 1,
+            fixed_dt: 1.0 / 60.0,
+            scale_factor: 1.0,
+        };
+
+        let stats = Stats::gather(frame, &world, &camera, viewport, &input);
+        assert_eq!(stats.entities, 3);
+        assert_eq!(
+            (stats.camera_position, stats.camera_zoom),
+            (camera.position, 2.0)
+        );
+        assert_eq!(stats.viewport, viewport);
+        assert_eq!(stats.cursor_screen, Some(Vec2::new(400.0, 300.0)));
+        assert_eq!(
+            stats.cursor_world,
+            Some(camera.position),
+            "the window's centre is where the camera looks"
+        );
+        assert_eq!((stats.fixed_steps, stats.frame_seconds), (1, 0.02));
+        assert_eq!(
+            (stats.batches, stats.instances),
+            (0, 0),
+            "the renderer adds these"
+        );
+
+        input.set_cursor(None);
+        let outside = Stats::gather(frame, &world, &camera, viewport, &input);
+        assert_eq!((outside.cursor_screen, outside.cursor_world), (None, None));
     }
 
     #[test]

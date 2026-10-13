@@ -221,8 +221,10 @@ cargo test --features debug-overlay -- --ignored
 $env:PURPLEPIE_LOG="info"; cargo run --features debug-overlay; Remove-Item Env:PURPLEPIE_LOG
 ```
 
-**Expect:** `test result: ok. 13 passed`. The sandbox shows a small dark window titled "PurplePie" at the top left
-("PurplePie 0.1.0", "F12 hides this overlay"). Click the small ▼ arrow in its title bar: the window collapses to its
+**Expect:** `test result: ok. 13 passed`. The sandbox shows a dark window titled "PurplePie" at the top left with
+eight rows (Frame, Last frame, Fixed steps, Entities, Drawn, Camera, Window, Cursor). On your GPU the frame time
+should be close to 16.7 ms (60 FPS: the engine caps drawing at 60 Hz, ADR-014); moving the mouse changes the Cursor row, clicking the game adds
+one entity, and the wheel changes the zoom. **Report** the Frame and Window rows. Click the small ▼ arrow in its title bar: the window collapses to its
 title bar and no square is stamped under it; a click elsewhere still stamps one. Turning the wheel over the window
 does not zoom; elsewhere it does. F12 hides it and shows it again; everything else works as in step 3.
 The console prints `debug overlay on (F12 toggles); drawing through …` with the format egui draws through (on most
