@@ -226,8 +226,9 @@ eight rows (Frame, Last frame, Fixed steps, Entities, Drawn, Camera, Window, Cur
 should be close to 16.7 ms (60 FPS: the engine caps drawing at 60 Hz, ADR-014); moving the mouse changes the Cursor row, clicking the game adds
 one entity, and the wheel changes the zoom. **Report** the Frame and Window rows. Click the small ▼ arrow in its title bar: the window collapses to its
 title bar and no square is stamped under it; a click elsewhere still stamps one. Turning the wheel over the window
-does not zoom; elsewhere it does. Below it, open the collapsed "Entities" window with its ▶ arrow: it lists every
-entity by id; click one to see its components. F12 hides both windows and shows them again; everything else works as
+does not zoom; elsewhere it does. At the top right, open the collapsed "Entities" window with its ▶ arrow: it lists
+every entity by id; click one to see its components. (In `cargo run --example scene --features debug-overlay`, the
+spinning squares also show `scene_demo::Spin`.) F12 hides both windows and shows them again; everything else works as
 in step 3.
 The console prints `debug overlay on (F12 toggles); drawing through …` with the format egui draws through (on most
 GPUs the surface format without `Srgb`). Report that format, and whether the window is dark grey with light text.

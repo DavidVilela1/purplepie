@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037d2: Debug overlay, part 3b: the inspector shows game components registered for scenes as RON (ADR-036 registry)** · P1 · TODO ← **next task**
+- [ ] **PP-038a: Scene editor design (phase P5, item 1): ADR-044 on the editor's shape (separate app crate under `crates/` vs. an editor mode of the engine), how it reaches egui and the renderer without exposing wgpu/winit, what it edits first (scene files, ADR-035/036), and the first slice; split into implementation tasks** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037d2: Debug overlay, part 3b: registered game components as RON in the inspector (`Registry::describe`); "Entities" window moved to the top right; phase P4 complete** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037d1: Debug overlay, part 3a: "Entities" window: entity list (by id, virtualized) and the selected entity's engine components; game components counted** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps, entities, draw batches and instances, camera, window, cursor)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer events the overlay consumes stay with it; releases of held buttons and all keys reach the game); egui scale fix** · DONE (2026-10-12; verified on Linux)
@@ -79,7 +80,7 @@ _None._
 
 ## Future
 
-- [ ] **P5 Scene editor** · P3 · TODO (one coarse task until P4 is done)
+- [ ] **P5 Scene editor: implementation tasks** · P2 · TODO (defined by PP-038a)
 
 ---
 
@@ -465,13 +466,22 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037d2: Debug overlay, part 3b: registered game components ← NEXT
+### PP-038a: Scene editor design ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 4b · Priority P1 · TODO |
+| Stage | Phase P5, item 1 · Priority P1 · TODO |
+| Dependencies | P4 complete (PP-037d2) |
+| Why now | P4 (inspect a running game) is complete; P5 (build levels without code) is next. ADR-038 reserved `crates/` for an editor crate, and ADR-043 kept egui and the renderer crate-private, so the editor's shape is the open question that every later P5 task depends on. |
+| Scope | ADR-044: the editor as a separate binary crate (`crates/purplepie-editor`) or as an editor mode inside the engine behind a feature; how it gets egui, the viewport and input without public wgpu/winit (e.g. an engine-side editor hook behind the feature, building on the overlay's integration); what it edits first (a scene file: open, select, move entities, save, all through ADR-035/036's format); undo; and the first vertical slice. A throwaway spike if a question needs measuring. Then split P5 into small implementation tasks. |
+| Acceptance criteria | ADR-044 with alternatives and reasons (measured where possible); ROADMAP P5 row lists the implementation tasks; TASKS has the first one as next. |
+
+### PP-037d2: Debug overlay, part 3b: registered game components
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 4b · Priority P1 · **DONE** (2026-10-13; verified on Linux; phase P4 complete) |
 | Dependencies | PP-037d1 (DONE) |
 | Scope | For the selected entity, show each game component registered with `Context::register_scene_component` (ADR-036) under its registered name, as the same one-line RON the scene files use; keep counting unregistered ones ("2 more components the engine cannot show; register them for scenes to see them here"). The registry lives in `EngineState` (`scene::Registry`); the renderer only gets `&World`, so either pass the registry (or a read-only view of it) to the overlay's draw, or let the runner prepare the selected entity's rows before rendering — decide by what keeps `scene` and `debug` decoupled. Serialization errors are shown, not fatal. Read-only. |
-| Acceptance criteria | Unit tests: a registered component appears with its name and RON value (the same text `save_scene` would write), an unregistered one is only counted, a failing serializer shows its error. Xvfb: Purple Swarm (or the scene example, which registers `Spin`) with the feature: selecting an entity shows its game component. Without the feature: unchanged. |
+| Acceptance criteria | ✅ `scene::Registry::describe` (feature-only): each registered component on an entity with its one-line RON or its error, sorted by name, one failure not hiding the rest (unlike `save`); unit test with a working, a failing and an absent component. ✅ Decoupling: the runner asks the overlay for its selection, describes it with the registry and hands back plain rows (`debug::GameComponents`); neither `render` nor `debug` uses `scene`; rows are tagged with their entity and shown only while it is still selected (a new selection gets them one frame later). ✅ `inspect::inspect_entity` (engine rows + count of other components) and `inspect::game_rows` (registered values or errors, then "N components: register them…"); unit tests, incl. "1 component" in summaries. ✅ The "Entities" window starts at the top right (its own column): at the top left under the stats window egui pushed it up over the stats window in a 600-pixel-high window. The overlay GPU test excludes both windows. ✅ Xvfb, scene example with the feature (it now enables the overlay like the sandbox): `#8` shows `scene_demo::Spin (speed: 0.8, direction: Clockwise)` — the same text as `assets/scenes/demo.ron` — and `#10` (no drawable) shows `scene_demo::Visits (label: "demo scene", count: 1)`. Sandbox: the collapsed title leaves "Reset camera" free. Without the feature: Breakout lose frame and frozen scene frame pixel-identical. |
 
 ### PP-037d1: Debug overlay, part 3a: entity list and engine components
 | Field | Value |

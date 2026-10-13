@@ -20,8 +20,8 @@ break compatibility and a patch version (0.x.**y**) may not.
   needs Rust 1.95 and adds egui 0.36; without it nothing changes. Clicks and wheel turns on the overlay's window stay
   with it; the game still gets every key and every other click. The window shows frame time and FPS, fixed steps,
   entity count, draw batches and instances, camera, window size and scale, and the cursor in screen and world
-  coordinates. A second window, "Entities" (collapsed at first), lists every entity and shows the engine components of
-  the one clicked; the game's registered components follow.
+  coordinates. A second window, "Entities" (top right, collapsed at first), lists every entity and shows the components
+  of the one clicked: the engine's, and the game's components registered for scenes as RON.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,

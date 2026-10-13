@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; PP-037c: stats window; PP-037d1: inspector with engine components; game components PP-037d2) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2482,6 +2482,17 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
 - Engine components are shown with short custom text where it helps (transform, layer, velocity) and their `Debug`
   output otherwise (quad, sprite, text, animation, button), which is complete but long. Other components are counted;
   showing registered game components as RON is PP-037d2.
+
+## Implementation notes (PP-037d2)
+- Registered game components are shown as the same one-line RON a scene file holds, under their registered names.
+  The runner (which owns the scene registry) asks the overlay for its selection, calls `Registry::describe` and hands
+  back plain `(name, RON or error)` rows; `render` and `debug` never see `scene`. The rows carry their entity and are
+  shown only while it is still selected, so a new selection shows its game components one frame later.
+- `describe` reports each component separately (an error does not hide the others), unlike `save`, which stops a scene
+  write at the first error. Unregistered components are counted with a hint to register them.
+- The "Entities" window starts at the top right, a column of its own: under the stats window, egui pushed it up over
+  the stats window whenever its open size did not fit (seen in the 1024 × 600 scene example).
+- With this, the overlay shows everything ADR-043 planned for P4.
 
 ## Revisit Conditions
 - egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.

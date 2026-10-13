@@ -34,8 +34,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
 - **Debug overlay (optional):** with the `debug-overlay` Cargo feature (Rust 1.95) and
   `EngineConfig::with_debug_overlay(true)`, an egui window over the game shows frame time and FPS, fixed steps,
   entity count, draw calls, camera, window and cursor; F12 shows or hides it, and clicks and the wheel on it do not
-  reach the game. A second window, "Entities", lists every entity and shows the engine components of the one you click
-  (ADR-043; the game's own components are next). Try it with `cargo run --features debug-overlay`.
+  reach the game. A second window, "Entities", lists every entity and shows the components of the one you click:
+  the engine's, and the game's own ones registered for scenes as RON (ADR-043). Try it with `cargo run --features debug-overlay`.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).

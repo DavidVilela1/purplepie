@@ -252,6 +252,13 @@ impl<G: Game> Runner<G> {
                 state.viewport,
                 &state.input,
             ));
+            // The inspector's game components come from the scene registry,
+            // which only the runner holds (ADR-043, PP-037d2).
+            if let Some(entity) = overlay.selected()
+                && let Ok(e) = state.world.entity(entity)
+            {
+                overlay.set_game_components(entity, state.scene_components.describe(&e));
+            }
         }
         #[cfg(not(feature = "debug-overlay"))]
         let overlay_visible = false;

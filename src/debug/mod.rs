@@ -279,6 +279,10 @@ impl OverlayInput {
     }
 }
 
+/// An entity's registered game components as the scene registry describes
+/// them: (registered name, one-line RON or the error that prevented it).
+pub(crate) type GameComponents = Vec<(String, Result<String, String>)>;
+
 /// The overlay's egui side, without the GPU: input in, layout out.
 pub(crate) struct OverlayUi {
     context: egui::Context,
@@ -291,10 +295,16 @@ pub(crate) struct OverlayUi {
     /// Where the overlay's window was laid out last frame, in points.
     #[cfg_attr(not(test), allow(dead_code))]
     last_window: Option<egui::Rect>,
+    /// The same for the "Entities" window.
+    #[cfg_attr(not(test), allow(dead_code))]
+    last_entities_window: Option<egui::Rect>,
     /// The numbers the next frame shows.
     stats: Stats,
     /// The entity the inspector shows, chosen by clicking it in the list.
     selected: Option<Entity>,
+    /// The selected entity's registered game components, prepared by the
+    /// runner from the scene registry: (entity, (name, RON or error) rows).
+    game: Option<(Entity, GameComponents)>,
 }
 
 impl OverlayUi {
@@ -309,8 +319,10 @@ impl OverlayUi {
             pending_input: None,
             platform_output: None,
             last_window: None,
+            last_entities_window: None,
             stats: Stats::default(),
             selected: None,
+            game: None,
         }
     }
 
@@ -341,7 +353,9 @@ impl OverlayUi {
         });
         let rows = stats_rows(&self.stats);
         let selected = &mut self.selected;
+        let game = self.game.as_ref();
         let mut window = None;
+        let mut entities = None;
         let mut output = self.context.run_ui(input, |ui| {
             window = egui::Window::new("PurplePie")
                 .default_pos([12.0, 12.0])
@@ -364,26 +378,36 @@ impl OverlayUi {
                     ));
                 })
                 .map(|response| response.response.rect);
-            entities_window(ui.ctx(), world, selected);
+            entities = entities_window(ui.ctx(), world, selected, game);
         });
         self.last_window = window;
+        self.last_entities_window = entities;
         self.platform_output = Some(std::mem::take(&mut output.platform_output));
         output
     }
 }
 
-/// Heights of the inspector's entity list and component grid (each scrolls),
-/// so the window fits under the stats window in a 720-pixel-high window.
+/// The inspector window's width, and the heights of its entity list and
+/// component grid (each scrolls), so the whole window fits in a
+/// 600-pixel-high game window.
+const ENTITIES_WIDTH: f32 = 340.0;
 const LIST_HEIGHT: f32 = 160.0;
-const COMPONENTS_HEIGHT: f32 = 180.0;
+const COMPONENTS_HEIGHT: f32 = 200.0;
 
 /// The "Entities" window: every entity (only the visible rows are laid out),
 /// and the engine components of the one clicked. It starts collapsed, and a
 /// collapsed window costs nothing (egui skips its contents).
-fn entities_window(context: &egui::Context, world: &World, selected: &mut Option<Entity>) {
+fn entities_window(
+    context: &egui::Context,
+    world: &World,
+    selected: &mut Option<Entity>,
+    game: Option<&(Entity, GameComponents)>,
+) -> Option<egui::Rect> {
+    // Top right, a column of its own beside the stats window (top left).
+    let left = (context.viewport_rect().width() - ENTITIES_WIDTH - 12.0).max(12.0);
     egui::Window::new("Entities")
-        .default_pos([12.0, 260.0])
-        .default_width(340.0)
+        .default_pos([left, 12.0])
+        .default_width(ENTITIES_WIDTH)
         .default_open(false)
         .show(context, |ui| {
             let ids = inspect::entity_ids(world);
@@ -409,14 +433,26 @@ fn entities_window(context: &egui::Context, world: &World, selected: &mut Option
                 ui.label("No entity selected.");
                 return;
             };
-            match inspect::component_rows(world, entity) {
-                None => {
-                    ui.label(format!("#{} was despawned.", entity.id()));
-                }
-                Some(rows) if rows.is_empty() => {
-                    ui.label(format!("#{} has no components.", entity.id()));
-                }
-                Some(rows) => {
+            let Some(inspected) = inspect::inspect_entity(world, entity) else {
+                ui.label(format!("#{} was despawned.", entity.id()));
+                return;
+            };
+            // The runner describes the selection before each frame, so a new
+            // selection gets its game components one frame later.
+            let registered = match game {
+                Some((described, rows)) if *described == entity => rows.as_slice(),
+                _ => &[],
+            };
+            let rows: Vec<(String, String)> = inspected
+                .engine
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value))
+                .chain(inspect::game_rows(registered, inspected.other_components))
+                .collect();
+            if rows.is_empty() {
+                ui.label(format!("#{} has no components.", entity.id()));
+            } else {
+                {
                     ui.strong(format!("#{}", entity.id()));
                     egui::ScrollArea::vertical()
                         .id_salt("purplepie components")
@@ -441,7 +477,8 @@ fn entities_window(context: &egui::Context, world: &World, selected: &mut Option
                         });
                 }
             }
-        });
+        })
+        .map(|response| response.response.rect)
 }
 
 /// Input without events: the screen size in points, the DPI scale and the time.
@@ -513,6 +550,18 @@ impl Overlay {
     /// Sets the numbers the next [`draw`](Self::draw) shows.
     pub(crate) fn set_stats(&mut self, stats: Stats) {
         self.ui.stats = stats;
+    }
+
+    /// The entity the inspector shows, if one is selected.
+    pub(crate) fn selected(&self) -> Option<Entity> {
+        self.ui.selected
+    }
+
+    /// Sets the selected entity's registered game components (name, RON or
+    /// error), as the scene registry describes them; shown while `entity` is
+    /// still the selection.
+    pub(crate) fn set_game_components(&mut self, entity: Entity, components: GameComponents) {
+        self.ui.game = Some((entity, components));
     }
 
     /// Adds this frame's draw counts to the numbers set with
@@ -727,15 +776,21 @@ mod tests {
     /// Draws two overlay frames (egui lays a new window out invisibly on its
     /// first frame) and returns the second frame's bytes, the window rectangle
     /// and the colour egui fills windows with.
-    fn second_frame(format: wgpu::TextureFormat) -> (Vec<u8>, egui::Rect, egui::Color32) {
+    fn second_frame(
+        format: wgpu::TextureFormat,
+    ) -> (Vec<u8>, egui::Rect, egui::Rect, egui::Color32) {
         let (device, queue, faults) = crate::render::headless_device_and_queue();
         let mut overlay = Overlay::new(&device, format);
         let _ = draw_frame(&mut overlay, &device, &queue);
         let pixels = draw_frame(&mut overlay, &device, &queue);
         assert!(faults.take().is_none(), "no GPU errors");
         let window = overlay.ui.last_window.expect("the window was shown");
+        let entities = overlay
+            .ui
+            .last_entities_window
+            .expect("the Entities window was shown");
         let fill = overlay.ui.context.global_style().visuals.window_fill;
-        (pixels, window, fill)
+        (pixels, window, entities, fill)
     }
 
     fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
@@ -750,7 +805,7 @@ mod tests {
             wgpu::TextureFormat::Rgba8Unorm,
             wgpu::TextureFormat::Rgba8UnormSrgb,
         ] {
-            let (pixels, window, fill) = second_frame(format);
+            let (pixels, window, entities, fill) = second_frame(format);
             assert!(
                 window.min.x >= 0.0 && window.max.x < WIDTH as f32 && window.max.y < HEIGHT as f32,
                 "{format:?}: window {window:?} inside the target"
@@ -765,16 +820,18 @@ mod tests {
                     "{format:?}: window fill {inside:?}, expected {fill:?}"
                 );
             }
-            // Away from the window and its shadow, the frame is untouched.
+            // Away from both windows and their shadows, the frame is untouched.
             let shadow = 40.0;
+            let near = |rect: egui::Rect, x: f32, y: f32| {
+                x > rect.min.x - shadow
+                    && x < rect.max.x + shadow
+                    && y > rect.min.y - shadow
+                    && y < rect.max.y + shadow
+            };
             for y in 0..HEIGHT {
                 for x in 0..WIDTH {
                     let (fx, fy) = (x as f32, y as f32);
-                    let near = fx > window.min.x - shadow
-                        && fx < window.max.x + shadow
-                        && fy > window.min.y - shadow
-                        && fy < window.max.y + shadow;
-                    if !near {
+                    if !near(window, fx, fy) && !near(entities, fx, fy) {
                         assert_eq!(pixel(&pixels, x, y), CLEAR, "{format:?}: ({x}, {y})");
                     }
                 }

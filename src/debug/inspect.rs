@@ -3,8 +3,10 @@
 //! functions over the world, without egui, so they are unit-tested on a
 //! headless world.
 //!
-//! Only the engine's own components are shown here. A game's components are
-//! counted; the ones registered for scenes are shown as RON in PP-037d2.
+//! The engine's own components are formatted here. A game's components are
+//! counted; the ones registered for scenes arrive as RON from the scene
+//! registry (the runner asks it, so `debug` never depends on `scene`) and are
+//! turned into rows by [`game_rows`].
 
 use std::any::TypeId;
 
@@ -39,7 +41,10 @@ pub(crate) fn summary(world: &World, entity: Entity) -> String {
     } else if e.has::<Button>() {
         "button".to_owned()
     } else {
-        format!("{} components", e.len())
+        match e.len() {
+            1 => "1 component".to_owned(),
+            n => format!("{n} components"),
+        }
     };
     match e.get::<&Transform2D>() {
         Some(t) => format!("#{} {kind} at {}", entity.id(), point(t.position)),
@@ -47,10 +52,19 @@ pub(crate) fn summary(world: &World, entity: Entity) -> String {
     }
 }
 
-/// The selected entity's engine components as (name, value) rows, in a fixed
-/// order, then a count of the components the engine does not know; `None`
+/// What the inspector shows of one entity besides its game components.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Inspected {
+    /// The engine components as (name, value) rows, in a fixed order.
+    pub(crate) engine: Vec<(&'static str, String)>,
+    /// How many of the entity's components the engine does not know (the
+    /// game's own, registered for scenes or not).
+    pub(crate) other_components: usize,
+}
+
+/// The selected entity's engine components and a count of the rest; `None`
 /// when the entity no longer exists.
-pub(crate) fn component_rows(world: &World, entity: Entity) -> Option<Vec<(&'static str, String)>> {
+pub(crate) fn inspect_entity(world: &World, entity: Entity) -> Option<Inspected> {
     let e = world.entity(entity).ok()?;
     let mut rows = Vec::new();
     if let Some(t) = e.get::<&Transform2D>() {
@@ -92,14 +106,44 @@ pub(crate) fn component_rows(world: &World, entity: Entity) -> Option<Vec<(&'sta
         rows.push(("Button", format!("{:?}", *button)));
     }
     let engine = engine_types();
-    let others = e.component_types().filter(|t| !engine.contains(t)).count();
-    if others > 0 {
-        rows.push(("Game components", others.to_string()));
-    }
-    Some(rows)
+    Some(Inspected {
+        engine: rows,
+        other_components: e.component_types().filter(|t| !engine.contains(t)).count(),
+    })
 }
 
-/// The engine components [`component_rows`] shows.
+/// The selected entity's game components as (name, value) rows: each one
+/// registered for scenes under its registered name with its one-line RON (or
+/// why it could not be written), then a note for those that are not
+/// registered. `registered` comes from the scene registry; `other_components`
+/// from [`inspect_entity`].
+pub(crate) fn game_rows(
+    registered: &[(String, Result<String, String>)],
+    other_components: usize,
+) -> Vec<(String, String)> {
+    let mut rows: Vec<(String, String)> = registered
+        .iter()
+        .map(|(name, value)| match value {
+            Ok(ron) => (name.clone(), ron.clone()),
+            Err(error) => (name.clone(), format!("could not be written: {error}")),
+        })
+        .collect();
+    let unregistered = other_components.saturating_sub(registered.len());
+    if unregistered > 0 {
+        let what = if unregistered == 1 {
+            "component"
+        } else {
+            "components"
+        };
+        rows.push((
+            "Not registered".to_owned(),
+            format!("{unregistered} {what}: register them for scenes to see them here"),
+        ));
+    }
+    rows
+}
+
+/// The engine components [`inspect_entity`] shows.
 fn engine_types() -> [TypeId; 10] {
     [
         TypeId::of::<Transform2D>(),
@@ -178,6 +222,7 @@ mod tests {
             Quad::new(Vec2::splat(4.0), Color::WHITE),
         ));
         let bare = world.spawn((Health(1), Velocity(Vec2::ZERO)));
+        let single = world.spawn((Health(2),));
 
         assert_eq!(
             summary(&world, label),
@@ -195,12 +240,16 @@ mod tests {
             summary(&world, bare),
             format!("#{} 2 components", bare.id())
         );
+        assert_eq!(
+            summary(&world, single),
+            format!("#{} 1 component", single.id())
+        );
         world.despawn(bare).expect("alive");
         assert_eq!(summary(&world, bare), format!("#{} (despawned)", bare.id()));
     }
 
     #[test]
-    fn component_rows_show_engine_components_and_count_the_rest() {
+    fn inspect_entity_shows_engine_components_and_counts_the_rest() {
         let mut world = World::new();
         let e = world.spawn((
             Transform2D {
@@ -214,18 +263,12 @@ mod tests {
             Quad::new(Vec2::splat(1.0), Color::BLACK),
             Health(9),
         ));
-        let rows = component_rows(&world, e).expect("alive");
+        let inspected = inspect_entity(&world, e).expect("alive");
+        let rows = &inspected.engine;
         let names: Vec<&str> = rows.iter().map(|(name, _)| *name).collect();
         assert_eq!(
             names,
-            [
-                "Transform2D",
-                "Layer",
-                "Hidden",
-                "Velocity",
-                "Quad",
-                "Game components"
-            ]
+            ["Transform2D", "Layer", "Hidden", "Velocity", "Quad"]
         );
         assert_eq!(
             rows[0].1,
@@ -235,13 +278,45 @@ mod tests {
         assert_eq!(rows[2].1, "yes");
         assert_eq!(rows[3].1, "(10.0, 0.0) per second");
         assert!(rows[4].1.starts_with("Quad {"), "{}", rows[4].1);
-        assert_eq!(rows[5].1, "1", "Health is the game's");
+        assert_eq!(inspected.other_components, 1, "Health is the game's");
 
         let only_engine = world.spawn((Transform2D::default(),));
-        let rows = component_rows(&world, only_engine).expect("alive");
-        assert_eq!(rows.len(), 1, "no game-components row when there are none");
+        let inspected = inspect_entity(&world, only_engine).expect("alive");
+        assert_eq!((inspected.engine.len(), inspected.other_components), (1, 0));
 
         world.despawn(e).expect("alive");
-        assert_eq!(component_rows(&world, e), None);
+        assert_eq!(inspect_entity(&world, e), None);
+    }
+
+    #[test]
+    fn game_rows_show_registered_values_errors_and_what_is_not_registered() {
+        let registered = vec![
+            (
+                "demo::Broken".to_owned(),
+                Err("cannot write a Broken".to_owned()),
+            ),
+            ("demo::Spin".to_owned(), Ok("(speed: 1.5)".to_owned())),
+        ];
+        let rows = game_rows(&registered, 3);
+        let rows: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        assert_eq!(
+            rows,
+            [
+                (
+                    "demo::Broken",
+                    "could not be written: cannot write a Broken"
+                ),
+                ("demo::Spin", "(speed: 1.5)"),
+                (
+                    "Not registered",
+                    "1 component: register them for scenes to see them here"
+                ),
+            ]
+        );
+        assert!(game_rows(&[], 0).is_empty(), "no game components, no rows");
+        assert_eq!(
+            game_rows(&[], 2)[0].1,
+            "2 components: register them for scenes to see them here"
+        );
     }
 }

@@ -6,13 +6,13 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**Phase P3.5 (usability and first release): complete (2026-10-12, verified on Linux).** Release 0.1.0 is tagged on
-GitHub (`v0.1.0`), and a second game, Purple Swarm, was built on the public API with only two small engine additions.
-M10 (Engine API Stabilization) and the portfolio scope were reached earlier; since then the engine gained runtime
-essentials (P1–P2) and editor foundations (P3). Windows: the owner's checklist passed (PP-033b). macOS is built and
-tested in CI but has not been seen running. Current milestone: **P4, debug overlay**. Its approach is decided
-(ADR-043, PP-037a); PP-037b1/b2 added the optional `debug-overlay` feature (F12, mouse routing to the overlay)
-and PP-037c its stats window; PP-037d1 added an entity inspector (engine components).
+**Phase P4 (debug overlay): complete (2026-10-13, verified on Linux).** The optional `debug-overlay` feature
+(ADR-043) shows a stats window and an entity inspector (engine components and registered game components) over a
+running game, toggled with F12. Before it, phase P3.5 (2026-10-12) delivered release 0.1.0 (tag `v0.1.0` on GitHub)
+and a second game, Purple Swarm, built on the public API; M10 (Engine API Stabilization), the portfolio scope,
+runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. Windows: the owner's checklist passed
+(PP-033b; the overlay's step 9 is not run yet). macOS is built and tested in CI but has not been seen running. Next
+milestone: **P5, scene editor**.
 
 ## Current Stage
 
@@ -41,8 +41,8 @@ egui inside the engine behind an off-by-default `debug-overlay` feature (ADR-043
 `EngineConfig::with_debug_overlay`, the F12 toggle and the overlay's render pass (a placeholder window); PP-037b2
 routed the mouse to it (clicks and the wheel on the overlay's window stay with it); PP-037c replaced the placeholder
 with a stats window (frame time and FPS, fixed steps, entities, draws, camera, window, cursor); PP-037d1 added an
-"Entities" window (list, engine components of the selected entity). Next: **PP-037d2**, the selected entity's
-registered game components as RON. The long-term plan (in-game UI and an editor) is in
+"Entities" window (list, engine components of the selected entity) and PP-037d2 its registered game components as
+RON, which completes **phase P4**. Next: **PP-038a**, the scene editor's design decision (P5). The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -123,6 +123,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-037d2: inspector shows registered game components as RON (`Registry::describe`, prepared by the runner so `debug` and `render` stay independent of `scene`); "Entities" window at the top right. Phase P4 complete.
 - PP-037d1: debug overlay "Entities" window: entities by id (virtualized list), the selected entity's engine components, game components counted; collapsed by default.
 - PP-037c: debug overlay stats window: frame time (last, smoothed) and FPS, fixed steps per frame, entity count, draw batches and instances, camera, window size and scale, cursor in screen and world coordinates.
 - PP-037b2: debug overlay input routing (egui-winit): pointer events the overlay consumes stay with it; releases of buttons the game holds and all keys reach the game; egui scale applied once.
@@ -156,7 +157,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-037d2: Debug overlay: registered game components** (shown as RON through the scene registry). See [TASKS.md](TASKS.md#pp-037d2-debug-overlay-part-3b-registered-game-components--next).
+- **PP-038a: Scene editor design** (phase P5, item 1; ADR-044: editor crate vs. editor mode, egui/renderer access, first slice). See [TASKS.md](TASKS.md#pp-038a-scene-editor-design--next).
 
 ## Blocked
 
@@ -190,10 +191,16 @@ executable, else `assets/` in the working directory (ADR-025).
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
-- Debug overlay (optional feature): stats and an entity inspector that shows engine components only (game components are counted; registered ones as RON in PP-037d2) and long `Debug` values for `Text`/`Sprite`; at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys always reach the game, so an overlay text field would need key routing first; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
+- Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys always reach the game, so an overlay text field would need key routing first; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-13: PP-037d2 Inspector shows registered game components; phase P4 complete.**
+  - Selecting an entity in the overlay's "Entities" window now also shows its game components registered for scenes, under their registered names and as the same one-line RON a scene file holds (e.g. `scene_demo::Spin (speed: 0.8, direction: Clockwise)`); a component that cannot be written shows its error; unregistered ones are counted with a hint to register them.
+  - The runner asks the scene registry (`Registry::describe`) for the selected entity and hands the overlay plain text, so `debug` and `render` never depend on `scene`. The scene example enables the overlay when built with the feature.
+  - The "Entities" window now starts at the top right; under the stats window it did not fit in a 600-pixel-high window.
+  - Phase P4 (debug overlay) is complete. Next phase: P5, scene editor, starting with its design decision (PP-038a).
 
 - **2026-10-13: PP-037d1 Debug overlay entity inspector, part 1.**
   - A second overlay window, "Entities" (collapsed by default): the entity count, every entity by id with a one-line summary (what it draws and where), and for the clicked entity its engine components (transform, layer, hidden, screen space, velocity, quad, sprite, text, animation, button) plus a count of the game's own components. Read-only.
@@ -489,15 +496,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-037d1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-037d2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 242 + 53, 13 ignored |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 244 + 53, 13 ignored |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Inspector game components (PP-037d2) | ✅ GitHub `main` (`cd8bdf0`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); new unit tests: `Registry::describe` (working, failing, absent component), `inspect::game_rows`, singular summary. Overlay GPU test 13/13 with both windows excluded. Scene example with the feature under Xvfb: `#8` → `scene_demo::Spin (speed: 0.8, direction: Clockwise)` (same text as `demo.ron`), `#10` → `scene_demo::Visits (label: "demo scene", count: 1)`. Breakout lose frame and frozen scene frame pixel-identical without the feature |
 | Debug overlay entity inspector (PP-037d1) | ✅ GitHub `main` (`86c5d04`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); 3 new `debug::inspect` unit tests. Timing (temporary test, removed): 5 000 entities 0.30 ms (debug) / 0.025 ms (release) per frame, 50 000 entities 2.7 / 0.20 ms. Sandbox with the feature under Xvfb: Entities window expanded with 19 entities, `#5` selected shows its four engine components, a stamp adds `#19 quad at (260.0, -160.0)` (count 20), wheel over the list scrolls it (camera zoom stays 1), one left click reached the game. Breakout lose frame and frozen scene frame pixel-identical without the feature |
 | Debug overlay stats (PP-037c) | ✅ GitHub `main` (`b53551a`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); 3 new `debug` unit tests (timer, rows, gather). Sandbox with the feature under Xvfb: stats window shows cursor `(640.0, 360.0) px, world (0.0, 0.0)`, entities 19 → 20 and batches 8 → 9 after a click, zoom 1.00 → 4.00 after a wheel notch (the sandbox's exit line agrees). 600-frame timing, lavapipe: debug 58.8 fps without the feature vs 43.4 with the overlay visible; release 56.3 vs 53.3 |
 | Debug overlay input routing (PP-037b2) | ✅ clippy with and without `--all-features` (+ `incompatible_msrv`). 5 `debug` unit tests incl. routing and the 2× scale test (fails with PP-037b1's `set_pixels_per_point` put back). Sandbox with the feature under Xvfb: overlay body and collapse-arrow clicks withheld (window collapsed, no stamp), wheel over the overlay withheld (0 `wheel` lines) and over the game delivered (zoom 4), drag-release over the overlay delivered (next click counted), F12 then a click where the overlay was: `left clicks seen: 4 in fixed_update, 4 in update`. Same session without the feature: 6 clicks, zoom 8. Breakout lose frame and frozen scene frame pixel-identical to the baselines without the feature and with it compiled in but off |
@@ -538,4 +546,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-13. PP-037d1 done (debug overlay entity inspector: engine components). PP-037d2 (registered game components) is next.
+2026-10-13. PP-037d2 done (inspector shows registered game components); phase P4 complete. PP-038a (P5 scene editor design, ADR-044) is next.

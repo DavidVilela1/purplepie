@@ -139,6 +139,30 @@ impl Registry {
         Ok(out)
     }
 
+    /// The entity's registered components for the debug overlay's inspector
+    /// (ADR-043): each one's name with the one-line RON a scene file would
+    /// hold, or the error that stopped it from being written. Sorted by name;
+    /// unlike [`save`](Self::save), one failing component does not hide the
+    /// others.
+    #[cfg(feature = "debug-overlay")]
+    pub(crate) fn describe(
+        &self,
+        e: &hecs::EntityRef<'_>,
+    ) -> Vec<(String, Result<String, String>)> {
+        let mut out: Vec<_> = self
+            .entries
+            .iter()
+            .filter_map(|r| {
+                let value = (r.save)(e)?
+                    .map(|raw| raw.get_ron().to_owned())
+                    .map_err(|err| err.to_string());
+                Some((r.name.clone(), value))
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
     /// Decodes the component saved under `name`.
     pub(crate) fn load(&self, name: &str, raw: &RawValue) -> Result<Inserter, BoxError> {
         let entry = self
@@ -198,5 +222,45 @@ mod tests {
         #[derive(Serialize)]
         struct Marker;
         assert_eq!(to_raw(&Marker).expect("marker").get_ron(), "()");
+    }
+
+    #[cfg(feature = "debug-overlay")]
+    #[test]
+    fn describe_lists_each_registered_component_with_its_ron_or_its_error() {
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Speed(f32);
+        /// Serializes to an error, like a component holding a non-finite value
+        /// for a format that rejects it.
+        #[derive(Debug, Deserialize)]
+        struct Broken;
+        impl Serialize for Broken {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("cannot write a Broken"))
+            }
+        }
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Unused;
+
+        let mut registry = Registry::default();
+        registry.register::<Speed>("demo::Speed").expect("register");
+        registry
+            .register::<Broken>("demo::Broken")
+            .expect("register");
+        registry
+            .register::<Unused>("demo::Unused")
+            .expect("register");
+        let mut world = World::new();
+        let e = world.spawn((Speed(2.5), Broken, 7_u32));
+
+        let rows = registry.describe(&world.entity(e).expect("alive"));
+        assert_eq!(rows.len(), 2, "only components the entity has: {rows:?}");
+        assert_eq!(rows[0].0, "demo::Broken", "sorted by name");
+        let error = rows[0].1.as_ref().expect_err("the error is kept");
+        assert!(error.contains("cannot write a Broken"), "{error}");
+        assert_eq!(rows[1], ("demo::Speed".to_owned(), Ok("(2.5)".to_owned())));
+        assert!(
+            registry.save(&world.entity(e).expect("alive")).is_err(),
+            "save stops at the error; describe shows the rest"
+        );
     }
 }
