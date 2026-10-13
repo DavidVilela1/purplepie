@@ -14,8 +14,8 @@ runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. W
 (PP-033b; the overlay's step 9 is not run yet). macOS is built and tested in CI but has not been seen running.
 **Phase P5 (scene editor): in progress** since PP-038a (ADR-044, 2026-10-13): the editor will be a separate crate
 written as a `Game` on a public egui hook. Done so far: the design, a fix it needed first (scene loading was
-quadratic, PP-038b) and the public egui hook (`egui` feature, `Game::egui`, PP-038c); the editor crate itself is
-not started.
+quadratic, PP-038b), the public egui hook (`egui` feature, `Game::egui`, PP-038c) and picking
+(`Context::entities_at`, PP-038d); the editor crate itself is not started.
 
 ## Current Stage
 
@@ -52,8 +52,10 @@ hook behind a new `egui` feature, with undo as editor commands. The spike also f
 parse). PP-038b fixed that: ron is held at 0.12.1 (the scan came with 0.12.2) and a scene is parsed once, so 10 000
 entities with game components load in 0.12 s instead of 12 s. PP-038c added the public egui hook: with the
 optional `egui` feature and `EngineConfig::with_egui(true)`, `Game::egui(ctx, ui)` draws the game's own egui UI
-over its frame (`purplepie::egui`), and the debug overlay now builds on the same egui frame. Next: **PP-038d**,
-picking (which entity is drawn at a point), then the editor crate (PP-038e–PP-038j). The long-term plan (in-game UI and an editor) is in
+over its frame (`purplepie::egui`), and the debug overlay now builds on the same egui frame. PP-038d added picking:
+`Context::entities_at(point)` lists the entities drawn at a world point, topmost first in draw order. Next:
+**PP-038e**, lenient scene loading (keep unknown game components as text), then the editor crate (PP-038f–PP-038j).
+The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -134,6 +136,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038d: picking: `Context::entities_at(point)`, topmost first in draw order; hidden and screen-space entities excluded; rotation, scale and text bounds.
 - PP-038c: public egui hook: `egui` feature, `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; one egui frame laid out by the runner (game UI, then the overlay's windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example.
 - PP-038b: scene loading linear again: ron held at exactly 0.12.1 (0.12.2 made parsing quadratic), scene parsed once before the version check; regression test (R-31 mitigated).
 - PP-038a: scene editor design: ADR-044 (separate editor crate on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading); throwaway spike measured; P5 split into PP-038b–PP-038j.
@@ -171,7 +174,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038d: Picking** (phase P5, item 4; ADR-044): a public query for the entities drawn at a world point, topmost first in draw order, skipping hidden and screen-space entities, with rotation, scale and text bounds. See [TASKS.md](TASKS.md#pp-038d-picking--next).
+- **PP-038e: Lenient scene loading** (phase P5, item 5; ADR-036, ADR-044): an opt-in load that keeps unknown game components as RON text and saves them back unchanged, so the editor can open any game's scenes. See [TASKS.md](TASKS.md#pp-038e-lenient-scene-loading--next).
 
 ## Blocked
 
@@ -190,6 +193,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 - Windows (owner): the purple window (Stage 4), `cargo test`, Escape and the close button are confirmed. Stages 5–7 rendering, vsync pacing and GPU fault paths are unverified there. macOS compiles and passes `cargo test` in CI but its rendering has never been seen; Wayland is untested.
 - Input: 99 physical keys and 5 mouse buttons only (no text input, gamepads, touch or rebinding). Under X11 + XTEST, winit reports each synthetic wheel click twice (2 lines); real hardware unverified. An edge reaches `fixed_update` one frame late when the frame that saw it ran no fixed step.
+- Picking (`Context::entities_at`, PP-038d): world-space entities only; transparent sprite texels count; text by its measured box (drawn text is snapped to whole pixels, up to a pixel off); linear in drawable entities and measures every text per call.
 - One camera only, without rotation. Screen-space content (`ScreenSpace`, PP-021) is always drawn above world content. UI widgets: buttons only (PP-023; no keyboard focus, layout, text input or disabled state). A non-integer zoom with `Nearest` sampling makes texels uneven (1 vs 2 pixels at zoom 1.5).
 - Quads and sprites are drawn without MSAA, so rotated quad edges are aliased. Textures are sampled `Nearest` (default) or `Linear` (chosen per texture at load, ADR-034); there are no mipmaps, so even `Linear` sprites alias when shrunk below half size, and cells of a `Linear` sprite sheet blend with neighbouring texels unless the sheet has spacing.
 - Textures: PNG only. A sprite shows its whole texture or one rectangular region of it (sprite sheets, PP-019); regions can be animated with `SpriteAnimation` (fixed frame rate per animation; no per-frame durations or events), and sheets need `Nearest` sampling (linear filtering would bleed across cells). A texture larger than the GPU limit (≥ 2048 everywhere) stops the engine with `Error::Asset` at the next frame rather than failing in `load_texture`.
@@ -211,6 +215,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-13: PP-038d Picking.**
+  - New `Context::entities_at(point)`: the entities drawn at a world point, topmost first, in the reverse of the draw order (higher layer first; within a layer text, then sprites, then quads; later entities first), each once. Quads and sprites count by their rectangle and texts by their measured bounds, turned and scaled with their transform; hidden, screen-space and undrawn entities never count.
+  - 7 unit tests (one compares with the draw list's actual order) and a doctest; README, GUIDE §8, CHANGELOG. Cost: 1.3 ms per call for 10 000 quads + 1 000 texts in release (34 ms in debug), so it is for clicks, not per-frame scans.
 
 - **2026-10-13: PP-038c Public egui hook.**
   - New optional `egui` Cargo feature (Rust 1.95): `EngineConfig::with_egui(true)` makes the engine call the new `Game::egui(ctx, ui)` once per frame after `update`, with a `Context` and the root egui `Ui`, so a game draws its own panels and windows over its frame; `purplepie::egui` re-exports egui 0.36. `debug-overlay` now turns on `egui`.
@@ -529,15 +537,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038c change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038d change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS: 232 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--features egui` or `--all-features` 248 + 54, 13 ignored |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS: 239 unit tests + 54 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--features egui` or `--all-features` 255 + 55, 13 ignored |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Picking (PP-038d) | ✅ GitHub `main` (`8ed4aac`) identical to this tree before the task. clippy with no features (+ `incompatible_msrv`) and `--all-features`; `cargo doc` with and without features (0 warnings). New tests pass; mutation (ignore the transform) fails 2. Timing (temporary test, removed): 10 000 quads + 1 000 texts 34 ms debug / 1.3 ms release per call. GPU tests 13/13. Breakout lose frame 0 pixels different |
 | Public egui hook (PP-038c) | ✅ GitHub `main` (`3e2d391`) identical to this tree before the task. clippy with no features (+ `incompatible_msrv`), `--features egui` and `--all-features`; tests in all three; GPU tests 13/13 (overlay pixel test through `layout` + `paint`). Mutation: dropping unpainted texture changes instead of merging fails `texture_changes_of_unpainted_frames_are_kept_for_the_next_paint`. Xvfb: `egui_panel` (`clicks 2, key frames 32, stamps 0, size 195, title "PurplePie egui panel X"`; window name followed the field), with `debug-overlay` overlay on top and F12 while typing; sandbox overlay routing and inspector as before (1 game click, zoom 1). Without features: Breakout lose frame and frozen scene frame 0 pixels different |
 | Scene loading speed (PP-038b) | ✅ GitHub `main` (`68d5adc`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); `cargo doc`. Timing test (temporary, removed) before/after in debug and release, 1 000 and 10 000 entities (ADR-044 implementation notes); new regression test passes with ron 0.12.1 (ratio 4.2) and fails with 0.12.2 (14.5× debug, 17.9× release). Scene example `load`, frozen, under Xvfb: 0 pixels differ from the frame built from GitHub `main` |
 | Scene editor design (PP-038a) | ✅ GitHub `main` (`1ab36b1`) identical to this tree before the task; documentation-only change (no file under `src/`, `examples/`, `games/` or `Cargo.*` changed). Throwaway spike in a scratch copy ([spikes/pp-038a-editor-spike.md](spikes/pp-038a-editor-spike.md)): `Game::egui` hook + editor-like example under Xvfb (pick, drag, Ctrl+Z, save; saved file differs from `demo.ron` only in the moved entity's position); scene read/write timing (release, mean of 5): 1 000 quads parse 1.39 s, 9.3 ms with the whole scene parsed first; callgrind: 92 % in ron's `..` search. After the spike, engine artifacts cleaned (`cargo clean -p purplepie -p purple-swarm`) and every check above re-run: 231 + 53 (12 ignored), `--all-features` 244 + 53 (13 ignored), GPU 13/13 |
@@ -582,4 +591,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-13. PP-038c done (public egui hook: `egui` feature, `Game::egui`). PP-038d (picking) is next.
+2026-10-13. PP-038d done (picking: `Context::entities_at`). PP-038e (lenient scene loading) is next.

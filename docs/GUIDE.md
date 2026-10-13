@@ -315,6 +315,10 @@ fn controls(ctx: &mut Context<'_>) {
 }
 ```
 
+To find what the player clicked, ask for the entities drawn at the cursor's world position:
+`ctx.entities_at(point)` lists them topmost first (hidden and screen-space entities never count), so the first one
+is on top. For buttons in screen space, use `ui::Button` (next section).
+
 ## 9. HUD and buttons
 
 Add `ScreenSpace` to an entity to pin it to the window instead of the world: its position is then measured from a

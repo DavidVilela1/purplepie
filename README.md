@@ -19,7 +19,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   sharp at the on-screen size, anchored/aligned with `TextAnchor`, measured with `Context::measure_text`), ordered by `Layer`, hidden with `Hidden`, drawable in screen space for HUDs (`ScreenSpace`) with clickable `ui::Button`s, batched into instanced draw calls, seen
   through a `Camera2D` (pan, zoom, `fit`, screen ↔ world).
 - **Input:** keyboard (`KeyCode`), mouse buttons, cursor (screen and world) and wheel, with each press reported exactly
-  once per callback regardless of frame rate.
+  once per callback regardless of frame rate; `Context::entities_at` finds the entities drawn under a point, topmost
+  first.
 - **Audio:** WAV and OGG Vorbis sounds with `Context::load_sound`, `play_sound` / `loop_sound` (seamless loops), `stop_sound`, per-sound and
   master volume (mixed in software, any sample rate); games keep running silently without an audio device.
 - **Assets:** textures, fonts and sounds loaded by paths relative to an `assets/` folder found next to the executable or in the

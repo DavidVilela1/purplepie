@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`); PP-038d–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`); PP-038e–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2676,6 +2676,28 @@ small and enough for the core interactions.
   behaves as before: clicks and the wheel on its windows stay with egui, the inspector lists and inspects, a stamp
   click reaches the game, the camera keeps zoom 1. Without the features the Breakout lose frame and the frozen
   scene frame are pixel-identical to GitHub `main`'s.
+
+## Implementation notes (PP-038d)
+- **API:** `Context::entities_at(point: Vec2) -> Vec<Entity>`, the entities drawn at a world point, topmost first,
+  each once (by its topmost drawable). It lives on `Context` because text bounds need the loaded fonts and sprite
+  regions the textures; the work is in the crate-private `render::pick` next to the draw list.
+- **Same order as drawing:** hits are sorted by (layer, material rank, entity id) descending, with the draw list's
+  own `Material::rank` (quads 0, sprites by texture, text last), so text is above sprites above quads within a layer.
+  A unit test builds the draw list for overlapping entities and checks that it draws them in exactly the reverse
+  order of the pick.
+- **Drawn area:** quads and sprites use their rectangle (absolute size), texts their `TextMetrics::bounds` for the
+  anchor; the point is taken into the entity's local space with the inverse of `Transform2D::to_mat4`, so rotation
+  and (negative) scale count; a zero scale draws, and picks, nothing. Skipped like in the draw list: `Hidden`,
+  sprite regions or animation frames with nothing inside the texture, texts in fonts that are not loaded. Not
+  modelled: transparent texels (they count), whole-pixel text snapping (up to a pixel), and text too large to
+  rasterize. `ScreenSpace` entities are excluded: their position is in window pixels, so a world point does not
+  apply (a screen-point query can follow if the editor needs it). A first version excluded only entities that were
+  both hidden *and* in screen space (hecs `Without<Q, (A, B)>` means "not both"); the unit test caught it.
+- **Cost:** linear in drawable entities, measuring every text each call: 10 000 quads + 1 000 texts took 34 ms per
+  call in a debug build and 1.3 ms in release. Meant for clicks, not for every entity every frame.
+- 7 unit tests (6 in `render::pick`, 1 through `Context` with the camera and cursor) and a doctest; a mutation
+  that ignores rotation and scale fails two of them. No rendering code changed (only `Material::rank` became
+  visible to `pick`); Breakout's lose frame is pixel-identical.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

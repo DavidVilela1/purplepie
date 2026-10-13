@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038d: Picking: a public query for the entities drawn at a world point, topmost first in draw order (ADR-021), skipping `Hidden` and `ScreenSpace`, with rotation, scale and text bounds** · P1 · TODO ← **next task**
+- [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038d: Picking: `Context::entities_at(point)`, topmost first in draw order, hidden and screen-space entities excluded, rotation/scale and text bounds (phase P5, item 4)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038c: Public egui hook: `egui` feature (`debug-overlay` builds on it), `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; egui frame laid out by the runner (game UI, then overlay windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example (phase P5, item 3)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038b: Scene loading speed: ron held at exactly 0.12.1 (0.12.2's number-range support made parsing quadratic), whole scene parsed before the version check; linear-time regression test (phase P5, item 2)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038a: Scene editor design: ADR-044 (separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading), measured in a throwaway spike that found a quadratic scene parse; P5 split into PP-038b–PP-038j (phase P5, item 1)** · DONE (2026-10-13; spike on Linux)
@@ -85,7 +86,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
 
-- [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P2 · TODO
 - [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P2 · TODO
 - [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P2 · TODO
 - [ ] **PP-038h: Editor inspector editing: transform, layer, hidden, quad, sprite and text fields, game components as RON text checked on entry, each change undoable** · P2 · TODO
@@ -476,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038d: Picking ← NEXT
+### PP-038e: Lenient scene loading ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 4 · Priority P1 · TODO |
+| Stage | Phase P5, item 5 · Priority P1 · TODO |
+| Dependencies | PP-038d (DONE); ADR-036, ADR-044 |
+| Why now | The editor binary (PP-038f) opens scenes of any game without knowing its component types; today an unregistered component name fails the whole load (ADR-036). ADR-044 decided an opt-in lenient load that keeps such components as RON text and writes them back unchanged. |
+| Scope | An opt-in load (e.g. `Context::load_scene_with(path, options)` or a dedicated method; decide the smallest public shape) that keeps unknown game components as raw RON on the entity, in a public component the editor can read and edit as text (e.g. `scene::UnknownComponents` or a name in `render`/a new public module; decide), and `save_scene` writes them back verbatim, sorted with the registered ones. Registered components still decode as today; invalid values of *registered* types still fail. Entities with only unknown components are kept (they were saved because the game had registered them). Scene format unchanged (still version 1). Tests: a file with registered + unknown components loads leniently and saves back byte-for-byte; the strict load still rejects it; unknown values are not parsed beyond RON syntax; mixing an unknown name with a later registration. Update ADR-036/044 notes, GUIDE scene section if public API, CHANGELOG. |
+| Acceptance criteria | Lenient load + save round-trips a file with unknown components byte-for-byte (fixture); strict behaviour unchanged (existing tests); no format version change; documented public API. |
+
+### PP-038d: Picking
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 4 · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-038c (DONE); ADR-044 |
-| Why now | The editor's first slice (PP-038f/g) selects entities by clicking them, and ADR-044 put picking in the engine (games can use it too). The PP-038a spike showed that a naive pick chooses the demo's hidden 2 000 × 2 000 quad. |
-| Scope | A public query for the entities drawn at a world point, topmost first, in the renderer's draw order (ADR-021: layer, then material, then entity id), skipping `Hidden` and `ScreenSpace` entities (screen-space ones could get a separate query later). Bounds: `Quad` and `Sprite` sizes and `Text` metrics around the anchor, transformed by `Transform2D` (rotation and scale, including negative scale). Where it lives (`render` next to the draw list, reached through `Context` because text bounds need the fonts) and its name are part of the task; record the API in an ADR-044 implementation note. Unit tests on a headless world (overlaps across layers, same-layer order by material and id, rotated and scaled shapes, text, hidden, screen space); use it in `egui_panel` or the sandbox only if it stays small. |
-| Acceptance criteria | Picking agrees with what is drawn on top (a test compares with the draw list's order); hidden and screen-space entities are never picked; rotated/scaled/negative-scale shapes and texts pick by their drawn area; docs and an example in the API docs; no change to frames. |
+| Acceptance criteria | ✅ `Context::entities_at(point) -> Vec<Entity>` (doc example) over the crate-private `render::pick::entities_at`: topmost first by the draw list's (layer, `Material::rank`, entity id), each entity once. ✅ A unit test builds the draw list for overlapping quads, a sprite and other layers and finds it draws them in exactly the reverse order of the pick. ✅ Hidden, screen-space and transform-less entities, zero scale, sprite regions/animation frames outside their texture and texts in unloaded fonts are never picked (the test caught a first version that excluded only entities both hidden and in screen space). ✅ Rotated, scaled and mirrored quads and scaled text pick by their drawn area (a mutation ignoring the transform fails two tests); a `Context` test goes from the cursor through the camera (zoom 2) to the text and the square. ✅ Cost: 10 000 quads + 1 000 texts 34 ms debug / 1.3 ms release per call (temporary test, removed). README, GUIDE §8, CHANGELOG. Breakout lose frame pixel-identical. |
 
 ### PP-038c: Public egui hook
 | Field | Value |

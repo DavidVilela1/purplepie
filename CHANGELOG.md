@@ -28,6 +28,10 @@ break compatibility and a patch version (0.x.**y**) may not.
   on egui do not reach `Context::input`, nor do keys while an egui text field has the focus. Needs Rust 1.95.
   Example: `cargo run --example egui_panel --features egui`. The `debug-overlay` feature now builds on it; its
   windows are drawn on top of the game's egui UI, and its draw counts are the previous frame's.
+- `Context::entities_at(point)`: the entities drawn at a world point, topmost first in draw order (layer, then text
+  over sprites over quads, then later entities), each once; quads, sprites and text bounds count as drawn, turned and
+  scaled with their transform; hidden, screen-space and undrawn entities never count (ADR-044). For "what did the
+  player click?" and the scene editor.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,

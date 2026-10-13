@@ -62,6 +62,7 @@ mod draw;
 mod faults;
 mod font;
 mod instance;
+mod pick;
 mod quad;
 /// A headless GPU for the debug overlay's ignored tests (ADR-043).
 #[cfg(all(test, feature = "egui"))]
@@ -79,6 +80,7 @@ pub use color::Color;
 pub use draw::{Hidden, Layer};
 pub use font::FontId;
 pub(crate) use font::Fonts;
+pub(crate) use pick::entities_at;
 pub use quad::Quad;
 pub use region::{SpriteGrid, TextureRegion};
 pub(crate) use renderer::Renderer;

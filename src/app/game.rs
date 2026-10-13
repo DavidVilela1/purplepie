@@ -507,6 +507,38 @@ impl<'a> Context<'a> {
             .map(|screen| state.camera.screen_to_world(screen, state.viewport))
     }
 
+    /// The entities drawn at `point` (world units), topmost first (ADR-044):
+    /// higher [`Layer`](crate::render::Layer) first, and within a layer in the
+    /// reverse of the draw order (text, then sprites, then quads, later
+    /// entities first). Use it to find what the player clicked; `first()` is
+    /// the one on top. Each entity is listed once.
+    ///
+    /// An entity counts where its quad or sprite rectangle, or its text's
+    /// [`TextMetrics::bounds`], is drawn, turned and scaled with its
+    /// [`Transform2D`](crate::math::Transform2D). Entities that are
+    /// [`Hidden`](crate::render::Hidden), in
+    /// [`ScreenSpace`](crate::render::ScreenSpace), or not drawn at all (no
+    /// transform; a sprite region outside its texture) are never returned.
+    /// Transparent texels of a sprite still count.
+    ///
+    /// ```
+    /// use purplepie::Context;
+    /// use purplepie::ecs::Entity;
+    /// use purplepie::input::MouseButton;
+    ///
+    /// /// The entity on top under a click, if any.
+    /// fn clicked(ctx: &Context<'_>) -> Option<Entity> {
+    ///     if !ctx.input().mouse_just_pressed(MouseButton::Left) {
+    ///         return None;
+    ///     }
+    ///     ctx.entities_at(ctx.cursor_world()?).first().copied()
+    /// }
+    /// ```
+    pub fn entities_at(&self, point: Vec2) -> Vec<Entity> {
+        let state = &*self.state;
+        crate::render::entities_at(&state.world, &state.textures, &state.fonts, point)
+    }
+
     /// Changes the window title, e.g. to show the score. Applied after the
     /// current callback returns; calling it again in the same callback replaces
     /// the earlier request.
@@ -553,6 +585,45 @@ mod tests {
         let ctx = Context::new(&mut state, 0.25);
         assert_eq!(ctx.dt(), 0.25_f32);
         assert_eq!(ctx.time().fixed_dt(), 0.25);
+    }
+
+    #[test]
+    fn the_entity_under_the_cursor_is_found_through_the_camera() {
+        use crate::math::Transform2D;
+        use crate::render::{Color, Quad, Text, TextAnchor};
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        state.viewport = Vec2::new(800.0, 600.0);
+        let mut ctx = Context::new(&mut state, 0.0);
+        let font = ctx.load_font("fonts/Poppins-Regular.ttf").expect("font");
+        let square = ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(100.0, 50.0)),
+            Quad::new(Vec2::splat(20.0), Color::WHITE),
+        ));
+        let label = ctx.world_mut().spawn((
+            Transform2D::from_position(Vec2::new(100.0, 50.0)),
+            Text::new("i", font, 16.0).with_anchor(TextAnchor::CENTER),
+        ));
+        ctx.camera_mut().position = Vec2::new(100.0, 50.0);
+        ctx.camera_mut().zoom = 2.0;
+        // The window's centre shows the camera position: both, text on top.
+        ctx.state.input.set_cursor(Some(Vec2::new(400.0, 300.0)));
+        let point = ctx.cursor_world().expect("inside");
+        assert_eq!(ctx.entities_at(point), [label, square]);
+        // 16 px right of the centre at zoom 2 is 8 units: inside the square,
+        // outside the narrow label.
+        ctx.state.input.set_cursor(Some(Vec2::new(416.0, 300.0)));
+        assert_eq!(
+            ctx.entities_at(ctx.cursor_world().expect("inside")),
+            [square]
+        );
+        ctx.state.input.set_cursor(Some(Vec2::new(440.0, 300.0)));
+        assert!(
+            ctx.entities_at(ctx.cursor_world().expect("inside"))
+                .is_empty()
+        );
     }
 
     #[test]

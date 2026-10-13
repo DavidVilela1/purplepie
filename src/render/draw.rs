@@ -68,8 +68,9 @@ pub(crate) enum Material {
 }
 
 impl Material {
-    /// Sort rank within a layer: quads first, then sprites by texture, then text.
-    fn rank(self) -> u32 {
+    /// Sort rank within a layer: quads first, then sprites by texture, then
+    /// text (also used by picking, so it agrees with what is drawn on top).
+    pub(super) fn rank(self) -> u32 {
         match self {
             Material::Color => 0,
             Material::Texture(id) => u32::try_from(id.index())
