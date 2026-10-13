@@ -49,7 +49,8 @@ pub(crate) struct SceneFile {
     pub(crate) entities: Vec<EntityFile>,
 }
 
-/// Only the version, read first so a newer file gets a clear message.
+/// Only the version, read when a file does not parse as a scene, so a newer
+/// file gets a clear message.
 #[derive(Deserialize)]
 struct VersionOnly {
     version: u32,
@@ -513,21 +514,31 @@ pub(crate) fn to_text(scene: &SceneFile) -> Result<String, BoxError> {
     ))
 }
 
-/// Parses RON text into a scene, checking the version first.
+/// Parses RON text into a scene and checks its version.
+///
+/// The whole scene is parsed first, and only a file that fails to parse is
+/// read again for its version alone, so a newer or broken file still gets a
+/// clear message while a valid file is parsed once. (Reading the version
+/// first meant skipping, and so parsing, the whole file twice.)
+///
+/// Parsing must stay linear in the file's size: `ron` 0.12.2 made it
+/// quadratic (R-31), which is why Cargo.toml holds `ron` at 0.12.1 and
+/// `parsing_time_grows_linearly_with_the_scene` guards it.
 pub(crate) fn from_text(text: &str) -> Result<SceneFile, BoxError> {
     let options = ron_options();
-    match options.from_str::<VersionOnly>(text) {
-        Ok(v) if v.version != VERSION => {
-            return Err(format!(
-                "scene version {} is not supported (this PurplePie reads version {VERSION})",
-                v.version
-            )
-            .into());
+    let mut scene = match options.from_str::<SceneFile>(text) {
+        Ok(scene) => scene,
+        Err(error) => {
+            return Err(match options.from_str::<VersionOnly>(text) {
+                Ok(v) if v.version != VERSION => unsupported(v.version),
+                Ok(_) => error.into(),
+                Err(e) => format!("not a PurplePie scene file: {e}").into(),
+            });
         }
-        Ok(_) => {}
-        Err(e) => return Err(format!("not a PurplePie scene file: {e}").into()),
+    };
+    if scene.version != VERSION {
+        return Err(unsupported(scene.version));
     }
-    let mut scene = options.from_str::<SceneFile>(text)?;
     // A raw game-component value keeps the whitespace around it in the file;
     // trim it so saving the scene again writes the same text.
     for e in &mut scene.entities {
@@ -537,6 +548,12 @@ pub(crate) fn from_text(text: &str) -> Result<SceneFile, BoxError> {
             .collect();
     }
     Ok(scene)
+}
+
+/// The error for a scene file of another format version.
+fn unsupported(version: u32) -> BoxError {
+    format!("scene version {version} is not supported (this PurplePie reads version {VERSION})")
+        .into()
 }
 
 /// The assets a scene needs, resolved before anything is spawned: for each
@@ -1188,6 +1205,13 @@ mod tests {
             err.to_string().contains("version 2 is not supported"),
             "{err}"
         );
+        // A newer file with fields this version does not know still names its
+        // version (the scene is parsed first, the version only after a failure).
+        let err = from_text("(version: 2, entities: [(glow: 1.0)])").expect_err("newer");
+        assert!(
+            err.to_string().contains("version 2 is not supported"),
+            "{err}"
+        );
         let err = from_text("not ron at all").expect_err("garbage");
         assert!(err.to_string().contains("not a PurplePie scene"), "{err}");
         let err = from_text("(entities: [])").expect_err("no version");
@@ -1201,6 +1225,52 @@ mod tests {
             "unknown fields are named: {err}"
         );
         assert!(from_text("(version: 1, entities: [], extra: 1)").is_err());
+    }
+
+    /// `n` quads, each with a game component holding 16 numbers, as text.
+    fn large_scene_text(n: usize) -> String {
+        let mut text = String::from("(version: 1, entities: [\n");
+        for i in 0..n {
+            let points: Vec<String> = (0..8).map(|k| format!("({k}.5, {i}.0)")).collect();
+            text.push_str(&format!(
+                "(transform: (position: ({i}.5, -{i}.25)), \
+                 quad: (size: (8.0, 8.0), color: (0.2, 0.5, 1.0, 1.0)), layer: 1, \
+                 components: {{\"test::Path\": (points: [{}])}}),\n",
+                points.join(", ")
+            ));
+        }
+        text.push_str("])\n");
+        text
+    }
+
+    /// The fastest of three parses of `text`.
+    fn parse_time(text: &str) -> std::time::Duration {
+        (0..3)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                let scene = from_text(text).expect("parses");
+                let time = start.elapsed();
+                assert!(!scene.entities.is_empty());
+                time
+            })
+            .min()
+            .expect("three runs")
+    }
+
+    #[test]
+    fn parsing_time_grows_linearly_with_the_scene() {
+        // R-31: ron 0.12.2 searched the rest of the text for every number of
+        // a raw game-component value, so 4× the entities took ~16× as long
+        // (10 000 entities: seconds). Linear parsing takes ~4×. The absolute
+        // floor keeps a fast machine's timing noise from failing the test.
+        let (small, large) = (large_scene_text(250), large_scene_text(1_000));
+        let (t_small, t_large) = (parse_time(&small), parse_time(&large));
+        let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(1e-9);
+        assert!(
+            ratio < 8.0 || t_large < std::time::Duration::from_millis(500),
+            "parsing 4× the entities took {ratio:.1}× as long ({t_small:?} → {t_large:?}): \
+             scene parsing is no longer linear (R-31)"
+        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038b: Scene loading speed: parse the whole scene first (version pre-check only on failure), avoiding ron 0.12.2's quadratic number scan for engine components; measure; R-31 for game component values (phase P5, item 2)** · P1 · TODO ← **next task**
+- [ ] **PP-038c: Public egui hook: `egui` feature, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves from the renderer to the runner (game UI first, overlay windows on top); pointer routing whenever the hook is on, keys withheld while egui wants keyboard input; example, tests, RELEASING/CI notes** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038b: Scene loading speed: ron held at exactly 0.12.1 (0.12.2's number-range support made parsing quadratic), whole scene parsed before the version check; linear-time regression test (phase P5, item 2)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038a: Scene editor design: ADR-044 (separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading), measured in a throwaway spike that found a quadratic scene parse; P5 split into PP-038b–PP-038j (phase P5, item 1)** · DONE (2026-10-13; spike on Linux)
 - [x] **PP-037d2: Debug overlay, part 3b: registered game components as RON in the inspector (`Registry::describe`); "Entities" window moved to the top right; phase P4 complete** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037d1: Debug overlay, part 3a: "Entities" window: entity list (by id, virtualized) and the selected entity's engine components; game components counted** · DONE (2026-10-13; verified on Linux)
@@ -83,7 +84,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
 
-- [ ] **PP-038c: Public egui hook: `egui` feature, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves from the renderer to the runner (game UI first, overlay windows on top); pointer routing whenever the hook is on, keys withheld while egui wants keyboard input; example, tests, RELEASING/CI notes** · P2 · TODO
 - [ ] **PP-038d: Picking: a public query for the entities drawn at a world point, topmost first in draw order (ADR-021), skipping `Hidden` and `ScreenSpace`, with rotation, scale and text bounds** · P2 · TODO
 - [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P2 · TODO
 - [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P2 · TODO
@@ -476,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038b: Scene loading speed ← NEXT
+### PP-038c: Public egui hook ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 2 · Priority P1 · TODO |
+| Stage | Phase P5, item 3 · Priority P1 · TODO |
+| Dependencies | PP-038b (DONE); ADR-044 |
+| Why now | Every editor task (PP-038f–j) draws its panels through this hook, and it changes the engine's frame flow and input routing, so it comes first and alone. |
+| Scope | ADR-044's hook: a public optional `egui` feature (`debug-overlay` implies it); `purplepie::egui` re-export; `Game::egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui)` with an empty default, called once per frame after `update` inside the frame's `run_ui`; `EngineConfig::with_egui(bool)` (exists without the feature, then one warning). The runner runs the egui pass (game UI first, then the overlay's windows when visible) and stores the output; the renderer only paints it. While the hook is on, egui gets every window event; pointer events it consumes are withheld from `Input` (ADR-043's rule, releases of held buttons still delivered) and keys are withheld while `egui_wants_keyboard_input()`. With only `debug-overlay` and the overlay hidden, behaviour stays as today (egui gets nothing). Stats draw counts become the previous frame's. A small example (e.g. `examples/egui_panel.rs`: a panel with a slider that changes a quad), tests for routing and the key rule, RELEASING (feature, Rust 1.95, egui as a re-exported dependency), CHECKLIST, CHANGELOG. |
+| Acceptance criteria | Hook drawn and interactive under Xvfb (click a panel button, drag a slider; the game does not see those clicks; keys typed into a text field do not reach `Input`); overlay still works on top with F12; without the features, frames and behaviour unchanged (Breakout lose frame and frozen scene frame pixel-identical); clippy/tests with and without `--all-features`; MSRV job unaffected. |
+
+### PP-038b: Scene loading speed
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 2 · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-038a (DONE) |
-| Why now | The PP-038a spike measured scene loading as quadratic: 1 000 quads take 1.39 s to parse in a release build, 1 000 mixed entities 2.14 s ([spike](spikes/pp-038a-editor-spike.md)). The editor (and any game with a big level) loads scenes, so this comes before the editor work. Cause: ron 0.12.2's `Parser::next_bytes_is_float` searches the whole remaining input for `..` for every number read through `deserialize_any`; `from_text` sends the whole file through it with its `VersionOnly` pre-check, and game component `RawValue`s go through it too. ron's main branch has the fix, unreleased. |
-| Scope | `scene::from_text` parses `SceneFile` first and checks the version after; only when that parse fails does it parse `VersionOnly`, so a newer or broken file still gets "scene version N is not supported" / "not a PurplePie scene file" (existing tests keep passing unchanged). A regression test that fails on the old order without depending on timing if possible (e.g. compare the parse time of N and 4N entities with a generous factor, or a size large enough that quadratic parsing exceeds a bound by orders of magnitude). Measure before/after for 1 000 and 10 000 entities with and without game components, release and debug. Record the game-component case as R-31 (until ron releases its fix; then upgrade and re-measure). No format change: every fixture and `demo.ron` loads and saves back byte-for-byte. |
-| Acceptance criteria | Engine-component scenes parse in linear time (measured); error messages unchanged (tests); R-31 in RISKS; numbers in ADR-044's implementation notes. |
+| Acceptance criteria | ✅ Cause pinned down: ron 0.12.2's only change, number ranges, added a search of the rest of the input to `next_bytes_is_float`; 0.12.1 does not have it. `ron = "=0.12.1"` with a comment in Cargo.toml (`Cargo.lock`: ron's version and checksum only). ✅ `from_text` parses the whole scene, then checks the version; only a failed parse is read again for `version` (messages unchanged; new case: a newer file with unknown fields still says "version 2 is not supported"). ✅ Measured before/after (ADR-044 implementation notes): release 1 000 quads 1.50 s → 5.0 ms, 1 000 mixed 2.18 s → 9.7 ms, 10 000 mixed 12.3 s (0.12.2 even with the reorder) → 117 ms; debug 1 000 mixed 6.0 s → 166 ms, 10 000 mixed 35.5 s → 1.19 s. ✅ Regression test `parsing_time_grows_linearly_with_the_scene` (4× entities must take < 8× as long unless under 0.5 s): ratio 4.2 with 0.12.1; fails with 0.12.2 in debug (14.5×) and release (17.9×). ✅ All fixtures and `demo.ron` still load and save back byte-for-byte; frozen scene example frame pixel-identical to GitHub `main`'s. R-31 mitigated (remaining: the exact pin). |
 
 ### PP-038a: Scene editor design
 | Field | Value |

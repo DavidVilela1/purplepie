@@ -234,7 +234,7 @@ the MSVC linker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#9-environment-set
 | cpal | 0.18.2 | PP-022 |
 | hound | 3.5.1 | PP-022 |
 | lewton | 0.10.2 | PP-024b |
-| ron | 0.12.2 | PP-026a |
+| ron | 0.12.1 (held, R-31) | PP-026a |
 | serde | 1.0.229 | PP-026a |
 
 ## License

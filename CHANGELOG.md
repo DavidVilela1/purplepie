@@ -28,6 +28,14 @@ break compatibility and a patch version (0.x.**y**) may not.
   pause and game over with restart. A best score kept next to the executable, and a difficulty curve measured with
   the bot (`PURPLE_SWARM_AUTOPLAY=survive`).
 
+### Fixed
+
+- Loading a scene file took time quadratic in its size: 1 000 entities took about 1.5–2.2 s to read in a release build
+  and 10 000 entities with game components over 12 s. It is now linear (10 000 entities with game components: about
+  0.12 s). The cause was the `ron` 0.12.2 parser, which searched the rest of the file for every number; PurplePie now
+  requires exactly `ron` 0.12.1 until a fixed release, and parses each scene once instead of twice. Scene files are
+  unchanged.
+
 ### Changed
 
 - CI builds, lints and tests the whole workspace (`--workspace`), so the example games are checked with every

@@ -13,7 +13,8 @@ and a second game, Purple Swarm, built on the public API; M10 (Engine API Stabil
 runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. Windows: the owner's checklist passed
 (PP-033b; the overlay's step 9 is not run yet). macOS is built and tested in CI but has not been seen running.
 **Phase P5 (scene editor): in progress** since PP-038a (ADR-044, 2026-10-13): the editor will be a separate crate
-written as a `Game` on a public egui hook; nothing of it is implemented yet.
+written as a `Game` on a public egui hook. Done so far: the design and a fix it needed first (scene loading was
+quadratic, PP-038b); the editor itself is not started.
 
 ## Current Stage
 
@@ -45,9 +46,11 @@ with a stats window (frame time and FPS, fixed steps, entities, draws, camera, w
 "Entities" window (list, engine components of the selected entity) and PP-037d2 its registered game components as
 RON, which completes **phase P4**. **Phase P5 (scene editor): in progress.** PP-038a decided its shape after a
 throwaway spike (ADR-044): a separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui`
-hook behind a new `egui` feature, with undo as editor commands. The spike also found that scene loading is quadratic
-(ron 0.12.2 scans the rest of the file for every number it reads without a known type: 1 000 quads take 1.39 s to
-parse), so the next task, **PP-038b**, fixes that before the editor work (PP-038c–PP-038j). The long-term plan (in-game UI and an editor) is in
+hook behind a new `egui` feature, with undo as editor commands. The spike also found that scene loading was quadratic
+(ron 0.12.2 scans the rest of the file for every number it reads without a known type: 1 000 quads took 1.5 s to
+parse). PP-038b fixed that: ron is held at 0.12.1 (the scan came with 0.12.2) and a scene is parsed once, so 10 000
+entities with game components load in 0.12 s instead of 12 s. Next: **PP-038c**, the public egui hook, then the
+editor work (PP-038d–PP-038j). The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
 ## Overall State
@@ -128,6 +131,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038b: scene loading linear again: ron held at exactly 0.12.1 (0.12.2 made parsing quadratic), scene parsed once before the version check; regression test (R-31 mitigated).
 - PP-038a: scene editor design: ADR-044 (separate editor crate on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading); throwaway spike measured; P5 split into PP-038b–PP-038j.
 - PP-037d2: inspector shows registered game components as RON (`Registry::describe`, prepared by the runner so `debug` and `render` stay independent of `scene`); "Entities" window at the top right. Phase P4 complete.
 - PP-037d1: debug overlay "Entities" window: entities by id (virtualized list), the selected entity's engine components, game components counted; collapsed by default.
@@ -163,7 +167,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038b: Scene loading speed** (phase P5, item 2): parse the whole scene first so engine-component scenes load in linear time; record the game-component case as R-31. See [TASKS.md](TASKS.md#pp-038b-scene-loading-speed--next).
+- **PP-038c: Public egui hook** (phase P5, item 3; ADR-044): `egui` feature, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`, egui pass moved to the runner, key routing for text fields. See [TASKS.md](TASKS.md#pp-038c-public-egui-hook--next).
 
 ## Blocked
 
@@ -194,7 +198,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - Smoke runs use Xvfb with no window manager, so the close button is simulated by sending `WM_DELETE_WINDOW`.
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
-- Scene loading is quadratic in the number of numbers in the file (ron 0.12.2, found by the PP-038a spike; R-31): in a release build 250 entities take ~0.1 s to parse, 1 000 take 1.4–2.1 s. Writing is fast (5 ms per 1 000). Fix planned in PP-038b.
+- `ron` is held at exactly 0.12.1 (R-31): 0.12.2 parses in quadratic time. A game that itself requires ron 0.12.2 or later cannot build with PurplePie until ron releases a fix and the pin moves.
 - Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
@@ -202,6 +206,11 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-13: PP-038b Scene loading is linear again.**
+  - Loading a scene was quadratic in its size: in a release build 1 000 entities took 1.5–2.2 s and 10 000 with game components over 12 s. Cause: ron 0.12.2 (number-range support) searches the rest of the text for every number read without a known type; 0.12.1 does not.
+  - Cargo.toml now requires exactly `ron = "=0.12.1"`, and `scene::from_text` parses the whole file before checking its version (only a failed parse is read again for the version), so error messages are unchanged and a file is parsed once. Release: 10 000 entities with game components 117 ms, 1 000 quads 5 ms.
+  - New unit test `parsing_time_grows_linearly_with_the_scene` (fails on ron 0.12.2: checked). Scene files and the scene example's frame are unchanged. CHANGELOG `[Unreleased]` → Fixed.
 
 - **2026-10-13: PP-038a Scene editor design (ADR-044); phase P5 started.**
   - Decision: the editor is a separate crate, `crates/purplepie-editor`, written as an ordinary `Game`. The engine gets a public, optional `egui` feature with a `Game::egui(ctx, ui)` hook (turned on by `EngineConfig::with_egui`) and re-exports egui; the debug overlay will share that egui pass. The scene is drawn by the engine under the editor's egui panels; undo is a stack of editor commands.
@@ -509,15 +518,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038a change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038b change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS: 231 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 244 + 53, 13 ignored |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS: 232 unit tests + 53 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--all-features` 245 + 53, 13 ignored |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Scene loading speed (PP-038b) | ✅ GitHub `main` (`68d5adc`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); `cargo doc`. Timing test (temporary, removed) before/after in debug and release, 1 000 and 10 000 entities (ADR-044 implementation notes); new regression test passes with ron 0.12.1 (ratio 4.2) and fails with 0.12.2 (14.5× debug, 17.9× release). Scene example `load`, frozen, under Xvfb: 0 pixels differ from the frame built from GitHub `main` |
 | Scene editor design (PP-038a) | ✅ GitHub `main` (`1ab36b1`) identical to this tree before the task; documentation-only change (no file under `src/`, `examples/`, `games/` or `Cargo.*` changed). Throwaway spike in a scratch copy ([spikes/pp-038a-editor-spike.md](spikes/pp-038a-editor-spike.md)): `Game::egui` hook + editor-like example under Xvfb (pick, drag, Ctrl+Z, save; saved file differs from `demo.ron` only in the moved entity's position); scene read/write timing (release, mean of 5): 1 000 quads parse 1.39 s, 9.3 ms with the whole scene parsed first; callgrind: 92 % in ron's `..` search. After the spike, engine artifacts cleaned (`cargo clean -p purplepie -p purple-swarm`) and every check above re-run: 231 + 53 (12 ignored), `--all-features` 244 + 53 (13 ignored), GPU 13/13 |
 | Inspector game components (PP-037d2) | ✅ GitHub `main` (`cd8bdf0`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); new unit tests: `Registry::describe` (working, failing, absent component), `inspect::game_rows`, singular summary. Overlay GPU test 13/13 with both windows excluded. Scene example with the feature under Xvfb: `#8` → `scene_demo::Spin (speed: 0.8, direction: Clockwise)` (same text as `demo.ron`), `#10` → `scene_demo::Visits (label: "demo scene", count: 1)`. Breakout lose frame and frozen scene frame pixel-identical without the feature |
 | Debug overlay entity inspector (PP-037d1) | ✅ GitHub `main` (`86c5d04`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); 3 new `debug::inspect` unit tests. Timing (temporary test, removed): 5 000 entities 0.30 ms (debug) / 0.025 ms (release) per frame, 50 000 entities 2.7 / 0.20 ms. Sandbox with the feature under Xvfb: Entities window expanded with 19 entities, `#5` selected shows its four engine components, a stamp adds `#19 quad at (260.0, -160.0)` (count 20), wheel over the list scrolls it (camera zoom stays 1), one left click reached the game. Breakout lose frame and frozen scene frame pixel-identical without the feature |
@@ -560,4 +570,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-13. PP-038a done (scene editor design, ADR-044; P5 split into PP-038b–PP-038j). PP-038b (scene loading speed) is next.
+2026-10-13. PP-038b done (scene loading linear; ron held at 0.12.1). PP-038c (public egui hook) is next.

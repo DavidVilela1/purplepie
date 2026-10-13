@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | No: PP-038b–PP-038j |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1); PP-038c–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -1816,7 +1816,7 @@ dependency to earn its place.
 - **Assets by path.** Sprites store the texture's path **relative to the asset root** (`/` separators on every OS) plus
   its `TextureFilter`; texts store the font's path. Paths outside the asset root are written absolute. Loading resolves
   them like `load_texture`/`load_font` (same cache, so an already loaded file is reused).
-- **Versioned and strict.** Top-level `version: 1`; it is read first, so a newer file says "scene version N is not
+- **Versioned and strict.** Top-level `version: 1`; it is checked on every load, so a newer file says "scene version N is not
   supported". Unknown fields are errors (typos are named), and omitted optional fields take the same defaults as the
   constructors (no rotation, unit scale, white tint, no region, `Nearest`, baseline-left anchor). Files are written with
   RON's `implicit_some` extension, which PurplePie also enables when reading, and always with `\n` line ends
@@ -2619,6 +2619,34 @@ small and enough for the core interactions.
 - Game component values can still load slowly in large scenes until ron releases its fix (R-31).
 - The editor shows the engine's own frame under its panels, so the visible scene area is the window minus the panels
   (no separate viewport texture).
+
+## Implementation notes (PP-038b)
+- **The quadratic scan came with ron 0.12.2.** Its changelog's only change is "support for number ranges" (`1..2`),
+  which added the `..` search to `next_bytes_is_float`; ron 0.12.1 has the same function without it. Cargo.toml now
+  holds `ron = "=0.12.1"` (`Cargo.lock`: only ron's version and checksum change; same dependencies, MIT OR
+  Apache-2.0, `rust-version` 1.64). PurplePie never used ranges. Move to the first release with ron's fix.
+- `scene::from_text` parses the whole scene first and checks the version afterwards; only a file that fails to parse
+  is read again for `version`, so the messages for newer, broken and version-less files are unchanged (a newer file
+  with unknown fields is a new test case). With 0.12.1 this cuts reading time by 40–60 %, since the old pre-check parsed the
+  whole file a second time.
+- Measured (scene of N entities: quads, or "mixed" = half quads, half sprites with a game component; mean of 3):
+
+  | Build, N, kind | Before (0.12.2, pre-check) | ron 0.12.2, parse first | ron 0.12.1, pre-check | **After** (0.12.1, parse first) |
+  |---|---|---|---|---|
+  | release, 1 000 quads | 1.50 s | 10 ms | — | **5.0 ms** |
+  | release, 1 000 mixed | 2.18 s | 111 ms | — | **9.7 ms** |
+  | release, 10 000 quads | not run | 52 ms | 145 ms | **56 ms** |
+  | release, 10 000 mixed | not run | 12.3 s | 194 ms | **117 ms** |
+  | debug, 1 000 quads | 3.82 s | 61 ms | — | **80 ms** |
+  | debug, 1 000 mixed | 6.04 s | 509 ms | — | **166 ms** |
+  | debug, 10 000 mixed | not run | 35.5 s | — | **1.19 s** |
+
+  Writing is unchanged (release: 3–6 ms per 1 000 entities, 30–65 ms per 10 000).
+- **Regression test** `scene::tests::parsing_time_grows_linearly_with_the_scene`: parses 250 and 1 000 entities that
+  each carry a 16-number game component (fastest of three) and fails if 4× the entities take 8× as long or more,
+  unless the larger parse is under 0.5 s. With 0.12.1: ratio 4.2 (89 → 373 ms, debug). Put back on ron 0.12.2 it
+  failed in debug (14.5×, 0.76 → 11.0 s) and in release (17.9×). It adds about 1.5 s to a debug test run.
+- The frozen scene example's frame (`demo.ron` loaded) is pixel-identical to the one built from GitHub `main`.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-13 (PP-038a: R-31 added for quadratic scene parsing; R-30 extended for the planned public egui hook).
+Last reviewed: 2026-10-13 (PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -40,7 +40,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-28 | OGG Vorbis decoding: memory, load time and a slow-moving decoder | OPEN | Medium | Low | PP-024b |
 | R-29 | Scene files: format compatibility and silent loss of unsaved components | OPEN | Medium | Medium | PP-026a |
 | R-30 | Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight | OPEN | Medium | Medium | PP-037a, PP-038a |
-| R-31 | Scene parsing is quadratic in the number count (ron 0.12.2) | MATERIALIZED | High | Medium | PP-038a, PP-038b |
+| R-31 | Scene parsing is quadratic in the number count (ron 0.12.2) | MITIGATED | Medium | Medium | PP-038a, PP-038b |
 
 ## Details
 
@@ -249,7 +249,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 - **Trigger:** once games and an editor keep scene files, every format change can break them (ADR-035). Today a save
   silently drops components the format does not cover (`SpriteAnimation`, `Velocity`, `ui::Button`, game components),
   and same-layer draw order relies on entity ids that scenes do not store.
-- **Mitigation:** files carry `version: 1`, checked before parsing, and are written from private mirror types, so
+- **Mitigation:** files carry `version: 1`, checked on every load, and are written from private mirror types, so
   component changes do not change the file; new fields must be optional (old files keep loading). The shipped
   `assets/scenes/demo.ron` and the frozen PP-026a file `src/scene/fixtures/demo_v1_pp026a.ron` are regression fixtures:
   unit tests load them and must save them back byte-for-byte. What is not saved is documented on `Context::save_scene`.
@@ -286,10 +286,14 @@ Likelihood and impact are qualitative: Low, Medium or High.
   ron 0.12.2 is the latest release (2026-06-22); ron's main branch already limits the search.
 - **Impact:** any game whose level has hundreds of entities waits seconds at load; the editor (P5) loads scenes all the
   time.
-- **Mitigation (PP-038b):** parse the whole scene first and run the version pre-check only when that fails: measured
-  1.39 s → 9.3 ms for 1 000 quads. Game component values still pass through the slow path (1 000 entities with a
-  component on half of them: 139 ms; 10 000: 12.5 s).
-- **Fallback:** upgrade ron as soon as a release contains the fix and re-measure; if it does not come, store game
-  component values in a way that avoids `deserialize_any` (for example as RON text in a string), which needs a scene
-  format version bump.
+- **Mitigation (PP-038b, 2026-10-13):** the scan arrived with ron 0.12.2's number ranges; 0.12.1 does not have it.
+  Cargo.toml holds `ron = "=0.12.1"`, and `from_text` parses the whole scene before checking the version. Measured in
+  release: 10 000 entities with game components 12.3 s → 117 ms; 1 000 quads 1.50 s → 5 ms (ADR-044 implementation
+  notes). The unit test `parsing_time_grows_linearly_with_the_scene` fails if parsing becomes quadratic again (checked
+  by putting 0.12.2 back).
+- **Remaining:** an exact pin can conflict with a game that itself requires ron 0.12.2 or later (Cargo cannot pick
+  two 0.12 versions); `latest-deps` CI no longer tries newer ron releases, so ron's fixed release must be adopted by
+  hand.
+- **Fallback:** if ron's fix is never released, keep 0.12.1 or store game component values in a way that avoids
+  `deserialize_any` (for example as RON text in a string), which needs a scene format version bump.
 
