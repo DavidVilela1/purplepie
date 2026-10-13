@@ -32,6 +32,10 @@ break compatibility and a patch version (0.x.**y**) may not.
   over sprites over quads, then later entities), each once; quads, sprites and text bounds count as drawn, turned and
   scaled with their transform; hidden, screen-space and undrawn entities never count (ADR-044). For "what did the
   player click?" and the scene editor.
+- `Context::load_scene_keeping_unknown(path)`: loads a scene like `load_scene`, but keeps game components no
+  registered type reads as their RON text in the new `scene::UnknownComponents` component (`get`, `iter`, `len`,
+  `is_empty`, `remove`) instead of failing; `save_scene` writes them back unchanged, so a file round-trips byte for
+  byte. For tools that open other games' scenes (ADR-044). New public module `scene`, holding only that type.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,

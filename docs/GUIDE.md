@@ -446,6 +446,10 @@ Saving writes every saveable entity in the world, so save from a world that hold
 none of the components listed above (and no registered one) are skipped. Loading adds to the world; despawn the old
 entities first to replace a level.
 
+`load_scene` fails on a component name nobody registered. Tools that open other games' scenes (a level editor) use
+`ctx.load_scene_keeping_unknown(path)` instead: such components stay on their entities as text
+(`purplepie::scene::UnknownComponents`) and `save_scene` writes them back unchanged.
+
 ## 12. Hot reload, errors and logs
 
 **Hot reload.** With `EngineConfig::with_hot_reload(true)`, saving a texture, font or sound file while the game runs

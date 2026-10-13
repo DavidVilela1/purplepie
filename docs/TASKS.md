@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P1 · TODO ← **next task**
+- [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038e: Lenient scene loading: `Context::load_scene_keeping_unknown`, public `scene::UnknownComponents` (unregistered game components kept as RON text, saved back unchanged) (phase P5, item 5)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038d: Picking: `Context::entities_at(point)`, topmost first in draw order, hidden and screen-space entities excluded, rotation/scale and text bounds (phase P5, item 4)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038c: Public egui hook: `egui` feature (`debug-overlay` builds on it), `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; egui frame laid out by the runner (game UI, then overlay windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example (phase P5, item 3)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038b: Scene loading speed: ron held at exactly 0.12.1 (0.12.2's number-range support made parsing quadratic), whole scene parsed before the version check; linear-time regression test (phase P5, item 2)** · DONE (2026-10-13; verified on Linux)
@@ -86,7 +87,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
 
-- [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P2 · TODO
 - [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P2 · TODO
 - [ ] **PP-038h: Editor inspector editing: transform, layer, hidden, quad, sprite and text fields, game components as RON text checked on entry, each change undoable** · P2 · TODO
 - [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene** · P2 · TODO
@@ -476,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038e: Lenient scene loading ← NEXT
+### PP-038f: Editor crate, first slice part 1 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 5 · Priority P1 · TODO |
+| Stage | Phase P5, item 6 · Priority P1 · TODO |
+| Dependencies | PP-038c, PP-038d, PP-038e (DONE); ADR-038, ADR-044 |
+| Why now | The engine side the editor needs is in place (egui hook, picking, lenient loading); the editor itself is the rest of P5. Part 1 opens, shows and saves a scene; part 2 (PP-038g) selects, moves and undoes. |
+| Scope | New workspace member `crates/purplepie-editor` (ADR-038's place for crates): `Cargo.toml` (`purplepie = { path = "../..", features = ["egui"] }`, Rust 1.95, no other dependency unless measured), a library with a small public entry (e.g. `purplepie_editor::run(options)`) and a `purplepie-editor` binary. It is a `Game` (ADR-044): opens the scene given on the command line with `load_scene_keeping_unknown`, using the asset folder it lives in (the nearest `assets` ancestor, or an `--assets` option); a left egui panel lists the entities (id and a one-line summary, like the overlay's); the camera fits the scene beside the panel; pan (middle or right drag) and zoom (wheel) through egui's input over the free area; Ctrl+S (or a button) saves to the same file; a status line shows the file, entity count and errors (unreadable file, failed save) instead of exiting. CI: the `msrv` job excludes the crate (`--exclude purplepie-editor`); the other jobs build/lint/test it with `--workspace`. Unit tests for what is testable without a window (argument parsing, asset folder lookup, fitting the camera, summaries); Xvfb run: open `assets/scenes/demo.ron`, pan, zoom, save, and the saved file equals the original byte for byte. README/GUIDE note, CHANGELOG. |
+| Acceptance criteria | `cargo run -p purplepie-editor -- assets/scenes/demo.ron` opens the demo scene (all 19 entities listed), pans and zooms, saves it back unchanged; errors are shown, not panics; CI jobs and MSRV handled; no engine API change unless the editor proves it needs one (then recorded). |
+
+### PP-038e: Lenient scene loading
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 5 · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-038d (DONE); ADR-036, ADR-044 |
-| Why now | The editor binary (PP-038f) opens scenes of any game without knowing its component types; today an unregistered component name fails the whole load (ADR-036). ADR-044 decided an opt-in lenient load that keeps such components as RON text and writes them back unchanged. |
-| Scope | An opt-in load (e.g. `Context::load_scene_with(path, options)` or a dedicated method; decide the smallest public shape) that keeps unknown game components as raw RON on the entity, in a public component the editor can read and edit as text (e.g. `scene::UnknownComponents` or a name in `render`/a new public module; decide), and `save_scene` writes them back verbatim, sorted with the registered ones. Registered components still decode as today; invalid values of *registered* types still fail. Entities with only unknown components are kept (they were saved because the game had registered them). Scene format unchanged (still version 1). Tests: a file with registered + unknown components loads leniently and saves back byte-for-byte; the strict load still rejects it; unknown values are not parsed beyond RON syntax; mixing an unknown name with a later registration. Update ADR-036/044 notes, GUIDE scene section if public API, CHANGELOG. |
-| Acceptance criteria | Lenient load + save round-trips a file with unknown components byte-for-byte (fixture); strict behaviour unchanged (existing tests); no format version change; documented public API. |
+| Acceptance criteria | ✅ `Context::load_scene_keeping_unknown(path)` (doc example) and the public `scene::UnknownComponents` (`get`, `iter`, `len`, `is_empty`, `remove`); `save_scene` writes kept text back after the registered components; a registered value wins over kept text of the same name; an entity with nothing left to save is skipped. ✅ `demo.ron` round-trips byte for byte leniently with no game types (unit test and through `Context` to a file) and with only `Spin` registered; strict load still rejects it; an arbitrary nested value is kept verbatim; a bad value of a registered type still fails a lenient load and spawns nothing. Mutation (save only registered components) fails 4 tests. ✅ The overlay inspector shows kept components as "name (kept as text)" and no longer counts them as unregistered. ✅ No format change; scene example frame unchanged. README, GUIDE §11, CHANGELOG, ADR-036 note, ADR-044 notes. |
 
 ### PP-038d: Picking
 | Field | Value |

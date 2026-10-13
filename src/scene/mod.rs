@@ -1,8 +1,14 @@
-//! Scene files: the engine's own components saved to and loaded from text
-//! (ADR-035).
+//! Scene files: entities saved to and loaded from text (ADR-035, ADR-036).
 //!
-//! Crate-private. Games use [`Context::save_scene`](crate::Context::save_scene)
-//! and [`Context::load_scene`](crate::Context::load_scene). A scene file is
+//! Games use [`Context::save_scene`](crate::Context::save_scene) and
+//! [`Context::load_scene`](crate::Context::load_scene); this module only adds
+//! [`UnknownComponents`], what
+//! [`Context::load_scene_keeping_unknown`](crate::Context::load_scene_keeping_unknown)
+//! keeps of game components it cannot read (ADR-044).
+//!
+//! # Engine notes
+//!
+//! Everything else here is crate-private. A scene file is
 //! [RON](https://docs.rs/ron) text written from plain mirror types (the `*File`
 //! structs below), never from the engine's components themselves, so the file
 //! layout can stay stable while components change (game components are the
@@ -37,6 +43,74 @@ use crate::render::{
 use crate::ui::Button;
 
 pub(crate) use registry::{Inserter, Registry};
+
+/// Game components a scene file holds but the program loading it has not
+/// registered, kept as their RON text by
+/// [`Context::load_scene_keeping_unknown`](crate::Context::load_scene_keeping_unknown)
+/// (ADR-044). [`Context::save_scene`](crate::Context::save_scene) writes them
+/// back unchanged, so a tool such as a scene editor can open and save any
+/// game's scenes without knowing its component types.
+///
+/// Values are one-line RON, exactly as in the file (e.g. `(speed: 0.8)`),
+/// by registered name. If the entity also has a registered component under
+/// the same name, the registered one is saved instead.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnknownComponents {
+    values: BTreeMap<String, String>,
+}
+
+impl UnknownComponents {
+    /// The RON text kept under `name`, if any.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.values.get(name).map(String::as_str)
+    }
+
+    /// Every (name, RON text) pair, sorted by name.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.values.iter().map(|(n, v)| (n.as_str(), v.as_str()))
+    }
+
+    /// How many components are kept.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// `true` when nothing is kept.
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    /// Drops the component kept under `name` (it will not be saved again) and
+    /// returns its text.
+    pub fn remove(&mut self, name: &str) -> Option<String> {
+        self.values.remove(name)
+    }
+}
+
+/// Building [`UnknownComponents`] in the debug overlay's tests.
+#[cfg(all(test, feature = "egui"))]
+pub(crate) mod tests_support {
+    use super::UnknownComponents;
+
+    /// Components kept as text, as a lenient load would make them.
+    pub(crate) fn kept(values: &[(&str, &str)]) -> UnknownComponents {
+        UnknownComponents {
+            values: values
+                .iter()
+                .map(|(n, v)| ((*n).to_owned(), (*v).to_owned()))
+                .collect(),
+        }
+    }
+}
+
+/// What a load does with a game component no registered type reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unknown {
+    /// Fail the load (ADR-036).
+    Reject,
+    /// Keep it as text in [`UnknownComponents`] (ADR-044).
+    Keep,
+}
 
 /// The scene format version this build writes and reads.
 pub(crate) const VERSION: u32 = 1;
@@ -89,8 +163,9 @@ pub(crate) struct EntityFile {
 }
 
 /// Whether an entity is saved: it has something the engine draws or makes
-/// interactive, or a component the game registered. Entities with only a
-/// transform, velocity or unregistered components are skipped.
+/// interactive, a component the game registered, or components kept as text
+/// by a lenient load. Entities with only a transform, velocity or
+/// unregistered components are skipped.
 fn is_saved(e: &hecs::EntityRef<'_>, registry: &Registry) -> bool {
     e.has::<Quad>()
         || e.has::<Sprite>()
@@ -98,6 +173,26 @@ fn is_saved(e: &hecs::EntityRef<'_>, registry: &Registry) -> bool {
         || e.has::<SpriteAnimation>()
         || e.has::<Button>()
         || registry.any_on(e)
+        || e.get::<&UnknownComponents>().is_some_and(|u| !u.is_empty())
+}
+
+/// The entity's game components for the file: the registered ones, then the
+/// ones kept as text under names no registered component on it uses.
+fn game_components(
+    e: &hecs::EntityRef<'_>,
+    registry: &Registry,
+) -> Result<BTreeMap<String, Box<RawValue>>, BoxError> {
+    let mut out = registry.save(e)?;
+    if let Some(unknown) = e.get::<&UnknownComponents>() {
+        for (name, text) in unknown.iter() {
+            if !out.contains_key(name) {
+                let raw = RawValue::from_boxed_ron(text.to_owned().into_boxed_str())
+                    .map_err(|err| format!("component `{name}` kept as text: {err}"))?;
+                out.insert(name.to_owned(), raw);
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn is_false(value: &bool) -> bool {
@@ -486,7 +581,7 @@ pub(crate) fn capture(
             button: e.get::<&Button>().map(|b| ButtonFile {
                 size: vec2_file(b.size),
             }),
-            components: registry.save(&e)?,
+            components: game_components(&e, registry)?,
         });
     }
     Ok(SceneFile {
@@ -592,20 +687,33 @@ pub(crate) fn resolve_assets(
 }
 
 /// Decodes every game component in `scene` with `registry`, per entity in
-/// file order. Fails on the first unknown name or invalid value; nothing is
-/// spawned yet.
+/// file order. Fails on the first invalid value, and on the first unknown
+/// name unless `unknown` is [`Unknown::Keep`], which keeps those as text in
+/// an [`UnknownComponents`]; nothing is spawned yet.
 pub(crate) fn decode_components(
     scene: &SceneFile,
     registry: &Registry,
+    unknown: Unknown,
 ) -> Result<Vec<Vec<Inserter>>, BoxError> {
     scene
         .entities
         .iter()
         .map(|e| {
-            e.components
-                .iter()
-                .map(|(name, raw)| registry.load(name, raw))
-                .collect()
+            let mut inserters = Vec::with_capacity(e.components.len());
+            let mut kept = UnknownComponents::default();
+            for (name, raw) in &e.components {
+                if unknown == Unknown::Keep && !registry.contains(name) {
+                    kept.values.insert(name.clone(), raw.get_ron().to_owned());
+                } else {
+                    inserters.push(registry.load(name, raw)?);
+                }
+            }
+            if !kept.is_empty() {
+                inserters.push(Box::new(move |world: &mut World, entity: Entity| {
+                    insert(world, entity, kept);
+                }) as Inserter);
+            }
+            Ok(inserters)
         })
         .collect()
 }
@@ -707,16 +815,29 @@ mod tests {
         world: &mut World,
         registry: &Registry,
     ) -> crate::Result<Vec<Entity>> {
+        load_as(scene, textures, fonts, world, registry, Unknown::Reject)
+    }
+
+    /// [`load_with`], choosing what happens to unregistered components.
+    fn load_as(
+        scene: &SceneFile,
+        textures: &mut Textures,
+        fonts: &mut Fonts,
+        world: &mut World,
+        registry: &Registry,
+        unknown: Unknown,
+    ) -> crate::Result<Vec<Entity>> {
         let root = root();
         let resolved = resolve_assets(
             scene,
             |p, o| textures.load(&root.join(p), o),
             |p| fonts.load(&root.join(p)),
         )?;
-        let components = decode_components(scene, registry).map_err(|e| crate::Error::Asset {
-            path: PathBuf::from("test scene"),
-            source: e,
-        })?;
+        let components =
+            decode_components(scene, registry, unknown).map_err(|e| crate::Error::Asset {
+                path: PathBuf::from("test scene"),
+                source: e,
+            })?;
         Ok(spawn(scene.clone(), resolved, components, world))
     }
 
@@ -1293,27 +1414,6 @@ mod tests {
 
     #[test]
     fn the_shipped_demo_scene_loads_and_saves_back_unchanged() {
-        /// Copies of `examples/scene.rs`'s game components, registered under
-        /// the same names: the file stores names and plain values, so any type
-        /// with the same shape reads it (keep these in step with the example).
-        mod demo {
-            use serde::{Deserialize, Serialize};
-            #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-            pub(super) struct Spin {
-                pub(super) speed: f32,
-                pub(super) direction: Turn,
-            }
-            #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-            pub(super) enum Turn {
-                Clockwise,
-                CounterClockwise,
-            }
-            #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-            pub(super) struct Visits {
-                pub(super) label: String,
-                pub(super) count: u32,
-            }
-        }
         let mut registry = Registry::default();
         registry
             .register::<demo::Spin>("scene_demo::Spin")
@@ -1339,5 +1439,194 @@ mod tests {
             text,
             "the shipped file is exactly what save_scene writes"
         );
+    }
+
+    /// Copies of `examples/scene.rs`'s game components, registered under the
+    /// same names: the file stores names and plain values, so any type with
+    /// the same shape reads it (keep these in step with the example).
+    mod demo {
+        use serde::{Deserialize, Serialize};
+        #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+        pub(super) struct Spin {
+            pub(super) speed: f32,
+            pub(super) direction: Turn,
+        }
+        #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+        pub(super) enum Turn {
+            Clockwise,
+            CounterClockwise,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub(super) struct Visits {
+            pub(super) label: String,
+            pub(super) count: u32,
+        }
+    }
+
+    /// The shipped `demo.ron` (LF line ends) and its parsed scene.
+    fn demo_scene() -> (String, SceneFile) {
+        // Git may check text files out with CRLF line ends on Windows.
+        let text = std::fs::read_to_string(root().join("scenes/demo.ron"))
+            .expect("demo.ron")
+            .replace("\r\n", "\n");
+        let scene = from_text(&text).expect("parse");
+        (text, scene)
+    }
+
+    #[test]
+    fn a_lenient_load_keeps_unregistered_components_as_text_and_saves_them_back() {
+        let (text, scene) = demo_scene();
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        let nothing = Registry::default();
+        // Strict: the example's components are not registered here.
+        let strict = load_with(&scene, &mut textures, &mut fonts, &mut world, &nothing);
+        assert!(strict.is_err() && world.is_empty(), "nothing spawned");
+
+        let spawned = load_as(
+            &scene,
+            &mut textures,
+            &mut fonts,
+            &mut world,
+            &nothing,
+            Unknown::Keep,
+        )
+        .expect("lenient load");
+        assert_eq!(spawned.len(), 19);
+        let kept: Vec<Vec<(String, String)>> = world
+            .query::<&UnknownComponents>()
+            .iter()
+            .map(|u| {
+                u.iter()
+                    .map(|(n, v)| (n.to_owned(), v.to_owned()))
+                    .collect()
+            })
+            .collect();
+        assert_eq!(kept.len(), 3, "two spinning squares and the visits counter");
+        assert!(kept.contains(&vec![(
+            "scene_demo::Visits".to_owned(),
+            "(label: \"demo scene\", count: 0)".to_owned()
+        )]));
+        let again = capture(&world, &textures, &fonts, Some(&root()), &nothing).expect("capture");
+        assert_eq!(
+            to_text(&again).expect("write"),
+            text,
+            "saved back unchanged"
+        );
+    }
+
+    #[test]
+    fn registered_components_decode_and_the_rest_stay_text_in_a_lenient_load() {
+        let (text, scene) = demo_scene();
+        let mut registry = Registry::default();
+        registry
+            .register::<demo::Spin>("scene_demo::Spin")
+            .expect("spin");
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        load_as(
+            &scene,
+            &mut textures,
+            &mut fonts,
+            &mut world,
+            &registry,
+            Unknown::Keep,
+        )
+        .expect("lenient load");
+        assert_eq!(world.query::<&demo::Spin>().iter().count(), 2, "decoded");
+        let kept: Vec<usize> = world
+            .query::<&UnknownComponents>()
+            .iter()
+            .map(|u| u.len())
+            .collect();
+        assert_eq!(kept, [1], "only Visits is kept as text");
+        let again = capture(&world, &textures, &fonts, Some(&root()), &registry).expect("capture");
+        assert_eq!(to_text(&again).expect("write"), text);
+
+        // A value a registered type cannot read still fails a lenient load.
+        let bad = from_text(
+            r#"(version: 1, entities: [(components: {"scene_demo::Spin": (speed: "fast")})])"#,
+        )
+        .expect("parse");
+        let mut empty = World::new();
+        let err = load_as(
+            &bad,
+            &mut textures,
+            &mut fonts,
+            &mut empty,
+            &registry,
+            Unknown::Keep,
+        )
+        .expect_err("bad value");
+        let reason = err.source().map(|e| e.to_string()).unwrap_or_default();
+        assert!(reason.contains("scene_demo::Spin"), "{reason}");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn kept_text_is_not_interpreted_and_a_registered_component_wins_on_save() {
+        let scene = from_text(
+            r#"(version: 1, entities: [(components: {
+                "other::Odd": (weird: [1, 2, (a: "b", c: Some(None))], tag: Name),
+                "scene_demo::Spin": (speed: 1.5, direction: Clockwise),
+            })])"#,
+        )
+        .expect("parse");
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        let nothing = Registry::default();
+        let spawned = load_as(
+            &scene,
+            &mut textures,
+            &mut fonts,
+            &mut world,
+            &nothing,
+            Unknown::Keep,
+        )
+        .expect("load");
+        let entity = spawned[0];
+        let kept: UnknownComponents =
+            (*world.get::<&UnknownComponents>(entity).expect("kept")).clone();
+        assert_eq!(
+            kept.get("other::Odd"),
+            Some(r#"(weird: [1, 2, (a: "b", c: Some(None))], tag: Name)"#)
+        );
+        // The game registers Spin later and gives the entity its own value:
+        // that one is saved, not the old text.
+        let mut registry = Registry::default();
+        registry
+            .register::<demo::Spin>("scene_demo::Spin")
+            .expect("spin");
+        world
+            .insert_one(
+                entity,
+                demo::Spin {
+                    speed: 3.0,
+                    direction: demo::Turn::CounterClockwise,
+                },
+            )
+            .expect("alive");
+        let saved = capture(&world, &textures, &fonts, None, &registry).expect("capture");
+        let components = &saved.entities[0].components;
+        assert_eq!(
+            components["scene_demo::Spin"].get_ron(),
+            "(speed: 3.0, direction: CounterClockwise)"
+        );
+        assert_eq!(
+            components["other::Odd"].get_ron(),
+            r#"(weird: [1, 2, (a: "b", c: Some(None))], tag: Name)"#
+        );
+
+        // Removing every kept component: an entity with nothing else to save
+        // is skipped, as before the lenient load.
+        world.remove_one::<demo::Spin>(entity).expect("spin");
+        {
+            let mut kept = world.get::<&mut UnknownComponents>(entity).expect("kept");
+            assert!(kept.remove("other::Odd").is_some());
+            assert!(kept.remove("scene_demo::Spin").is_some());
+            assert!(kept.is_empty() && kept.remove("other::Odd").is_none());
+        }
+        let saved = capture(&world, &textures, &fonts, None, &registry).expect("capture");
+        assert!(saved.entities.is_empty());
     }
 }

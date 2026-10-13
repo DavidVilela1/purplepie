@@ -15,7 +15,8 @@ runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. W
 **Phase P5 (scene editor): in progress** since PP-038a (ADR-044, 2026-10-13): the editor will be a separate crate
 written as a `Game` on a public egui hook. Done so far: the design, a fix it needed first (scene loading was
 quadratic, PP-038b), the public egui hook (`egui` feature, `Game::egui`, PP-038c) and picking
-(`Context::entities_at`, PP-038d); the editor crate itself is not started.
+(`Context::entities_at`, PP-038d) and lenient scene loading (`load_scene_keeping_unknown`, PP-038e); the editor
+crate itself is not started.
 
 ## Current Stage
 
@@ -53,8 +54,10 @@ parse). PP-038b fixed that: ron is held at 0.12.1 (the scan came with 0.12.2) an
 entities with game components load in 0.12 s instead of 12 s. PP-038c added the public egui hook: with the
 optional `egui` feature and `EngineConfig::with_egui(true)`, `Game::egui(ctx, ui)` draws the game's own egui UI
 over its frame (`purplepie::egui`), and the debug overlay now builds on the same egui frame. PP-038d added picking:
-`Context::entities_at(point)` lists the entities drawn at a world point, topmost first in draw order. Next:
-**PP-038e**, lenient scene loading (keep unknown game components as text), then the editor crate (PP-038f–PP-038j).
+`Context::entities_at(point)` lists the entities drawn at a world point, topmost first in draw order. PP-038e added
+`Context::load_scene_keeping_unknown`, which keeps game components nobody registered as text
+(`scene::UnknownComponents`) and saves them back unchanged. Next: **PP-038f**, the editor crate's first part (open,
+view, pan/zoom, save), then PP-038g–PP-038j.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -136,6 +139,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038e: lenient scene loading: `Context::load_scene_keeping_unknown`, public `scene::UnknownComponents`; kept components saved back unchanged.
 - PP-038d: picking: `Context::entities_at(point)`, topmost first in draw order; hidden and screen-space entities excluded; rotation, scale and text bounds.
 - PP-038c: public egui hook: `egui` feature, `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; one egui frame laid out by the runner (game UI, then the overlay's windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example.
 - PP-038b: scene loading linear again: ron held at exactly 0.12.1 (0.12.2 made parsing quadratic), scene parsed once before the version check; regression test (R-31 mitigated).
@@ -174,7 +178,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038e: Lenient scene loading** (phase P5, item 5; ADR-036, ADR-044): an opt-in load that keeps unknown game components as RON text and saves them back unchanged, so the editor can open any game's scenes. See [TASKS.md](TASKS.md#pp-038e-lenient-scene-loading--next).
+- **PP-038f: Editor crate, first slice part 1** (phase P5, item 6; ADR-044): `crates/purplepie-editor` opens a scene given on the command line, lists its entities, pans and zooms beside its panel, and saves it back. See [TASKS.md](TASKS.md#pp-038f-editor-crate-first-slice-part-1--next).
 
 ## Blocked
 
@@ -207,7 +211,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - `rust-version = "1.90"` comes from dependency metadata. Only Rust 1.95.0 has been exercised in Cowork (R-19); CI uses the latest stable (1.99 on 2026-10-06), whose newer clippy lints Cowork cannot run. The code uses let-chains (stable since 1.88).
 - Audio (PP-022/024a/024b): WAV and OGG Vorbis only (no MP3/FLAC); sounds are decoded completely when loaded (no streaming: ~10 MB per minute of 44.1 kHz mono, and a 3-minute stereo track takes ~7 s to load in a debug build, ~1.2 s in release); `lewton` ignores a stream's leading-sample trim, so some OGG files play a few ms longer than elsewhere; no fades (volume changes and stops are instant), no "still playing?" query; Windows/macOS audio compiled by CI but not heard yet; without a device the game is silent and libasound prints its own errors on Linux.
 - `ron` is held at exactly 0.12.1 (R-31): 0.12.2 parses in quadratic time. A game that itself requires ron 0.12.2 or later cannot build with PurplePie until ron releases a fix and the pin moves.
-- Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads only where those components are registered (unknown names are errors). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
+- Scenes (PP-026a/b, PP-027): every engine component and every *registered* game component is saved; unregistered components are dropped silently, and entities with neither a drawable/animation/button nor a registered component are skipped. A file with game components loads with `load_scene` only where those components are registered (unknown names are errors); `load_scene_keeping_unknown` keeps them as text instead (PP-038e). Components holding an `Entity` cannot be saved. Button hover/click state is not saved (it starts idle). Loading adds to the world (no replace/unload). Same-layer draw-order ties use entity ids, which scenes do not store (ADR-035).
 - Hot reload (PP-028/029): textures, fonts and sounds (not scenes); off by default; changes appear after up to ~0.5 s; a texture too large for the GPU keeps the old one; sounds already playing (including loops) keep their old samples until started again; a font change re-rasterizes all text once.
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
 - Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys reach the game except while an egui text field has the focus; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
@@ -215,6 +219,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-13: PP-038e Lenient scene loading.**
+  - New `Context::load_scene_keeping_unknown(path)`: like `load_scene`, but a game component nobody registered is kept as its RON text in the new `scene::UnknownComponents` component (new public module `scene`) instead of failing the load; `save_scene` writes it back unchanged (a registered value of the same name wins). `load_scene` itself is unchanged.
+  - The shipped demo scene round-trips byte for byte with none or some of its game types registered. The debug overlay's inspector lists kept components as "name (kept as text)". 4 new unit tests, extended inspector/describe tests and a doctest; README, GUIDE §11, CHANGELOG.
 
 - **2026-10-13: PP-038d Picking.**
   - New `Context::entities_at(point)`: the entities drawn at a world point, topmost first, in the reverse of the draw order (higher layer first; within a layer text, then sprites, then quads; later entities first), each once. Quads and sprites count by their rectangle and texts by their measured bounds, turned and scaled with their transform; hidden, screen-space and undrawn entities never count.
@@ -537,15 +545,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038d change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038e change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS: 239 unit tests + 54 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--features egui` or `--all-features` 255 + 55, 13 ignored |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS: 243 unit tests + 55 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--features egui` or `--all-features` 259 + 56, 13 ignored |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Lenient scene loading (PP-038e) | ✅ GitHub `main` (`38df37c`) identical to this tree before the task. clippy with no features (+ `incompatible_msrv`), `--features egui` and `--all-features`; `cargo doc` with and without features (0 warnings); GPU tests 13/13. Mutation (save only registered components) fails 4 tests. Scene example frozen frame 0 pixels different |
 | Picking (PP-038d) | ✅ GitHub `main` (`8ed4aac`) identical to this tree before the task. clippy with no features (+ `incompatible_msrv`) and `--all-features`; `cargo doc` with and without features (0 warnings). New tests pass; mutation (ignore the transform) fails 2. Timing (temporary test, removed): 10 000 quads + 1 000 texts 34 ms debug / 1.3 ms release per call. GPU tests 13/13. Breakout lose frame 0 pixels different |
 | Public egui hook (PP-038c) | ✅ GitHub `main` (`3e2d391`) identical to this tree before the task. clippy with no features (+ `incompatible_msrv`), `--features egui` and `--all-features`; tests in all three; GPU tests 13/13 (overlay pixel test through `layout` + `paint`). Mutation: dropping unpainted texture changes instead of merging fails `texture_changes_of_unpainted_frames_are_kept_for_the_next_paint`. Xvfb: `egui_panel` (`clicks 2, key frames 32, stamps 0, size 195, title "PurplePie egui panel X"`; window name followed the field), with `debug-overlay` overlay on top and F12 while typing; sandbox overlay routing and inspector as before (1 game click, zoom 1). Without features: Breakout lose frame and frozen scene frame 0 pixels different |
 | Scene loading speed (PP-038b) | ✅ GitHub `main` (`68d5adc`) identical to this tree before the task. clippy with and without `--all-features` (+ `incompatible_msrv`); `cargo doc`. Timing test (temporary, removed) before/after in debug and release, 1 000 and 10 000 entities (ADR-044 implementation notes); new regression test passes with ron 0.12.1 (ratio 4.2) and fails with 0.12.2 (14.5× debug, 17.9× release). Scene example `load`, frozen, under Xvfb: 0 pixels differ from the frame built from GitHub `main` |
@@ -591,4 +600,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-13. PP-038d done (picking: `Context::entities_at`). PP-038e (lenient scene loading) is next.
+2026-10-13. PP-038e done (lenient scene loading). PP-038f (editor crate, part 1) is next.

@@ -117,6 +117,11 @@ impl Registry {
         self.entries.len()
     }
 
+    /// `true` if a type is registered under `name`.
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.entries.iter().any(|r| r.name == name)
+    }
+
     /// `true` if the entity has any registered component.
     pub(crate) fn any_on(&self, e: &hecs::EntityRef<'_>) -> bool {
         self.entries.iter().any(|r| (r.has)(e))
@@ -160,6 +165,14 @@ impl Registry {
             })
             .collect();
         out.sort_by(|a, b| a.0.cmp(&b.0));
+        // Components a lenient load kept as text (ADR-044), after them.
+        if let Some(unknown) = e.get::<&super::UnknownComponents>() {
+            out.extend(
+                unknown
+                    .iter()
+                    .map(|(name, text)| (format!("{name} (kept as text)"), Ok(text.to_owned()))),
+            );
+        }
         out
     }
 
@@ -261,6 +274,21 @@ mod tests {
         assert!(
             registry.save(&world.entity(e).expect("alive")).is_err(),
             "save stops at the error; describe shows the rest"
+        );
+
+        // Components a lenient load kept as text follow, marked as such.
+        let text = crate::scene::tests_support::kept(&[("other::Odd", "(x: 1)")]);
+        let k = world.spawn((Speed(1.0), text));
+        let rows = registry.describe(&world.entity(k).expect("alive"));
+        assert_eq!(
+            rows,
+            [
+                ("demo::Speed".to_owned(), Ok("(1.0)".to_owned())),
+                (
+                    "other::Odd (kept as text)".to_owned(),
+                    Ok("(x: 1)".to_owned())
+                ),
+            ]
         );
     }
 }

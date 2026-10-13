@@ -143,9 +143,12 @@ pub(crate) fn game_rows(
     rows
 }
 
-/// The engine components [`inspect_entity`] shows.
-fn engine_types() -> [TypeId; 10] {
+/// The engine components [`inspect_entity`] shows, and
+/// [`UnknownComponents`](crate::scene::UnknownComponents), whose entries the
+/// runner shows with the game components (`Registry::describe`).
+fn engine_types() -> [TypeId; 11] {
     [
+        TypeId::of::<crate::scene::UnknownComponents>(),
         TypeId::of::<Transform2D>(),
         TypeId::of::<Layer>(),
         TypeId::of::<Hidden>(),
@@ -283,6 +286,11 @@ mod tests {
         let only_engine = world.spawn((Transform2D::default(),));
         let inspected = inspect_entity(&world, only_engine).expect("alive");
         assert_eq!((inspected.engine.len(), inspected.other_components), (1, 0));
+        // Components kept as text are shown with the game's, not counted as
+        // unregistered.
+        let kept = world.spawn((crate::scene::tests_support::kept(&[("a::B", "()")]),));
+        let inspected = inspect_entity(&world, kept).expect("alive");
+        assert_eq!(inspected.other_components, 0);
 
         world.despawn(e).expect("alive");
         assert_eq!(inspect_entity(&world, e), None);

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`); PP-038e–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`); PP-038f–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -1924,6 +1924,7 @@ the public API, which a generic mechanism has to revisit.
 - **`erased-serde` + `dyn` components:** a new dependency only to avoid monomorphised function pointers, which work.
 - **Keeping unknown components** (raw, re-saved untouched) or skipping them: friendlier for an editor that loads a file
   without all game types, but silently loses or hides data and typos; can be added as an explicit option later.
+  *Added as that explicit option by PP-038e (ADR-044): `Context::load_scene_keeping_unknown`.*
 - **Rust type names (`std::any::type_name`) as keys:** unstable across compiler versions and refactors.
 
 ## Rationale
@@ -2698,6 +2699,26 @@ small and enough for the core interactions.
 - 7 unit tests (6 in `render::pick`, 1 through `Context` with the camera and cursor) and a doctest; a mutation
   that ignores rotation and scale fails two of them. No rendering code changed (only `Material::rank` became
   visible to `pick`); Breakout's lose frame is pixel-identical.
+
+## Implementation notes (PP-038e)
+- **API:** `Context::load_scene_keeping_unknown(path)` next to `load_scene`, and a new public module `scene` that
+  holds only `UnknownComponents` (`get`, `iter`, `len`, `is_empty`, `remove`): the components of an entity that
+  no registered type reads, as name → one-line RON text exactly as in the file. No setter yet: editing those
+  values is PP-038h. Strict `load_scene` is unchanged, as are the scene format (still version 1) and the
+  registry's rules (ADR-036).
+- **Load:** `decode_components` takes an `Unknown::{Reject, Keep}` mode. With `Keep`, a name the registry does not
+  know is kept as text (not parsed beyond the RON syntax the file parse already checked); a registered name is
+  decoded as before, so a bad value still fails the whole load and nothing is spawned.
+- **Save:** an entity with kept text is saved (like one with a registered component); its file components are the
+  registered ones, then the kept ones under names no registered component on the entity uses: a registered value
+  wins if the game registered the type later. `remove` drops a kept component; an entity left with nothing to
+  save is skipped again.
+- **Verified:** `assets/scenes/demo.ron` loaded leniently with no game types registered keeps `Spin` (twice) and
+  `Visits` as text and saves back byte for byte (unit test and through `Context` to a file); with only `Spin`
+  registered, `Spin` decodes and `Visits` stays text, again byte for byte; an arbitrary nested value is kept
+  verbatim; a later registered value replaces the kept text on save. A mutation that saves only registered
+  components fails four tests. The overlay's inspector lists kept components as "name (kept as text)" after the
+  registered ones and no longer counts them as unregistered. The scene example's frozen frame is unchanged.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

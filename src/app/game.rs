@@ -209,9 +209,11 @@ impl<'a> Context<'a> {
     /// `SpriteAnimation` (including how far it has played), `Velocity` and
     /// `Button` (its size; hover and click state start fresh), plus every
     /// game component registered with
-    /// [`register_scene_component`](Self::register_scene_component). Entities
-    /// with none of the five engine components above and no registered
-    /// component are skipped.
+    /// [`register_scene_component`](Self::register_scene_component), and the
+    /// components a [lenient load](Self::load_scene_keeping_unknown) kept as
+    /// text ([`UnknownComponents`](crate::scene::UnknownComponents)). Entities
+    /// with none of the five engine components above, no registered component
+    /// and nothing kept as text are skipped.
     ///
     /// The file is human-readable [RON](https://docs.rs/ron) text. A relative
     /// `path` is resolved against the asset root like
@@ -314,7 +316,41 @@ impl<'a> Context<'a> {
     /// # }
     /// ```
     pub fn load_scene(&mut self, path: impl AsRef<Path>) -> Result<Vec<Entity>> {
-        let path = path.as_ref();
+        self.load_scene_as(path.as_ref(), crate::scene::Unknown::Reject)
+    }
+
+    /// Like [`load_scene`](Self::load_scene), but a game component whose name
+    /// is not [registered](Self::register_scene_component) does not fail the
+    /// load: it is kept as its RON text in an
+    /// [`UnknownComponents`](crate::scene::UnknownComponents) component on its
+    /// entity, and [`save_scene`](Self::save_scene) writes it back unchanged
+    /// (ADR-044). For tools, such as a scene editor, that open scenes of games
+    /// whose component types they do not have. Registered components are
+    /// decoded as usual, and a value one of them cannot read still fails.
+    ///
+    /// ```no_run
+    /// use purplepie::scene::UnknownComponents;
+    /// # fn open(ctx: &mut purplepie::Context<'_>) -> purplepie::Result<()> {
+    /// for entity in ctx.load_scene_keeping_unknown("scenes/level1.ron")? {
+    ///     if let Ok(kept) = ctx.world().get::<&UnknownComponents>(entity) {
+    ///         for (name, ron) in kept.iter() {
+    ///             println!("{entity:?}: {name} = {ron}");
+    ///         }
+    ///     }
+    /// }
+    /// ctx.save_scene("scenes/level1.ron")?; // the unknown components are kept
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn load_scene_keeping_unknown(&mut self, path: impl AsRef<Path>) -> Result<Vec<Entity>> {
+        self.load_scene_as(path.as_ref(), crate::scene::Unknown::Keep)
+    }
+
+    fn load_scene_as(
+        &mut self,
+        path: &Path,
+        unknown: crate::scene::Unknown,
+    ) -> Result<Vec<Entity>> {
         let file = self.state.assets.locate(path)?;
         let asset_error = |source: crate::error::BoxError| crate::Error::Asset {
             path: path.to_path_buf(),
@@ -323,7 +359,7 @@ impl<'a> Context<'a> {
         let text = std::fs::read_to_string(&file).map_err(|e| asset_error(Box::new(e)))?;
         let scene = crate::scene::from_text(&text).map_err(asset_error)?;
         let state = &mut *self.state;
-        let components = crate::scene::decode_components(&scene, &state.scene_components)
+        let components = crate::scene::decode_components(&scene, &state.scene_components, unknown)
             .map_err(asset_error)?;
         let (assets, textures, fonts) = (&state.assets, &mut state.textures, &mut state.fonts);
         let resolved = crate::scene::resolve_assets(
@@ -764,6 +800,35 @@ mod tests {
             Some(42)
         );
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_lenient_load_opens_a_scene_whose_components_are_not_registered() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let mut state = EngineState::new(0.25, AssetRoot::Found(root.clone()));
+        let mut ctx = Context::new(&mut state, 0.0);
+        // The example's `Spin` and `Visits` are not registered here.
+        assert!(ctx.load_scene("scenes/demo.ron").is_err());
+        assert_eq!(ctx.world().len(), 0, "nothing spawned");
+        let spawned = ctx
+            .load_scene_keeping_unknown("scenes/demo.ron")
+            .expect("lenient load");
+        assert_eq!(spawned.len(), 19);
+        let kept = ctx
+            .world()
+            .query::<&crate::scene::UnknownComponents>()
+            .iter()
+            .count();
+        assert_eq!(kept, 3);
+        let out =
+            std::env::temp_dir().join(format!("purplepie-lenient-{}.ron", std::process::id()));
+        ctx.save_scene(&out).expect("save");
+        let saved = std::fs::read_to_string(&out).expect("written");
+        std::fs::remove_file(&out).ok();
+        let original = std::fs::read_to_string(root.join("scenes/demo.ron"))
+            .expect("demo.ron")
+            .replace("\r\n", "\n");
+        assert_eq!(saved, original, "saved back byte for byte");
     }
 
     #[test]
