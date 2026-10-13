@@ -18,12 +18,18 @@
 //!   engine's state ([`Stats::gather`]) with a smoothed frame time
 //!   ([`FrameTimer`]) and formatted by [`stats_rows`] (no egui, unit-tested).
 //!
+//! - [`inspect`] lists the world's entities and formats one entity's engine
+//!   components for the "Entities" window (no egui, unit-tested).
+//!
 //! PP-037b1 drew the window, PP-037b2 routed the mouse to it, PP-037c filled
-//! it with statistics; an entity inspector is PP-037d.
+//! it with statistics, PP-037d1 added the entity inspector (game components as
+//! RON: PP-037d2).
+
+mod inspect;
 
 use std::time::Instant;
 
-use crate::ecs::World;
+use crate::ecs::{Entity, World};
 use crate::input::{Input, KeyCode};
 use crate::math::Vec2;
 use crate::render::Camera2D;
@@ -287,6 +293,8 @@ pub(crate) struct OverlayUi {
     last_window: Option<egui::Rect>,
     /// The numbers the next frame shows.
     stats: Stats,
+    /// The entity the inspector shows, chosen by clicking it in the list.
+    selected: Option<Entity>,
 }
 
 impl OverlayUi {
@@ -302,6 +310,7 @@ impl OverlayUi {
             platform_output: None,
             last_window: None,
             stats: Stats::default(),
+            selected: None,
         }
     }
 
@@ -312,7 +321,12 @@ impl OverlayUi {
     /// egui's scale is the input's native scale times its zoom factor (left
     /// at 1), so the scale is never set on the context directly: that would
     /// apply it twice.
-    fn run(&mut self, size_in_pixels: [u32; 2], pixels_per_point: f32) -> egui::FullOutput {
+    fn run(
+        &mut self,
+        size_in_pixels: [u32; 2],
+        pixels_per_point: f32,
+        world: &World,
+    ) -> egui::FullOutput {
         let pixels_per_point = if pixels_per_point.is_finite() && pixels_per_point > 0.0 {
             pixels_per_point
         } else {
@@ -326,6 +340,7 @@ impl OverlayUi {
             )
         });
         let rows = stats_rows(&self.stats);
+        let selected = &mut self.selected;
         let mut window = None;
         let mut output = self.context.run_ui(input, |ui| {
             window = egui::Window::new("PurplePie")
@@ -349,11 +364,84 @@ impl OverlayUi {
                     ));
                 })
                 .map(|response| response.response.rect);
+            entities_window(ui.ctx(), world, selected);
         });
         self.last_window = window;
         self.platform_output = Some(std::mem::take(&mut output.platform_output));
         output
     }
+}
+
+/// Heights of the inspector's entity list and component grid (each scrolls),
+/// so the window fits under the stats window in a 720-pixel-high window.
+const LIST_HEIGHT: f32 = 160.0;
+const COMPONENTS_HEIGHT: f32 = 180.0;
+
+/// The "Entities" window: every entity (only the visible rows are laid out),
+/// and the engine components of the one clicked. It starts collapsed, and a
+/// collapsed window costs nothing (egui skips its contents).
+fn entities_window(context: &egui::Context, world: &World, selected: &mut Option<Entity>) {
+    egui::Window::new("Entities")
+        .default_pos([12.0, 260.0])
+        .default_width(340.0)
+        .default_open(false)
+        .show(context, |ui| {
+            let ids = inspect::entity_ids(world);
+            ui.label(format!("{} entities - click one to inspect it", ids.len()));
+            let row_height = ui.spacing().interact_size.y;
+            egui::ScrollArea::vertical()
+                .id_salt("purplepie entity list")
+                .max_height(LIST_HEIGHT)
+                .auto_shrink([false, true])
+                .show_rows(ui, row_height, ids.len(), |ui, range| {
+                    for &entity in &ids[range] {
+                        let label = inspect::summary(world, entity);
+                        if ui
+                            .selectable_label(*selected == Some(entity), label)
+                            .clicked()
+                        {
+                            *selected = Some(entity);
+                        }
+                    }
+                });
+            ui.separator();
+            let Some(entity) = *selected else {
+                ui.label("No entity selected.");
+                return;
+            };
+            match inspect::component_rows(world, entity) {
+                None => {
+                    ui.label(format!("#{} was despawned.", entity.id()));
+                }
+                Some(rows) if rows.is_empty() => {
+                    ui.label(format!("#{} has no components.", entity.id()));
+                }
+                Some(rows) => {
+                    ui.strong(format!("#{}", entity.id()));
+                    egui::ScrollArea::vertical()
+                        .id_salt("purplepie components")
+                        .max_height(COMPONENTS_HEIGHT)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            egui::Grid::new("purplepie components")
+                                .num_columns(2)
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    for (name, value) in rows {
+                                        ui.label(name);
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(value).monospace(),
+                                            )
+                                            .wrap(),
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        });
+                }
+            }
+        });
 }
 
 /// Input without events: the screen size in points, the DPI scale and the time.
@@ -375,6 +463,17 @@ fn basic_input(size_in_pixels: [u32; 2], pixels_per_point: f32, time: f64) -> eg
         .or_default()
         .native_pixels_per_point = Some(pixels_per_point);
     input
+}
+
+/// Where [`Overlay::draw`] draws one frame.
+pub(crate) struct Target<'a> {
+    /// A view of the frame in the overlay's [`format`](Overlay::format).
+    pub(crate) view: &'a wgpu::TextureView,
+    /// The frame's physical size.
+    pub(crate) size_in_pixels: [u32; 2],
+    /// The window's DPI scale, used only without input from [`OverlayInput`]
+    /// (which carries its own).
+    pub(crate) pixels_per_point: f32,
 }
 
 /// The overlay's egui side and its wgpu renderer for one GPU device.
@@ -435,20 +534,22 @@ impl Overlay {
 
     /// Records one overlay frame into `encoder`: lays it out
     /// ([`OverlayUi::run`]), uploads egui's textures and buffers, and draws into
-    /// `view` (format [`format`](Self::format)) on top of what is already there.
-    /// `size_in_pixels` is the target's physical size and `pixels_per_point`
-    /// the window's DPI scale (used only without input from
-    /// [`OverlayInput`], which carries its own).
+    /// `target` on top of what is already there. `world` is only read, by the
+    /// entity inspector.
     pub(crate) fn draw(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-        size_in_pixels: [u32; 2],
-        pixels_per_point: f32,
+        target: Target<'_>,
+        world: &World,
     ) {
-        let mut output = self.ui.run(size_in_pixels, pixels_per_point);
+        let Target {
+            view,
+            size_in_pixels,
+            pixels_per_point,
+        } = target;
+        let mut output = self.ui.run(size_in_pixels, pixels_per_point, world);
 
         let shapes = std::mem::take(&mut output.shapes);
         let jobs = self.ui.context.tessellate(shapes, output.pixels_per_point);
@@ -579,9 +680,12 @@ mod tests {
             device,
             queue,
             &mut encoder,
-            &overlay_view,
-            [WIDTH, HEIGHT],
-            1.0,
+            Target {
+                view: &overlay_view,
+                size_in_pixels: [WIDTH, HEIGHT],
+                pixels_per_point: 1.0,
+            },
+            &World::new(),
         );
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("overlay readback"),
@@ -713,7 +817,7 @@ mod tests {
         let mut ui = OverlayUi::new();
         let mut windows = Vec::new();
         for frame in 0..3 {
-            let mut output = ui.run([640, 400], 2.0);
+            let mut output = ui.run([640, 400], 2.0, &World::new());
             output.textures_delta.clear(); // no renderer here
             assert_eq!(output.pixels_per_point, 2.0, "basic input, frame {frame}");
             assert_eq!(ui.context.viewport_rect().size(), egui::vec2(320.0, 200.0));
@@ -722,7 +826,7 @@ mod tests {
         // Input like egui-winit's (it carries its own native scale) wins over
         // the size and scale passed to `run`.
         ui.pending_input = Some(basic_input([640, 400], 2.0, 1.0));
-        let mut output = ui.run([640, 400], 1.0);
+        let mut output = ui.run([640, 400], 1.0, &World::new());
         output.textures_delta.clear();
         assert_eq!(output.pixels_per_point, 2.0, "input from the window");
         windows.extend(ui.last_window);

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; PP-037c: stats window; inspector PP-037d) |
+| ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | In part (PP-037b1: feature, config, F12, overlay pass, non-sRGB view; PP-037b2: mouse routing; PP-037c: stats window; PP-037d1: inspector with engine components; game components PP-037d2) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
@@ -2471,6 +2471,17 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
   release build 56.3 vs 53.3 (both near the 60 Hz cap). The debug-build cost is mostly unoptimized egui; per-package
   `[profile.dev.package.<name>] opt-level` overrides would help the engine's own sandbox but not games (a dependency's
   profiles are ignored), so they are left out for now.
+
+## Implementation notes (PP-037d1)
+- The inspector reads the world while egui lays out the frame: the renderer already holds `&World` when it draws, so
+  the overlay borrows it read-only for that call instead of copying entities out first. Nothing in `debug` can change
+  the world.
+- The "Entities" window starts collapsed; egui skips a collapsed window's contents, so it costs nothing until opened.
+  Open, it sorts the entity ids each frame and summarizes only the visible rows (`ScrollArea::show_rows`): 0.30 ms
+  per frame for 5 000 entities in a debug build, 0.025 ms in release; 2.7 / 0.20 ms for 50 000.
+- Engine components are shown with short custom text where it helps (transform, layer, velocity) and their `Debug`
+  output otherwise (quad, sprite, text, animation, button), which is complete but long. Other components are counted;
+  showing registered game components as RON is PP-037d2.
 
 ## Revisit Conditions
 - egui-wgpu or egui-winit lag a wgpu or winit upgrade the engine needs by more than one release.

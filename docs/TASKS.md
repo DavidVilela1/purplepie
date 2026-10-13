@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-037d: Debug overlay, part 3: read-only entity inspector (entity list, engine components, registered game components as RON)** · P1 · TODO ← **next task**
+- [ ] **PP-037d2: Debug overlay, part 3b: the inspector shows game components registered for scenes as RON (ADR-036 registry)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-037d1: Debug overlay, part 3a: "Entities" window: entity list (by id, virtualized) and the selected entity's engine components; game components counted** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps, entities, draw batches and instances, camera, window, cursor)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037b2: Debug overlay, part 1b: `egui-winit` input routing (pointer events the overlay consumes stay with it; releases of held buttons and all keys reach the game); egui scale fix** · DONE (2026-10-12; verified on Linux)
 - [x] **PP-037b1: Debug overlay, part 1a: `debug-overlay` feature (egui + egui-wgpu 0.36), `EngineConfig::with_debug_overlay`, F12 toggle, overlay pass through a non-sRGB view, placeholder window; CI `msrv` without the feature** · DONE (2026-10-12; verified on Linux)
@@ -464,13 +465,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-037d: Debug overlay, part 3: entity inspector ← NEXT
+### PP-037d2: Debug overlay, part 3b: registered game components ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P4, item 4 · Priority P1 · TODO |
+| Stage | Phase P4, item 4b · Priority P1 · TODO |
+| Dependencies | PP-037d1 (DONE) |
+| Scope | For the selected entity, show each game component registered with `Context::register_scene_component` (ADR-036) under its registered name, as the same one-line RON the scene files use; keep counting unregistered ones ("2 more components the engine cannot show; register them for scenes to see them here"). The registry lives in `EngineState` (`scene::Registry`); the renderer only gets `&World`, so either pass the registry (or a read-only view of it) to the overlay's draw, or let the runner prepare the selected entity's rows before rendering — decide by what keeps `scene` and `debug` decoupled. Serialization errors are shown, not fatal. Read-only. |
+| Acceptance criteria | Unit tests: a registered component appears with its name and RON value (the same text `save_scene` would write), an unregistered one is only counted, a failing serializer shows its error. Xvfb: Purple Swarm (or the scene example, which registers `Spin`) with the feature: selecting an entity shows its game component. Without the feature: unchanged. |
+
+### PP-037d1: Debug overlay, part 3a: entity list and engine components
+| Field | Value |
+|---|---|
+| Stage | Phase P4, item 4a · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-037c (DONE) |
-| Scope | A second overlay window, "Entities": a scrollable list of the world's entities (id plus a short summary such as the drawable kind and position), one selectable at a time; for the selected entity, its engine components (transform, quad, sprite, text, layer, hidden, screen space, animation, velocity, button) with their values, and its game components registered for scenes (ADR-036) shown as RON through the registry; unregistered game components counted but not shown. Read-only: no editing (that is editor work, P5). The world is read while the overlay is drawn, so the data must be collected before the render call (no borrow of the world inside egui). Likely too large for one session: split into PP-037d1 (list + engine components) and PP-037d2 (registered components as RON) when it starts. |
-| Acceptance criteria | Unit tests for the per-entity summaries and component formatting (headless world). Xvfb: in the sandbox, selecting an entity shows its components, and a stamped square appears in the list. Large worlds stay usable (list virtualized or capped, measured with a few thousand entities). Without the feature: unchanged. |
+| Split | PP-037d was too large for one session: registered game components (RON via the scene registry) moved to PP-037d2. |
+| Acceptance criteria | ✅ New `src/debug/inspect.rs` (no egui): `entity_ids` (sorted by id, stable when an entity changes archetype), `summary` (e.g. `#5 text "Screen-space HUD" at (22.0, -30.0)`; long text cut to 24 characters), `component_rows` (Transform2D, Layer, Hidden, ScreenSpace, Velocity, Quad, Sprite, Text, SpriteAnimation, Button, then a count of other components; `None` once despawned). 3 unit tests on a headless world. ✅ "Entities" window, collapsed by default (no cost while collapsed): entity count, a virtualized list (`show_rows`), click to select, the selected entity's component grid; list and grid scroll separately so the window fits under the stats window. `Overlay::draw` now takes a `Target` (view, size, scale) and the `&World` the renderer already has. ✅ Cost of the open window's list work (ids + visible summaries + one entity's rows), debug / release: 5 000 entities 0.30 / 0.025 ms per frame, 50 000 entities 2.7 / 0.20 ms. ✅ Xvfb sandbox: window expanded (19 entities listed by id), `#5` selected shows Transform2D, Layer, ScreenSpace, Text; a stamp adds `#19 quad at (260.0, -160.0)` (the click's world position), the count reads 20; wheel over the list scrolls it and the camera keeps zoom 1; only the stamp click reached the game. Without the feature: Breakout lose frame and frozen scene frame pixel-identical. |
 
 ### PP-037c: Debug overlay, part 2: stats window
 | Field | Value |

@@ -300,9 +300,12 @@ impl Renderer {
                 &self.device,
                 &self.queue,
                 &mut encoder,
-                &view,
-                [self.config.width, self.config.height],
-                self.scale_factor as f32,
+                crate::debug::Target {
+                    view: &view,
+                    size_in_pixels: [self.config.width, self.config.height],
+                    pixels_per_point: self.scale_factor as f32,
+                },
+                world,
             );
         }
         #[cfg(not(feature = "debug-overlay"))]
