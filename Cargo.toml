@@ -23,6 +23,11 @@ path = "src/lib.rs"
 name = "sandbox"
 path = "src/main.rs"
 
+# PP-038c: the `Game::egui` hook (ADR-044); built only with the `egui` feature.
+[[example]]
+name = "egui_panel"
+required-features = ["egui"]
+
 # Each stage adds only the dependencies it uses (ADR-013).
 # Versions verified on 2026-09-30 (see docs/TECH_STACK.md).
 [dependencies]
@@ -54,9 +59,10 @@ lewton = "0.10.2"    # PP-024b: OGG Vorbis decoding, used only in `audio/sound.r
 # 0.12 s). Move to the first release with ron's fix and keep `parsing_time_grows_linearly_with_the_scene` passing.
 ron = "=0.12.1"
 serde = { version = "1.0.229", features = ["derive"] }
-# PP-037b1: debug overlay (ADR-043), only with the optional `debug-overlay` feature, used only in
-# `debug` and the render pass that draws it (egui-winit, PP-037b2: in the runner's event routing). Both need Rust 1.95 (the engine without the feature
-# keeps 1.90). Pinned with wgpu/winit: egui-wgpu 0.36 is built against wgpu 30 (R-30). egui-wgpu's
+# PP-037b1: debug overlay (ADR-043); since PP-038c the optional `egui` feature (ADR-044), which
+# `debug-overlay` turns on. Used only in `debug`, the render pass that draws it and the runner's egui
+# pass and event routing (egui-winit, PP-037b2); `egui` itself is re-exported for `Game::egui`. All
+# need Rust 1.95 (the engine without the features keeps 1.90). Pinned with wgpu/winit: egui-wgpu 0.36 is built against wgpu 30 (R-30). egui-wgpu's
 # default features would turn on extra wgpu backends (WebGL, Metal workarounds), so they are off.
 egui = { version = "0.36.2", optional = true }
 egui-wgpu = { version = "0.36.2", optional = true, default-features = false }
@@ -65,9 +71,13 @@ egui-wgpu = { version = "0.36.2", optional = true, default-features = false }
 egui-winit = { version = "0.36.2", optional = true, default-features = false, features = ["wayland", "x11"] }
 
 [features]
-# Debug overlay (ADR-043): an egui window drawn over the game, shown and hidden with F12; turned on
-# with `EngineConfig::with_debug_overlay(true)`. Off by default. Needs Rust 1.95.
-debug-overlay = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+# egui for games and tools (ADR-044): `Game::egui` draws the game's own egui UI over the frame,
+# turned on with `EngineConfig::with_egui(true)`; `purplepie::egui` is the egui crate. Off by
+# default. Needs Rust 1.95.
+egui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+# Debug overlay (ADR-043): engine windows drawn over the game, shown and hidden with F12; turned on
+# with `EngineConfig::with_debug_overlay(true)`. Off by default. Built on `egui`; needs Rust 1.95.
+debug-overlay = ["egui"]
 
 # PP-030 (ADR-038): this package is also the root of a Cargo workspace. The engine stays at the
 # repository root (paths, commands and `assets/` unchanged); future engine crates (e.g. the

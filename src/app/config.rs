@@ -77,6 +77,11 @@ pub struct EngineConfig {
     /// Cargo feature (which needs Rust 1.95); without the feature, turning it on
     /// only logs a warning. The overlay never adds entities to the world.
     pub debug_overlay: bool,
+    /// Call `Game::egui` every frame, so the game can
+    /// draw its own egui UI over the frame (default `false`; ADR-044). It needs
+    /// PurplePie's optional `egui` Cargo feature (which needs Rust 1.95);
+    /// without the feature, turning it on only logs a warning.
+    pub egui: bool,
 }
 
 impl EngineConfig {
@@ -108,6 +113,7 @@ impl EngineConfig {
             hot_reload: false,
             console_log: false,
             debug_overlay: false,
+            egui: false,
         }
     }
 
@@ -233,6 +239,22 @@ impl EngineConfig {
         self
     }
 
+    /// Turns the `Game::egui` hook on or off (default
+    /// off; see [`egui`](Self::egui)).
+    ///
+    /// Enable the `egui` feature in the game's `Cargo.toml` (newer than the
+    /// 0.1.0 release, so depend on a later tag or on `branch = "main"`), and
+    /// use egui through `purplepie::egui`, not a separate dependency:
+    ///
+    /// ```toml
+    /// purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main", features = ["egui"] }
+    /// ```
+    #[must_use]
+    pub fn with_egui(mut self, egui: bool) -> Self {
+        self.egui = egui;
+        self
+    }
+
     /// Checks the configuration for values the engine cannot use.
     pub(crate) fn validate(&self) -> Result<()> {
         if self.width == 0 {
@@ -308,10 +330,12 @@ mod tests {
             .with_max_fixed_steps(3)
             .with_clear_color(Color::BLACK)
             .with_hot_reload(true)
-            .with_debug_overlay(true);
+            .with_debug_overlay(true)
+            .with_egui(true);
         assert!(config.hot_reload);
-        assert!(config.debug_overlay);
+        assert!(config.debug_overlay && config.egui);
         assert!(!EngineConfig::new("Test").debug_overlay, "off by default");
+        assert!(!EngineConfig::new("Test").egui, "off by default");
         assert_eq!(config.clear_color, Color::BLACK);
         assert_eq!(
             (config.fixed_dt, config.max_frame_dt, config.max_fixed_steps),

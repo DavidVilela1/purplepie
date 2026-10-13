@@ -36,6 +36,10 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   entity count, draw calls, camera, window and cursor; F12 shows or hides it, and clicks and the wheel on it do not
   reach the game. A second window, "Entities", lists every entity and shows the components of the one you click:
   the engine's, and the game's own ones registered for scenes as RON (ADR-043). Try it with `cargo run --features debug-overlay`.
+- **Your own egui UI (optional):** with the `egui` Cargo feature (Rust 1.95) and `EngineConfig::with_egui(true)`, a
+  game implements `Game::egui` to draw panels and windows with egui (`purplepie::egui`) over its frame: tools,
+  tuning sliders, level editors. Clicks on them and keys typed into their text fields do not reach the game
+  (ADR-044). Try it with `cargo run --example egui_panel --features egui`.
 - **Errors:** one `Error` type; missing files, GPU loss and device failures end the game cleanly instead of panicking.
 - Not included (yet): MP3/FLAC, streamed music and fades, text wrapping and shaping, UI layout, keyboard focus and text input, physics,
   an editor. See [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -171,6 +175,7 @@ cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_E
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
 cargo run --features debug-overlay   # the sandbox with the debug overlay (F12 toggles; needs Rust 1.95)
+cargo run --example egui_panel --features egui   # a game's own egui panel (Game::egui; needs Rust 1.95)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets

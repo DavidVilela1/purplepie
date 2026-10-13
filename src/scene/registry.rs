@@ -144,7 +144,7 @@ impl Registry {
     /// hold, or the error that stopped it from being written. Sorted by name;
     /// unlike [`save`](Self::save), one failing component does not hide the
     /// others.
-    #[cfg(feature = "debug-overlay")]
+    #[cfg(feature = "egui")]
     pub(crate) fn describe(
         &self,
         e: &hecs::EntityRef<'_>,
@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(to_raw(&Marker).expect("marker").get_ron(), "()");
     }
 
-    #[cfg(feature = "debug-overlay")]
+    #[cfg(feature = "egui")]
     #[test]
     fn describe_lists_each_registered_component_with_its_ron_or_its_error() {
         #[derive(Debug, Serialize, Deserialize)]

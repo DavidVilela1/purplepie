@@ -50,15 +50,16 @@ pub(crate) struct Runner<G: Game> {
     /// When hot reload last checked the texture files (ADR-037).
     last_reload_check: Option<Instant>,
     /// The debug overlay's F12 state, when the game turned it on (ADR-043).
-    #[cfg(feature = "debug-overlay")]
+    #[cfg(feature = "egui")]
     overlay: Option<crate::debug::Toggle>,
-    /// Window events → egui for the visible overlay; created with the renderer.
-    #[cfg(feature = "debug-overlay")]
+    /// Window events → egui while the overlay is visible or the game's hook
+    /// is on (ADR-044); created with the renderer.
+    #[cfg(feature = "egui")]
     overlay_input: Option<crate::debug::OverlayInput>,
     /// Smoothed frame time and this frame's numbers, for the overlay's stats.
-    #[cfg(feature = "debug-overlay")]
+    #[cfg(feature = "egui")]
     frame_timer: crate::debug::FrameTimer,
-    #[cfg(feature = "debug-overlay")]
+    #[cfg(feature = "egui")]
     frame_numbers: crate::debug::FrameNumbers,
 }
 
@@ -74,6 +75,11 @@ impl<G: Game> Runner<G> {
         if config.debug_overlay && !cfg!(feature = "debug-overlay") {
             log::warn!(
                 "debug overlay requested, but PurplePie was built without its `debug-overlay` feature"
+            );
+        }
+        if config.egui && !cfg!(feature = "egui") {
+            log::warn!(
+                "egui requested (`with_egui`), but PurplePie was built without its `egui` feature"
             );
         }
         Self {
@@ -94,13 +100,14 @@ impl<G: Game> Runner<G> {
             last_frame: None,
             error: None,
             last_reload_check: None,
-            #[cfg(feature = "debug-overlay")]
-            overlay: config.debug_overlay.then(crate::debug::Toggle::new),
-            #[cfg(feature = "debug-overlay")]
+            #[cfg(feature = "egui")]
+            overlay: (config.debug_overlay && cfg!(feature = "debug-overlay"))
+                .then(crate::debug::Toggle::new),
+            #[cfg(feature = "egui")]
             overlay_input: None,
-            #[cfg(feature = "debug-overlay")]
+            #[cfg(feature = "egui")]
             frame_timer: crate::debug::FrameTimer::default(),
-            #[cfg(feature = "debug-overlay")]
+            #[cfg(feature = "egui")]
             frame_numbers: crate::debug::FrameNumbers::default(),
             config,
         }
@@ -160,7 +167,7 @@ impl<G: Game> Runner<G> {
             return;
         };
         // F12 belongs to the debug overlay while it is on (ADR-043).
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         if let Some(overlay) = &mut self.overlay
             && overlay.key(key, pressed, event.repeat || is_synthetic)
         {
@@ -217,11 +224,11 @@ impl<G: Game> Runner<G> {
             size.height,
             window.scale_factor(),
             self.config.clear_color,
-            self.config.debug_overlay,
+            self.egui_wanted(),
         )?;
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         let mut renderer = renderer;
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         {
             self.overlay_input = renderer
                 .overlay_mut()
@@ -231,20 +238,69 @@ impl<G: Game> Runner<G> {
         Ok(())
     }
 
-    /// Draws the current frame, if a renderer exists.
+    /// Draws the current frame, if a renderer exists, with this frame's egui
+    /// UI on top when there is one.
     fn render(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(feature = "egui")]
+        let egui_frame = self.layout_egui();
+        #[cfg(not(feature = "egui"))]
+        let egui_frame = false;
         let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
             return;
         };
-        let state = &self.state;
-        #[cfg(feature = "debug-overlay")]
-        let overlay_visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
-        // The overlay's input for this frame: everything since the last one.
-        #[cfg(feature = "debug-overlay")]
-        if overlay_visible
-            && let (Some(input), Some(overlay)) = (&mut self.overlay_input, renderer.overlay_mut())
+        if let Err(error) = renderer.render(
+            &self.state.world,
+            &self.state.textures,
+            &self.state.fonts,
+            &self.state.camera,
+            egui_frame,
+            || {
+                window.pre_present_notify();
+            },
+        ) {
+            self.fail(event_loop, error);
+        }
+    }
+
+    /// Whether the renderer needs the egui integration: for the debug overlay
+    /// or the game's hook.
+    fn egui_wanted(&self) -> bool {
+        #[cfg(feature = "egui")]
         {
-            overlay.set_input(input.take(window));
+            self.overlay.is_some() || self.config.egui
+        }
+        #[cfg(not(feature = "egui"))]
+        false
+    }
+
+    /// Whether egui gets window events and lays out a frame now: while the
+    /// overlay is visible or the game's hook is on.
+    #[cfg(feature = "egui")]
+    fn egui_active(&self) -> bool {
+        self.config.egui || self.overlay.is_some_and(crate::debug::Toggle::visible)
+    }
+
+    /// Lays out this frame's egui UI (ADR-044): the game's hook, then the
+    /// overlay's windows on top; the renderer paints it after the game's
+    /// frame. Returns whether a frame was laid out.
+    #[cfg(feature = "egui")]
+    fn layout_egui(&mut self) -> bool {
+        if !self.egui_active() {
+            return false;
+        }
+        let overlay_visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
+        let (Some(renderer), Some(window), Some(input)) =
+            (&mut self.renderer, &self.window, &mut self.overlay_input)
+        else {
+            return false;
+        };
+        let Some(overlay) = renderer.overlay_mut() else {
+            return false;
+        };
+        // The input for this frame: everything since the last one.
+        overlay.set_input(input.take(window));
+        let state = &mut self.state;
+        if overlay_visible {
             overlay.set_stats(crate::debug::Stats::gather(
                 self.frame_numbers,
                 &state.world,
@@ -260,39 +316,40 @@ impl<G: Game> Runner<G> {
                 overlay.set_game_components(entity, state.scene_components.describe(&e));
             }
         }
-        #[cfg(not(feature = "debug-overlay"))]
-        let overlay_visible = false;
-        if let Err(error) = renderer.render(
-            &state.world,
-            &state.textures,
-            &state.fonts,
-            &state.camera,
+        // Only used without egui-winit's input, which carries its own size.
+        let size = [
+            (f64::from(state.viewport.x) * self.scale_factor).round() as u32,
+            (f64::from(state.viewport.y) * self.scale_factor).round() as u32,
+        ];
+        let (hook, game) = (self.config.egui, &mut self.game);
+        overlay.layout(
+            size,
+            self.scale_factor as f32,
             overlay_visible,
-            || {
-                window.pre_present_notify();
+            |ui, windows| {
+                if hook {
+                    let dt = state.time.delta();
+                    game.egui(&mut Context::new(state, dt), ui);
+                }
+                windows.show(ui.ctx(), &state.world);
             },
-        ) {
-            self.fail(event_loop, error);
-        }
-        // Apply what the overlay asked of the window (its cursor icon).
-        #[cfg(feature = "debug-overlay")]
-        if let (Some(input), Some(renderer), Some(window)) =
-            (&mut self.overlay_input, &mut self.renderer, &self.window)
-            && let Some(output) = renderer
-                .overlay_mut()
-                .and_then(crate::debug::Overlay::take_platform_output)
-        {
+        );
+        // Apply what egui asked of the window (its cursor icon).
+        if let Some(output) = overlay.take_platform_output() {
             input.apply(window, output);
         }
+        true
     }
 
-    /// While the overlay is visible, gives `event` to egui first and returns
-    /// whether the game should still see it (ADR-043, [`crate::debug::reaches_game`]).
-    #[cfg(feature = "debug-overlay")]
+    /// While the overlay is visible or the game's hook is on, gives `event` to
+    /// egui first and returns whether the game should still see it (ADR-043,
+    /// ADR-044, [`crate::debug::reaches_game`]).
+    #[cfg(feature = "egui")]
     fn game_sees(&mut self, event: &WindowEvent) -> bool {
         use crate::debug::Routed;
-        let visible = self.overlay.is_some_and(crate::debug::Toggle::visible);
-        let (true, Some(input), Some(window)) = (visible, &mut self.overlay_input, &self.window)
+        let active = self.egui_active();
+        let overlay_on = self.overlay.is_some();
+        let (true, Some(input), Some(window)) = (active, &mut self.overlay_input, &self.window)
         else {
             return true;
         };
@@ -309,6 +366,12 @@ impl<G: Game> Runner<G> {
             WindowEvent::MouseInput { .. }
             | WindowEvent::MouseWheel { .. }
             | WindowEvent::CursorMoved { .. } => Routed::Pointer,
+            // F12 still toggles the overlay while a text field has the focus.
+            WindowEvent::KeyboardInput { event: key, .. } => Routed::Key {
+                typing: input.text_field_focused()
+                    && !(overlay_on
+                        && keymap::translate(key.physical_key) == Some(crate::debug::TOGGLE_KEY)),
+            },
             _ => Routed::Other,
         };
         let reaches = crate::debug::reaches_game(routed, consumed);
@@ -334,7 +397,7 @@ impl<G: Game> Runner<G> {
 
         let steps = self.fixed.advance(delta);
         let fixed_dt = self.config.fixed_dt;
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         {
             self.frame_numbers = crate::debug::FrameNumbers {
                 frame_seconds: raw_delta,
@@ -368,6 +431,9 @@ impl<G: Game> Runner<G> {
         } else {
             self.reload_changed_assets(now);
             self.render(event_loop);
+            // The egui hook may also set the title or ask to exit.
+            self.apply_window_title();
+            self.exit_if_requested(event_loop);
         }
     }
 
@@ -425,7 +491,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         if self.window.as_ref().map(|w| w.id()) != Some(window_id) {
             return;
         }
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         if !self.game_sees(&event) {
             return;
         }
@@ -509,7 +575,7 @@ impl<G: Game> ApplicationHandler for Runner<G> {
         // Platforms may invalidate surfaces while suspended. Drop the renderer
         // and recreate it in `resumed`. Game state (world, time) is kept.
         self.renderer = None;
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         {
             self.overlay_input = None;
         }

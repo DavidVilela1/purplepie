@@ -44,8 +44,9 @@ pub(crate) struct Renderer {
     /// The font store revision the atlas was filled from; when hot reload
     /// replaces a font the atlas is cleared (ADR-037).
     font_revision: u32,
-    /// The debug overlay, when the game turned it on (ADR-043).
-    #[cfg(feature = "debug-overlay")]
+    /// The egui integration (debug overlay, ADR-043; the game's hook,
+    /// ADR-044), when the game turned either on.
+    #[cfg(feature = "egui")]
     overlay: Option<crate::debug::Overlay>,
 }
 
@@ -54,9 +55,9 @@ impl Renderer {
     ///
     /// `display` must be the display connection the window belongs to (winit's
     /// `OwnedDisplayHandle`). `width`/`height` are the window's physical size,
-    /// and `scale_factor` is physical pixels per logical pixel. `debug_overlay`
-    /// creates the debug overlay's renderer (ADR-043); it is ignored when the
-    /// `debug-overlay` feature is off.
+    /// and `scale_factor` is physical pixels per logical pixel. `egui` creates
+    /// the egui integration for the debug overlay (ADR-043) and the game's
+    /// hook (ADR-044); it is ignored when the `egui` feature is off.
     pub(crate) fn new(
         display: impl wgpu::wgt::WgpuHasDisplayHandle,
         window: Arc<dyn wgpu::WindowHandle>,
@@ -64,7 +65,7 @@ impl Renderer {
         height: u32,
         scale_factor: f64,
         clear_color: Color,
-        debug_overlay: bool,
+        egui: bool,
     ) -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
             Box::new(display),
@@ -97,12 +98,12 @@ impl Renderer {
         // The default is the adapter's first present mode, which can be `Immediate`
         // (no vsync; observed with lavapipe). Request vsync explicitly (ADR-014).
         config.present_mode = wgpu::PresentMode::AutoVsync;
-        // The overlay draws through a non-sRGB view of the surface texture when
-        // the platform allows one; this must be set before `configure`.
-        #[cfg(feature = "debug-overlay")]
-        let overlay_format = debug_overlay.then(|| overlay_view_format(&adapter, &mut config));
-        #[cfg(not(feature = "debug-overlay"))]
-        let _ = debug_overlay;
+        // egui draws through a non-sRGB view of the surface texture when the
+        // platform allows one; this must be set before `configure`.
+        #[cfg(feature = "egui")]
+        let overlay_format = egui.then(|| overlay_view_format(&adapter, &mut config));
+        #[cfg(not(feature = "egui"))]
+        let _ = egui;
 
         let clear = clear_color.to_wgpu(config.format.is_srgb());
         let minimized = width == 0 || height == 0;
@@ -115,9 +116,9 @@ impl Renderer {
         let sprites = SpritePipeline::new(&device, config.format, glyph_atlas.size());
         check(&faults)?;
 
-        #[cfg(feature = "debug-overlay")]
+        #[cfg(feature = "egui")]
         let overlay = overlay_format.map(|format| {
-            log::info!("debug overlay on (F12 toggles); drawing through {format:?}");
+            log::info!("egui on; drawing through {format:?}");
             crate::debug::Overlay::new(&device, format)
         });
         check(&faults)?;
@@ -148,7 +149,7 @@ impl Renderer {
             instances: InstanceBuffer::new("purplepie instances"),
             glyph_atlas,
             font_revision: 0,
-            #[cfg(feature = "debug-overlay")]
+            #[cfg(feature = "egui")]
             overlay,
         })
     }
@@ -187,7 +188,7 @@ impl Renderer {
         textures: &Textures,
         fonts: &Fonts,
         camera: &Camera2D,
-        overlay_visible: bool,
+        egui_frame: bool,
         before_present: impl FnOnce(),
     ) -> Result<()> {
         // Faults raised since the last frame (e.g. by `resize`) are reported first.
@@ -286,30 +287,31 @@ impl Renderer {
                 );
             }
         }
-        #[cfg(feature = "debug-overlay")]
-        if overlay_visible && let Some(overlay) = &mut self.overlay {
+        // The egui frame the runner laid out this frame, on top of the game's.
+        #[cfg(feature = "egui")]
+        if let Some(overlay) = &mut self.overlay {
             overlay.set_draw_counts(
                 self.draw_list.batches().len(),
                 self.draw_list.instances().len(),
             );
-            let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
-                format: Some(overlay.format()),
-                ..Default::default()
-            });
-            overlay.draw(
-                &self.device,
-                &self.queue,
-                &mut encoder,
-                crate::debug::Target {
-                    view: &view,
-                    size_in_pixels: [self.config.width, self.config.height],
-                    pixels_per_point: self.scale_factor as f32,
-                },
-                world,
-            );
+            if egui_frame {
+                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
+                    format: Some(overlay.format()),
+                    ..Default::default()
+                });
+                overlay.paint(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    crate::debug::Target {
+                        view: &view,
+                        size_in_pixels: [self.config.width, self.config.height],
+                    },
+                );
+            }
         }
-        #[cfg(not(feature = "debug-overlay"))]
-        let _ = overlay_visible;
+        #[cfg(not(feature = "egui"))]
+        let _ = egui_frame;
         self.queue.submit(std::iter::once(encoder.finish()));
         before_present();
         self.queue.present(frame);
@@ -317,19 +319,19 @@ impl Renderer {
     }
 }
 
-#[cfg(feature = "debug-overlay")]
+#[cfg(feature = "egui")]
 impl Renderer {
-    /// The debug overlay, when the game turned it on (ADR-043).
+    /// The egui integration, when the game turned the overlay or the hook on.
     pub(crate) fn overlay_mut(&mut self) -> Option<&mut crate::debug::Overlay> {
         self.overlay.as_mut()
     }
 }
 
-/// The format the debug overlay draws through (ADR-043): the surface format
+/// The format egui draws through (ADR-043): the surface format
 /// without its sRGB suffix, registered as an allowed view format, when the
 /// surface is sRGB and the platform supports surface view formats (not GLES or
 /// Vulkan on Android); otherwise the surface format itself.
-#[cfg(feature = "debug-overlay")]
+#[cfg(feature = "egui")]
 fn overlay_view_format(
     adapter: &wgpu::Adapter,
     config: &mut wgpu::SurfaceConfiguration,

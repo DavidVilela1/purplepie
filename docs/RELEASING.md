@@ -29,10 +29,10 @@ What a patch release keeps working:
 | Area | Promise within 0.x.y |
 |---|---|
 | **Public API** | Everything reachable from `purplepie::` that is documented: names, signatures, behaviour described in the docs. Types marked `#[non_exhaustive]` (ADR-040) may gain fields or variants, so build them with their constructors and builders and keep a wildcard arm when matching their enums (`Error`, `KeyCode`, `MouseButton`, `AnimationMode`, `TextureFilter`). |
-| **Re-exported dependencies** | `ecs::hecs` / `ecs::World` / `ecs::Entity` (hecs 0.11), `math::Vec2` / `math::Mat4` (glam 0.33), and the `serde` 1 bounds of `register_scene_component` are part of the API. Moving them to an incompatible version needs a minor release. |
+| **Re-exported dependencies** | `ecs::hecs` / `ecs::World` / `ecs::Entity` (hecs 0.11), `math::Vec2` / `math::Mat4` (glam 0.33), and the `serde` 1 bounds of `register_scene_component` are part of the API. With the optional `egui` feature, so are `purplepie::egui` and `Game::egui` (egui 0.36, ADR-044). Moving them to an incompatible version needs a minor release. |
 | **Scene files** | Files of format version 1 keep loading. A patch release never writes a file that the same 0.x.0 cannot read. |
 | **Assets** | PNG textures, TrueType/OpenType fonts, WAV and OGG Vorbis sounds, and the asset-folder lookup rules (ADR-025). |
-| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `debug-overlay` feature (ADR-043) needs Rust 1.95 because egui does, so the `msrv` job builds without it. |
+| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `egui` and `debug-overlay` features (ADR-043, ADR-044) need Rust 1.95 because egui does, so the `msrv` job builds without them. |
 | **Platforms** | Windows, Linux (X11; Wayland untested) and macOS are built and tested in CI on every push. Rendering is verified by hand: on Linux by Cowork (software GPU), on Windows by the owner's checklist (`docs/CHECKLIST.md`). macOS rendering is not yet verified. |
 
 Not covered by the promise:

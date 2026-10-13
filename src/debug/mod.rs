@@ -1,18 +1,27 @@
-//! Debug overlay (ADR-043): an egui window drawn over the game, shown and
-//! hidden with F12. Compiled only with the `debug-overlay` feature and turned
-//! on with [`EngineConfig::with_debug_overlay`](crate::EngineConfig::with_debug_overlay).
+//! The engine's egui integration: the debug overlay (ADR-043), egui windows
+//! drawn over the game and shown and hidden with F12, and the game's own egui
+//! UI drawn through [`Game::egui`](crate::Game::egui) (ADR-044). Compiled only
+//! with the `egui` feature (which `debug-overlay` turns on); the overlay is
+//! turned on with [`EngineConfig::with_debug_overlay`](crate::EngineConfig::with_debug_overlay)
+//! and the hook with [`EngineConfig::with_egui`](crate::EngineConfig::with_egui).
 //!
-//! Crate-private: no egui type reaches the public API. The overlay belongs to
-//! the engine, not to the game's world: it never spawns entities, so entity
-//! counts, queries, `World::clear` and saved scenes are unaffected.
+//! Crate-private: egui reaches the public API only through the hook and the
+//! `purplepie::egui` re-export. The overlay belongs to the engine, not to the
+//! game's world: it never spawns entities, so entity counts, queries,
+//! `World::clear` and saved scenes are unaffected.
+//!
+//! One egui frame per engine frame: the runner lays it out after `update`
+//! ([`Overlay::layout`]: the game's UI first, then the overlay's
+//! [`Windows`] on top), and the renderer paints it after the game's frame
+//! ([`Overlay::paint`]).
 //!
 //! - [`Toggle`] decides what F12 does (no egui, unit-tested).
-//! - [`Overlay`] owns the egui context and its wgpu renderer and draws one
-//!   frame of the overlay in its own render pass, after the game's (owned by
-//!   the renderer).
+//! - [`Overlay`] owns the egui context and its wgpu renderer; it keeps one
+//!   laid-out frame until it is painted, in its own render pass after the
+//!   game's (owned by the renderer).
 //! - [`OverlayInput`] turns window events into egui input (egui-winit; owned
 //!   by the runner), and [`reaches_game`] decides which events the game still
-//!   sees while the overlay is visible (no egui, unit-tested).
+//!   sees while egui gets them (no egui, unit-tested).
 //!
 //! - [`Stats`] is one frame's numbers for the stats window, gathered from the
 //!   engine's state ([`Stats::gather`]) with a smoothed frame time
@@ -23,7 +32,7 @@
 //!
 //! PP-037b1 drew the window, PP-037b2 routed the mouse to it, PP-037c filled
 //! it with statistics, PP-037d1 added the entity inspector (game components as
-//! RON: PP-037d2).
+//! RON: PP-037d2), PP-038c the game's hook and the keyboard rule.
 
 mod inspect;
 
@@ -217,28 +226,33 @@ pub(crate) enum Routed {
     /// A mouse button release; `game_holds` is whether the game's input has
     /// that button down (it saw the press).
     Release { game_holds: bool },
-    /// Keys, focus, resize, close and everything else.
+    /// A key; `typing` is whether an egui text field has the keyboard focus.
+    Key { typing: bool },
+    /// Focus, resize, close and everything else.
     Other,
 }
 
-/// While the overlay is visible: does the game's input get this event, given
-/// whether egui consumed it (ADR-043)?
+/// While egui gets window events (the overlay is visible or the game's hook
+/// is on): does the game's input get this event, given whether egui consumed
+/// it (ADR-043, ADR-044)?
 ///
-/// - Pointer events egui consumes (the pointer is over an overlay window, or
-///   egui is dragging one) belong to the overlay.
+/// - Pointer events egui consumes (the pointer is over an egui window or
+///   panel, or egui is dragging something) belong to egui.
 /// - A release always reaches the game when the game holds that button, so a
 ///   press that started in the game is never left stuck down.
-/// - Keys always reach the game: the overlay has no text fields yet, and egui
-///   claims Tab and keeps keyboard focus after a click, which would otherwise
-///   swallow game keys. (F12 is handled before this, by [`Toggle`].)
+/// - Keys reach the game unless an egui text field has the keyboard focus.
+///   egui's own "consumed" flag is not used for keys: egui claims Tab and keeps
+///   the focus on a button after a click, which would swallow game keys.
+///   (F12 is handled before this, by [`Toggle`].)
 pub(crate) fn reaches_game(event: Routed, egui_consumed: bool) -> bool {
     match event {
         Routed::Other | Routed::Release { game_holds: true } => true,
+        Routed::Key { typing } => !typing,
         Routed::Pointer | Routed::Release { game_holds: false } => !egui_consumed,
     }
 }
 
-/// Window events → egui input, for the visible overlay (egui-winit).
+/// Window events → egui input, for the overlay and the game's hook (egui-winit).
 pub(crate) struct OverlayInput {
     state: egui_winit::State,
 }
@@ -267,13 +281,19 @@ impl OverlayInput {
         self.state.on_window_event(window, event).consumed
     }
 
+    /// Whether an egui text field has the keyboard focus (as of the last
+    /// frame), so keys belong to it.
+    pub(crate) fn text_field_focused(&self) -> bool {
+        self.state.egui_ctx().text_edit_focused()
+    }
+
     /// Everything egui needs for the next frame (events since the last one,
     /// screen size, DPI scale, time).
     pub(crate) fn take(&mut self, window: &winit::window::Window) -> egui::RawInput {
         self.state.take_egui_input(window)
     }
 
-    /// Applies what the last overlay frame asked of the window (the cursor icon).
+    /// Applies what the last egui frame asked of the window (the cursor icon).
     pub(crate) fn apply(&mut self, window: &winit::window::Window, output: egui::PlatformOutput) {
         self.state.handle_platform_output(window, output);
     }
@@ -283,7 +303,7 @@ impl OverlayInput {
 /// them: (registered name, one-line RON or the error that prevented it).
 pub(crate) type GameComponents = Vec<(String, Result<String, String>)>;
 
-/// The overlay's egui side, without the GPU: input in, layout out.
+/// The egui side, without the GPU: input in, a laid-out frame out.
 pub(crate) struct OverlayUi {
     context: egui::Context,
     started: Instant,
@@ -305,6 +325,11 @@ pub(crate) struct OverlayUi {
     /// The selected entity's registered game components, prepared by the
     /// runner from the scene registry: (entity, (name, RON or error) rows).
     game: Option<(Entity, GameComponents)>,
+    /// The last renderer frame's draw calls and instances, shown by the next
+    /// stats window (the frame is laid out before it is drawn).
+    draw_counts: (usize, usize),
+    /// The frame laid out but not painted yet.
+    prepared: Option<egui::FullOutput>,
 }
 
 impl OverlayUi {
@@ -323,22 +348,30 @@ impl OverlayUi {
             stats: Stats::default(),
             selected: None,
             game: None,
+            draw_counts: (0, 0),
+            prepared: None,
         }
     }
 
     /// Lays out one frame from the input set with [`Overlay::set_input`], or
     /// from [`basic_input`] for a target of `size_in_pixels` at
-    /// `pixels_per_point` when there is none.
+    /// `pixels_per_point` when there is none, and keeps it for
+    /// [`Overlay::paint`].
+    ///
+    /// `frame` builds the frame's content from the root `Ui`: the game's UI,
+    /// then [`Windows::show`] for the overlay's windows (only shown when
+    /// `show_windows`). egui may call it more than once per frame.
     ///
     /// egui's scale is the input's native scale times its zoom factor (left
     /// at 1), so the scale is never set on the context directly: that would
     /// apply it twice.
-    fn run(
+    fn layout(
         &mut self,
         size_in_pixels: [u32; 2],
         pixels_per_point: f32,
-        world: &World,
-    ) -> egui::FullOutput {
+        show_windows: bool,
+        mut frame: impl FnMut(&mut egui::Ui, &mut Windows<'_>),
+    ) {
         let pixels_per_point = if pixels_per_point.is_finite() && pixels_per_point > 0.0 {
             pixels_per_point
         } else {
@@ -351,39 +384,87 @@ impl OverlayUi {
                 self.started.elapsed().as_secs_f64(),
             )
         });
-        let rows = stats_rows(&self.stats);
-        let selected = &mut self.selected;
-        let game = self.game.as_ref();
-        let mut window = None;
-        let mut entities = None;
-        let mut output = self.context.run_ui(input, |ui| {
-            window = egui::Window::new("PurplePie")
-                .default_pos([12.0, 12.0])
-                .resizable(false)
-                .show(ui.ctx(), |ui| {
-                    egui::Grid::new("purplepie stats")
-                        .num_columns(2)
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for (label, value) in &rows {
-                                ui.label(*label);
-                                ui.monospace(value.as_str());
-                                ui.end_row();
-                            }
-                        });
-                    ui.small(concat!(
-                        "PurplePie ",
-                        env!("CARGO_PKG_VERSION"),
-                        " - F12 hides"
-                    ));
-                })
-                .map(|response| response.response.rect);
-            entities = entities_window(ui.ctx(), world, selected, game);
-        });
-        self.last_window = window;
-        self.last_entities_window = entities;
+        let rows = if show_windows {
+            let mut stats = self.stats;
+            (stats.batches, stats.instances) = self.draw_counts;
+            stats_rows(&stats)
+        } else {
+            Vec::new()
+        };
+        let mut windows = Windows {
+            show: show_windows,
+            rows: &rows,
+            selected: &mut self.selected,
+            game: self.game.as_ref(),
+            stats_rect: None,
+            entities_rect: None,
+        };
+        let mut output = self.context.run_ui(input, |ui| frame(ui, &mut windows));
+        self.last_window = windows.stats_rect;
+        self.last_entities_window = windows.entities_rect;
         self.platform_output = Some(std::mem::take(&mut output.platform_output));
-        output
+        // A frame that was never painted (a minimized window) still has
+        // texture changes the GPU must get: keep them, older first.
+        if let Some(mut unpainted) = self.prepared.take() {
+            let mut deltas = std::mem::take(&mut unpainted.textures_delta);
+            deltas.append(std::mem::take(&mut output.textures_delta));
+            output.textures_delta = deltas;
+        }
+        self.prepared = Some(output);
+    }
+}
+
+impl Drop for OverlayUi {
+    fn drop(&mut self) {
+        // The GPU textures go with the renderer; egui asserts that dropped
+        // texture changes were handled, so clear them deliberately.
+        if let Some(unpainted) = self.prepared.take() {
+            unpainted.drop_without_applying_deltas();
+        }
+    }
+}
+
+/// The debug overlay's windows for one frame, handed to the frame builder of
+/// [`OverlayUi::layout`] so they can be drawn after (on top of) the game's UI.
+pub(crate) struct Windows<'a> {
+    show: bool,
+    rows: &'a [(&'static str, String)],
+    selected: &'a mut Option<Entity>,
+    game: Option<&'a (Entity, GameComponents)>,
+    stats_rect: Option<egui::Rect>,
+    entities_rect: Option<egui::Rect>,
+}
+
+impl Windows<'_> {
+    /// Shows the stats and "Entities" windows over everything drawn so far,
+    /// if the overlay is visible; `world` is only read, by the inspector.
+    pub(crate) fn show(&mut self, context: &egui::Context, world: &World) {
+        if !self.show {
+            return;
+        }
+        let rows = self.rows;
+        self.stats_rect = egui::Window::new("PurplePie")
+            .default_pos([12.0, 12.0])
+            .resizable(false)
+            .show(context, |ui| {
+                egui::Grid::new("purplepie stats")
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (label, value) in rows {
+                            ui.label(*label);
+                            ui.monospace(value.as_str());
+                            ui.end_row();
+                        }
+                    });
+                ui.small(concat!(
+                    "PurplePie ",
+                    env!("CARGO_PKG_VERSION"),
+                    " - F12 hides"
+                ));
+            })
+            .map(|response| response.response.rect);
+        self.entities_rect = entities_window(context, world, &mut *self.selected, self.game);
     }
 }
 
@@ -502,18 +583,15 @@ fn basic_input(size_in_pixels: [u32; 2], pixels_per_point: f32, time: f64) -> eg
     input
 }
 
-/// Where [`Overlay::draw`] draws one frame.
+/// Where [`Overlay::paint`] draws the laid-out frame.
 pub(crate) struct Target<'a> {
     /// A view of the frame in the overlay's [`format`](Overlay::format).
     pub(crate) view: &'a wgpu::TextureView,
     /// The frame's physical size.
     pub(crate) size_in_pixels: [u32; 2],
-    /// The window's DPI scale, used only without input from [`OverlayInput`]
-    /// (which carries its own).
-    pub(crate) pixels_per_point: f32,
 }
 
-/// The overlay's egui side and its wgpu renderer for one GPU device.
+/// The egui side and its wgpu renderer for one GPU device.
 pub(crate) struct Overlay {
     ui: OverlayUi,
     renderer: egui_wgpu::Renderer,
@@ -542,12 +620,12 @@ impl Overlay {
         self.ui.context.clone()
     }
 
-    /// Sets the input for the next [`draw`](Self::draw).
+    /// Sets the input for the next [`layout`](Self::layout).
     pub(crate) fn set_input(&mut self, input: egui::RawInput) {
         self.ui.pending_input = Some(input);
     }
 
-    /// Sets the numbers the next [`draw`](Self::draw) shows.
+    /// Sets the numbers the next [`layout`](Self::layout) shows.
     pub(crate) fn set_stats(&mut self, stats: Stats) {
         self.ui.stats = stats;
     }
@@ -564,11 +642,22 @@ impl Overlay {
         self.ui.game = Some((entity, components));
     }
 
-    /// Adds this frame's draw counts to the numbers set with
-    /// [`set_stats`](Self::set_stats).
+    /// Records the renderer's draw calls and instances of this frame, shown
+    /// by the next frame's stats window.
     pub(crate) fn set_draw_counts(&mut self, batches: usize, instances: usize) {
-        self.ui.stats.batches = batches;
-        self.ui.stats.instances = instances;
+        self.ui.draw_counts = (batches, instances);
+    }
+
+    /// Lays out this frame (see [`OverlayUi::layout`]) for [`paint`](Self::paint).
+    pub(crate) fn layout(
+        &mut self,
+        size_in_pixels: [u32; 2],
+        pixels_per_point: f32,
+        show_windows: bool,
+        frame: impl FnMut(&mut egui::Ui, &mut Windows<'_>),
+    ) {
+        self.ui
+            .layout(size_in_pixels, pixels_per_point, show_windows, frame);
     }
 
     /// What the last frame asked of the window, once.
@@ -576,29 +665,28 @@ impl Overlay {
         self.ui.platform_output.take()
     }
 
-    /// The format of the views [`draw`](Self::draw) expects.
+    /// The format of the views [`paint`](Self::paint) expects.
     pub(crate) fn format(&self) -> wgpu::TextureFormat {
         self.format
     }
 
-    /// Records one overlay frame into `encoder`: lays it out
-    /// ([`OverlayUi::run`]), uploads egui's textures and buffers, and draws into
-    /// `target` on top of what is already there. `world` is only read, by the
-    /// entity inspector.
-    pub(crate) fn draw(
+    /// Records the frame laid out by [`layout`](Self::layout) into `encoder`,
+    /// if there is one: uploads egui's textures and buffers and draws into
+    /// `target` on top of what is already there.
+    pub(crate) fn paint(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         target: Target<'_>,
-        world: &World,
     ) {
+        let Some(mut output) = self.ui.prepared.take() else {
+            return;
+        };
         let Target {
             view,
             size_in_pixels,
-            pixels_per_point,
         } = target;
-        let mut output = self.ui.run(size_in_pixels, pixels_per_point, world);
 
         let shapes = std::mem::take(&mut output.shapes);
         let jobs = self.ui.context.tessellate(shapes, output.pixels_per_point);
@@ -619,7 +707,7 @@ impl Overlay {
         {
             let mut pass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("purplepie debug overlay"),
+                    label: Some("purplepie egui"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view,
                         depth_slice: None,
@@ -725,16 +813,18 @@ mod tests {
                 multiview_mask: None,
             });
         }
-        overlay.draw(
+        let world = World::new();
+        overlay.layout([WIDTH, HEIGHT], 1.0, true, |ui, windows| {
+            windows.show(ui.ctx(), &world);
+        });
+        overlay.paint(
             device,
             queue,
             &mut encoder,
             Target {
                 view: &overlay_view,
                 size_in_pixels: [WIDTH, HEIGHT],
-                pixels_per_point: 1.0,
             },
-            &World::new(),
         );
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("overlay readback"),
@@ -857,14 +947,144 @@ mod tests {
     }
 
     #[test]
-    fn a_button_the_game_holds_is_always_released_and_keys_always_pass() {
+    fn a_button_the_game_holds_is_always_released_and_keys_pass_unless_typing() {
         for consumed in [false, true] {
             assert!(
                 reaches_game(Routed::Release { game_holds: true }, consumed),
                 "a press that started in the game must not stay stuck (consumed: {consumed})"
             );
-            assert!(reaches_game(Routed::Other, consumed), "keys, focus, resize");
+            assert!(reaches_game(Routed::Other, consumed), "focus, resize");
+            assert!(
+                reaches_game(Routed::Key { typing: false }, consumed),
+                "keys reach the game even when egui reports them consumed (Tab)"
+            );
+            assert!(
+                !reaches_game(Routed::Key { typing: true }, consumed),
+                "keys typed into an egui text field stay with it"
+            );
         }
+    }
+
+    /// A frame from `basic_input` with `events`, laid out by `frame`; returns
+    /// the output with its texture changes cleared.
+    fn frame_with(
+        ui: &mut OverlayUi,
+        events: Vec<egui::Event>,
+        show_windows: bool,
+        frame: impl FnMut(&mut egui::Ui, &mut Windows<'_>),
+    ) -> egui::FullOutput {
+        let mut input = basic_input([640, 400], 1.0, 0.0);
+        input.events = events;
+        ui.pending_input = Some(input);
+        ui.layout([640, 400], 1.0, show_windows, frame);
+        let mut output = ui.prepared.take().expect("a laid-out frame");
+        output.textures_delta.clear();
+        output
+    }
+
+    #[test]
+    fn the_games_ui_gets_the_whole_window_and_the_overlay_windows_only_when_visible() {
+        let mut ui = OverlayUi::new();
+        let world = World::new();
+        let mut game_area = None;
+        for show in [false, true, true] {
+            frame_with(&mut ui, Vec::new(), show, |root, windows| {
+                game_area = Some(root.max_rect());
+                egui::Panel::left("game panel").show(root, |ui| ui.label("game"));
+                windows.show(root.ctx(), &world);
+            });
+            assert_eq!(
+                game_area.map(|r| r.size()),
+                Some(egui::vec2(640.0, 400.0)),
+                "the hook gets the root of the frame"
+            );
+            assert_eq!(ui.last_window.is_some(), show, "stats window shown: {show}");
+            assert_eq!(ui.last_entities_window.is_some(), show);
+        }
+        // The overlay's window sits on a layer above the game's panels.
+        let window = ui.last_window.expect("visible");
+        let on_top = ui.context.layer_id_at(window.center()).expect("a layer");
+        assert_eq!(on_top.order, egui::Order::Middle, "{on_top:?}");
+    }
+
+    #[test]
+    fn only_a_focused_text_field_takes_the_keyboard() {
+        let mut ui = OverlayUi::new();
+        let mut text = String::new();
+        let mut focus_button = true;
+        let mut build = |root: &mut egui::Ui, _: &mut Windows<'_>, focus_button: bool| {
+            let button = root.button("press");
+            let field = root.text_edit_singleline(&mut text);
+            if focus_button {
+                button.request_focus();
+            } else {
+                field.request_focus();
+            }
+        };
+        for _ in 0..2 {
+            frame_with(&mut ui, Vec::new(), false, |r, w| build(r, w, focus_button));
+        }
+        assert!(
+            ui.context.egui_wants_keyboard_input() && !ui.context.text_edit_focused(),
+            "a focused button is not typing: game keys must still pass"
+        );
+        focus_button = false;
+        for _ in 0..2 {
+            frame_with(&mut ui, Vec::new(), false, |r, w| build(r, w, focus_button));
+        }
+        assert!(
+            ui.context.text_edit_focused(),
+            "a focused text field is typing"
+        );
+        frame_with(
+            &mut ui,
+            vec![egui::Event::Text("hi".to_owned())],
+            false,
+            |r, w| build(r, w, focus_button),
+        );
+        assert_eq!(text, "hi", "the field received the typed text");
+    }
+
+    #[test]
+    fn texture_changes_of_unpainted_frames_are_kept_for_the_next_paint() {
+        let mut ui = OverlayUi::new();
+        let world = World::new();
+        // The first frame creates egui's font texture; it is never painted
+        // (a minimized window), so the second frame must still carry it.
+        ui.layout([640, 400], 1.0, true, |r, w| w.show(r.ctx(), &world));
+        assert!(
+            !ui.prepared
+                .as_ref()
+                .expect("laid out")
+                .textures_delta
+                .set
+                .is_empty(),
+            "the first frame uploads the font texture"
+        );
+        ui.layout([640, 400], 1.0, true, |r, w| w.show(r.ctx(), &world));
+        assert!(
+            !ui.prepared
+                .as_ref()
+                .expect("laid out")
+                .textures_delta
+                .set
+                .is_empty(),
+            "kept for the next paint"
+        );
+        // Dropping an unpainted frame must not trip egui's assertion.
+        drop(ui);
+    }
+
+    /// Lays out a frame with only the overlay's windows (an empty world) and
+    /// takes it back, its texture changes cleared (no renderer here).
+    fn layout_windows(ui: &mut OverlayUi, size: [u32; 2], scale: f32) -> egui::FullOutput {
+        let world = World::new();
+        ui.layout(size, scale, true, |ui, windows| {
+            windows.show(ui.ctx(), &world)
+        });
+        let mut output = ui.prepared.take().expect("a laid-out frame");
+        output.textures_delta.clear();
+        output
     }
 
     #[test]
@@ -874,8 +1094,7 @@ mod tests {
         let mut ui = OverlayUi::new();
         let mut windows = Vec::new();
         for frame in 0..3 {
-            let mut output = ui.run([640, 400], 2.0, &World::new());
-            output.textures_delta.clear(); // no renderer here
+            let output = layout_windows(&mut ui, [640, 400], 2.0);
             assert_eq!(output.pixels_per_point, 2.0, "basic input, frame {frame}");
             assert_eq!(ui.context.viewport_rect().size(), egui::vec2(320.0, 200.0));
             windows.extend(ui.last_window);
@@ -883,8 +1102,7 @@ mod tests {
         // Input like egui-winit's (it carries its own native scale) wins over
         // the size and scale passed to `run`.
         ui.pending_input = Some(basic_input([640, 400], 2.0, 1.0));
-        let mut output = ui.run([640, 400], 1.0, &World::new());
-        output.textures_delta.clear();
+        let output = layout_windows(&mut ui, [640, 400], 1.0);
         assert_eq!(output.pixels_per_point, 2.0, "input from the window");
         windows.extend(ui.last_window);
         assert!(windows.len() >= 3, "the window is laid out");

@@ -213,7 +213,7 @@ git status --short
 
 **Expect:** `git status` prints nothing.
 
-## 9. Debug overlay (optional; needs Rust 1.95)
+## 9. Debug overlay and egui panels (optional; need Rust 1.95)
 
 ```powershell
 cd $pp
@@ -230,8 +230,18 @@ does not zoom; elsewhere it does. At the top right, open the collapsed "Entities
 every entity by id; click one to see its components. (In `cargo run --example scene --features debug-overlay`, the
 spinning squares also show `scene_demo::Spin`.) F12 hides both windows and shows them again; everything else works as
 in step 3.
-The console prints `debug overlay on (F12 toggles); drawing through …` with the format egui draws through (on most
+The console prints `egui on; drawing through …` with the format egui draws through (on most
 GPUs the surface format without `Srgb`). Report that format, and whether the window is dark grey with light text.
+
+```powershell
+cargo run --example egui_panel --features debug-overlay
+```
+
+**Expect:** a dark "Tuning" panel on the left of a purple window with a white square, and the overlay's windows on
+top (F12 hides them; the panel stays). Dragging the size slider resizes the square; the colour button changes its
+colour; arrows move it; a click in the purple area stamps an orange dot, and the panel counts only those clicks.
+Click the title field, type a few letters: the window title changes and the arrows move the text cursor, not the
+square; click the purple area and the arrows move the square again. "Remove stamps" removes the dots.
 
 ## macOS or Linux
 

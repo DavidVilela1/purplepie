@@ -42,7 +42,7 @@
 mod app;
 mod assets;
 pub mod audio;
-#[cfg(feature = "debug-overlay")]
+#[cfg(feature = "egui")]
 mod debug;
 pub mod ecs;
 mod error;
@@ -54,6 +54,12 @@ mod time;
 pub mod ui;
 
 pub use app::{Context, Engine, EngineConfig, Game};
+/// The [egui](https://docs.rs/egui/0.36) crate (0.36), for
+/// [`Game::egui`]. Only with PurplePie's optional `egui` feature (ADR-044).
+/// Use egui through this path rather than a dependency of your own, so your
+/// game always gets the version the engine draws with.
+#[cfg(feature = "egui")]
+pub use egui;
 pub use error::{BoxError, Error, Result};
 pub use time::Time;
 

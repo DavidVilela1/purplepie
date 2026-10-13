@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038c: Public egui hook: `egui` feature, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves from the renderer to the runner (game UI first, overlay windows on top); pointer routing whenever the hook is on, keys withheld while egui wants keyboard input; example, tests, RELEASING/CI notes** · P1 · TODO ← **next task**
+- [ ] **PP-038d: Picking: a public query for the entities drawn at a world point, topmost first in draw order (ADR-021), skipping `Hidden` and `ScreenSpace`, with rotation, scale and text bounds** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038c: Public egui hook: `egui` feature (`debug-overlay` builds on it), `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; egui frame laid out by the runner (game UI, then overlay windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example (phase P5, item 3)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038b: Scene loading speed: ron held at exactly 0.12.1 (0.12.2's number-range support made parsing quadratic), whole scene parsed before the version check; linear-time regression test (phase P5, item 2)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038a: Scene editor design: ADR-044 (separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading), measured in a throwaway spike that found a quadratic scene parse; P5 split into PP-038b–PP-038j (phase P5, item 1)** · DONE (2026-10-13; spike on Linux)
 - [x] **PP-037d2: Debug overlay, part 3b: registered game components as RON in the inspector (`Registry::describe`); "Entities" window moved to the top right; phase P4 complete** · DONE (2026-10-13; verified on Linux)
@@ -84,7 +85,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
 
-- [ ] **PP-038d: Picking: a public query for the entities drawn at a world point, topmost first in draw order (ADR-021), skipping `Hidden` and `ScreenSpace`, with rotation, scale and text bounds** · P2 · TODO
 - [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P2 · TODO
 - [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P2 · TODO
 - [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P2 · TODO
@@ -476,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038c: Public egui hook ← NEXT
+### PP-038d: Picking ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 3 · Priority P1 · TODO |
+| Stage | Phase P5, item 4 · Priority P1 · TODO |
+| Dependencies | PP-038c (DONE); ADR-044 |
+| Why now | The editor's first slice (PP-038f/g) selects entities by clicking them, and ADR-044 put picking in the engine (games can use it too). The PP-038a spike showed that a naive pick chooses the demo's hidden 2 000 × 2 000 quad. |
+| Scope | A public query for the entities drawn at a world point, topmost first, in the renderer's draw order (ADR-021: layer, then material, then entity id), skipping `Hidden` and `ScreenSpace` entities (screen-space ones could get a separate query later). Bounds: `Quad` and `Sprite` sizes and `Text` metrics around the anchor, transformed by `Transform2D` (rotation and scale, including negative scale). Where it lives (`render` next to the draw list, reached through `Context` because text bounds need the fonts) and its name are part of the task; record the API in an ADR-044 implementation note. Unit tests on a headless world (overlaps across layers, same-layer order by material and id, rotated and scaled shapes, text, hidden, screen space); use it in `egui_panel` or the sandbox only if it stays small. |
+| Acceptance criteria | Picking agrees with what is drawn on top (a test compares with the draw list's order); hidden and screen-space entities are never picked; rotated/scaled/negative-scale shapes and texts pick by their drawn area; docs and an example in the API docs; no change to frames. |
+
+### PP-038c: Public egui hook
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 3 · Priority P1 · **DONE** (2026-10-13; verified on Linux) |
 | Dependencies | PP-038b (DONE); ADR-044 |
-| Why now | Every editor task (PP-038f–j) draws its panels through this hook, and it changes the engine's frame flow and input routing, so it comes first and alone. |
-| Scope | ADR-044's hook: a public optional `egui` feature (`debug-overlay` implies it); `purplepie::egui` re-export; `Game::egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui)` with an empty default, called once per frame after `update` inside the frame's `run_ui`; `EngineConfig::with_egui(bool)` (exists without the feature, then one warning). The runner runs the egui pass (game UI first, then the overlay's windows when visible) and stores the output; the renderer only paints it. While the hook is on, egui gets every window event; pointer events it consumes are withheld from `Input` (ADR-043's rule, releases of held buttons still delivered) and keys are withheld while `egui_wants_keyboard_input()`. With only `debug-overlay` and the overlay hidden, behaviour stays as today (egui gets nothing). Stats draw counts become the previous frame's. A small example (e.g. `examples/egui_panel.rs`: a panel with a slider that changes a quad), tests for routing and the key rule, RELEASING (feature, Rust 1.95, egui as a re-exported dependency), CHECKLIST, CHANGELOG. |
-| Acceptance criteria | Hook drawn and interactive under Xvfb (click a panel button, drag a slider; the game does not see those clicks; keys typed into a text field do not reach `Input`); overlay still works on top with F12; without the features, frames and behaviour unchanged (Breakout lose frame and frozen scene frame pixel-identical); clippy/tests with and without `--all-features`; MSRV job unaffected. |
+| Acceptance criteria | ✅ Features `egui` (egui, egui-wgpu, egui-winit) and `debug-overlay = ["egui"]`; `purplepie::egui`; `Game::egui(&mut self, ctx, ui: &mut egui::Ui)` (doc example) and `EngineConfig::with_egui` (warning without the feature). ✅ The runner lays out one egui frame after `update` (`Overlay::layout`: game UI first, then the overlay's `Windows`); the renderer only paints it (`Overlay::paint`); stats show the previous frame's draw counts; unpainted frames keep their texture changes (unit test, fails without the merge). ✅ Input: egui gets events while the overlay is visible or the hook is on; keys are withheld only while a text field has the focus (`text_edit_focused`; F12 still toggles). Unit tests: routing, the game's UI gets the whole window and the overlay's windows only when visible and on top, focus (a focused button is not typing, a focused field is and receives text). ✅ `examples/egui_panel.rs` (`required-features = ["egui"]`) under Xvfb: panel clicks, slider drag, field click and button did not reach the game, 2 scene clicks did; typing changed the window title; arrows were withheld while typing (32 key frames = only the later 0.5 s press); with `debug-overlay` the overlay draws on top and F12 works while typing. Sandbox overlay unchanged (click/wheel on its windows withheld, inspector works, stamp click counted, zoom 1). Without features, Breakout lose frame and frozen scene frame pixel-identical. ✅ CI msrv comment, RELEASING (egui re-export and Rust 1.95 exception), CHECKLIST step 9, README, CHANGELOG. |
 
 ### PP-038b: Scene loading speed
 | Field | Value |

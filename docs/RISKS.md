@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-13 (PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
+Last reviewed: 2026-10-13 (PP-038c: egui is public with the `egui` feature, R-30; PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -271,9 +271,9 @@ Likelihood and impact are qualitative: Low, Medium or High.
   appears in the public API, so swapping the overlay's implementation does not break games.
 - **Fallback:** the alternative recorded in ADR-043, an overlay drawn with the engine's own text and quads (no
   dependency), or keeping the overlay on the last compatible wgpu until egui catches up.
-- **Changed by ADR-044 (2026-10-13, planned in PP-038c):** the scene editor needs egui outside the engine, so a new
-  optional `egui` feature will re-export egui and pass a `Ui` to `Game::egui`. With that feature on, egui *is* part of
-  the public API: an egui release that changes its API becomes a PurplePie minor release (RELEASING §2), and egui's
+- **Changed by ADR-044 (built in PP-038c, 2026-10-13):** the scene editor needs egui outside the engine, so the
+  optional `egui` feature re-exports egui and passes a `Ui` to `Game::egui`. With that feature on, egui *is* part of
+  the public API (RELEASING §2 lists it): an egui release that changes its API becomes a PurplePie minor release (RELEASING §2), and egui's
   release pace (several breaking releases a year) sets how often that happens. Games without the feature are
   unaffected. Fallback if the churn is too costly: wrap the few egui parts the editor needs behind engine types.
 

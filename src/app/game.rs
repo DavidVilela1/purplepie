@@ -42,6 +42,47 @@ pub trait Game {
     fn update(&mut self, ctx: &mut Context<'_>) {
         let _ = ctx;
     }
+
+    /// Called once per frame after [`update`](Self::update), when the game
+    /// turned the hook on with
+    /// [`EngineConfig::with_egui`](crate::EngineConfig::with_egui), to draw
+    /// its own egui UI (panels, windows, tools) over the frame (ADR-044). Only
+    /// with PurplePie's optional `egui` feature; use egui as `purplepie::egui`.
+    ///
+    /// `ui` is the root of this frame's egui UI, covering the whole window:
+    /// add panels with `egui::Panel::left(..).show(ui, ..)` and windows with
+    /// `egui::Window::new(..).show(ui.ctx(), ..)`. The debug overlay's windows
+    /// are drawn after it, on top. Mouse presses, wheel turns and drags that
+    /// egui uses do not reach [`Context::input`]; neither do keys while an
+    /// egui text field has the keyboard focus. Read shortcuts from egui with
+    /// `ui.input_mut(|i| i.consume_key(..))`, which checks the modifiers held
+    /// for each key press.
+    ///
+    /// ```no_run
+    /// use purplepie::{egui, Context, Engine, EngineConfig, Game};
+    ///
+    /// struct Tool {
+    ///     speed: f32,
+    /// }
+    ///
+    /// impl Game for Tool {
+    ///     fn egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
+    ///         egui::Panel::left("tool").show(ui, |ui| {
+    ///             ui.add(egui::Slider::new(&mut self.speed, 0.0..=10.0).text("speed"));
+    ///             ui.label(format!("{} entities", ctx.world().len()));
+    ///         });
+    ///     }
+    /// }
+    ///
+    /// fn main() -> purplepie::Result<()> {
+    ///     let config = EngineConfig::new("Tool").with_egui(true);
+    ///     Engine::new(config)?.run(Tool { speed: 1.0 })
+    /// }
+    /// ```
+    #[cfg(feature = "egui")]
+    fn egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
+        let _ = (ctx, ui);
+    }
 }
 
 /// What game code can see and do during a callback.

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1); PP-038c–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`); PP-038d–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2330,8 +2330,9 @@ option based on the manifest directory, which would make `cargo run -p` from the
 Accepted (2026-10-12, PP-037a). Implemented in part by PP-037b1 (2026-10-12): the feature with `egui` and
 `egui-wgpu`, `EngineConfig::with_debug_overlay`, F12, the overlay pass and the non-sRGB view; and by PP-037b2
 (2026-10-12): `egui-winit` and mouse routing (keys refined below). Decides the approach of phase P4 (ROADMAP).
-Extended by ADR-044 (2026-10-13, planned): a public `egui` feature with a `Game::egui` hook for the scene editor;
-the egui pass moves from the renderer to the runner, and keys are withheld while egui wants keyboard input. Refines ADR-038, which left open whether
+Extended by ADR-044 (2026-10-13, built in PP-038c): a public `egui` feature with a `Game::egui` hook for the scene
+editor; the egui pass moved from the renderer to the runner, and keys are withheld while an egui text field has the
+focus. Refines ADR-038, which left open whether
 the overlay is a feature or a `crates/` member: it is a feature. Applies ADR-013: the dependencies are added in
 PP-037b, the first task that uses them, not in this decision.
 
@@ -2647,6 +2648,34 @@ small and enough for the core interactions.
   unless the larger parse is under 0.5 s. With 0.12.1: ratio 4.2 (89 → 373 ms, debug). Put back on ron 0.12.2 it
   failed in debug (14.5×, 0.76 → 11.0 s) and in release (17.9×). It adds about 1.5 s to a debug test run.
 - The frozen scene example's frame (`demo.ron` loaded) is pixel-identical to the one built from GitHub `main`.
+
+## Implementation notes (PP-038c)
+- **Features:** `egui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]` and `debug-overlay = ["egui"]`; no new
+  crate. All egui code compiles with `egui`; the overlay itself still needs `debug-overlay`
+  (`with_debug_overlay(true)` with only `egui` logs the usual warning). `purplepie::egui` re-exports the crate.
+- **Hook:** `Game::egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui)`, behind the feature, called when
+  `EngineConfig::with_egui(true)`. `ctx.dt()` is the frame's delta. The runner checks the window title and exit
+  requests again after drawing, so the hook can use both.
+- **One egui frame, laid out by the runner:** `debug::Overlay::layout` runs `run_ui` after `update`; its frame
+  builder calls the hook with the root `Ui`, then `Windows::show` for the overlay's windows, so they land on
+  egui's window layer above the game's panels. egui may run the builder twice in one frame (a discarded pass), so
+  it is an `FnMut`. The renderer only paints the stored output (`Overlay::paint`) after the game's pass, and the
+  stats window shows the previous frame's draw counts. A frame laid out but never painted (minimized window) keeps
+  its texture changes for the next paint (`TexturesDelta::append`), and dropping one clears them, which egui's debug
+  assertion requires; a unit test fails without the merge.
+- **Input:** egui gets window events while the overlay is visible **or** the hook is on (before: only while the
+  overlay was visible). Pointer rules are ADR-043's. **Keys** are withheld only while an egui text field has the
+  focus (`Context::text_edit_focused`), not while any widget has it (`egui_wants_keyboard_input`): egui keeps a
+  button focused after a click (PP-037b2), which would swallow game keys (unit test: a focused button is not
+  typing, a focused field is). F12 still toggles the overlay while typing.
+- **Verified under Xvfb:** `examples/egui_panel.rs` (feature `egui`): a slider drag, a click on the panel, a click
+  into the title field and "Remove stamps" did not reach the game, two scene clicks did (`clicks 2`); typing
+  changed the window title; arrows held while the field had focus did not move the square (32 key frames counted:
+  only the 0.5 s press after leaving the field), and moved it after a click in the scene. With `debug-overlay`,
+  the overlay's windows draw over the panel and F12 hides and shows them, also while typing. The sandbox's overlay
+  behaves as before: clicks and the wheel on its windows stay with egui, the inspector lists and inspects, a stamp
+  click reaches the game, the camera keeps zoom 1. Without the features the Breakout lose frame and the frozen
+  scene frame are pixel-identical to GitHub `main`'s.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

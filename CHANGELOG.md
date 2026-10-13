@@ -22,6 +22,12 @@ break compatibility and a patch version (0.x.**y**) may not.
   entity count, draw batches and instances, camera, window size and scale, and the cursor in screen and world
   coordinates. A second window, "Entities" (top right, collapsed at first), lists every entity and shows the components
   of the one clicked: the engine's, and the game's components registered for scenes as RON.
+- Optional `egui` Cargo feature with `EngineConfig::with_egui(true)`: the new `Game::egui(ctx, ui)` callback draws
+  the game's own egui UI (panels, windows, sliders, text fields) over its frame every frame, after `update`, and
+  `purplepie::egui` re-exports egui 0.36 so games use the engine's version (ADR-044). Clicks, drags and wheel turns
+  on egui do not reach `Context::input`, nor do keys while an egui text field has the focus. Needs Rust 1.95.
+  Example: `cargo run --example egui_panel --features egui`. The `debug-overlay` feature now builds on it; its
+  windows are drawn on top of the game's egui UI, and its draw counts are the previous frame's.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,
   hit points, score, health orbs and sounds; the autoplay bot prints a reproducible summary line. Screens: title,
