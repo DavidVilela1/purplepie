@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-12 (PP-037a: R-30 added for the debug overlay's UI dependency).
+Last reviewed: 2026-10-13 (PP-038a: R-31 added for quadratic scene parsing; R-30 extended for the planned public egui hook).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -39,7 +39,8 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-27 | Audio: platform builds, devices and the audio thread | OPEN | Medium | Medium | PP-022 |
 | R-28 | OGG Vorbis decoding: memory, load time and a slow-moving decoder | OPEN | Medium | Low | PP-024b |
 | R-29 | Scene files: format compatibility and silent loss of unsaved components | OPEN | Medium | Medium | PP-026a |
-| R-30 | Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight | OPEN | Medium | Medium | PP-037a |
+| R-30 | Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight | OPEN | Medium | Medium | PP-037a, PP-038a |
+| R-31 | Scene parsing is quadratic in the number count (ron 0.12.2) | MATERIALIZED | High | Medium | PP-038a, PP-038b |
 
 ## Details
 
@@ -270,4 +271,25 @@ Likelihood and impact are qualitative: Low, Medium or High.
   appears in the public API, so swapping the overlay's implementation does not break games.
 - **Fallback:** the alternative recorded in ADR-043, an overlay drawn with the engine's own text and quads (no
   dependency), or keeping the overlay on the last compatible wgpu until egui catches up.
+- **Changed by ADR-044 (2026-10-13, planned in PP-038c):** the scene editor needs egui outside the engine, so a new
+  optional `egui` feature will re-export egui and pass a `Ui` to `Game::egui`. With that feature on, egui *is* part of
+  the public API: an egui release that changes its API becomes a PurplePie minor release (RELEASING §2), and egui's
+  release pace (several breaking releases a year) sets how often that happens. Games without the feature are
+  unaffected. Fallback if the churn is too costly: wrap the few egui parts the editor needs behind engine types.
+
+### R-31: Scene parsing is quadratic in the number count (ron 0.12.2)
+- **Found (2026-10-13, PP-038a spike):** loading a scene of 1 000 quads took 1.39 s in a release build (250 entities:
+  0.11 s); writing it took 4 ms. Callgrind put 92 % of the time in a substring search: ron 0.12.2's
+  `Parser::next_bytes_is_float` looks for `..` in the whole rest of the input for every number read without a known
+  type, then only uses the part inside the number. PurplePie reads every number that way twice over: its version
+  pre-check (`VersionOnly` skips the rest of the file with `IgnoredAny`) and game component values (`RawValue`).
+  ron 0.12.2 is the latest release (2026-06-22); ron's main branch already limits the search.
+- **Impact:** any game whose level has hundreds of entities waits seconds at load; the editor (P5) loads scenes all the
+  time.
+- **Mitigation (PP-038b):** parse the whole scene first and run the version pre-check only when that fails: measured
+  1.39 s → 9.3 ms for 1 000 quads. Game component values still pass through the slow path (1 000 entities with a
+  component on half of them: 139 ms; 10 000: 12.5 s).
+- **Fallback:** upgrade ron as soon as a release contains the fix and re-measure; if it does not come, store game
+  component values in a way that avoids `deserialize_any` (for example as RON text in a string), which needs a scene
+  format version bump.
 

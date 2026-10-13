@@ -46,6 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | No: PP-038b–PP-038j |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2328,7 +2329,9 @@ option based on the manifest directory, which would make `cargo run -p` from the
 ## Status
 Accepted (2026-10-12, PP-037a). Implemented in part by PP-037b1 (2026-10-12): the feature with `egui` and
 `egui-wgpu`, `EngineConfig::with_debug_overlay`, F12, the overlay pass and the non-sRGB view; and by PP-037b2
-(2026-10-12): `egui-winit` and mouse routing (keys refined below). Decides the approach of phase P4 (ROADMAP). Refines ADR-038, which left open whether
+(2026-10-12): `egui-winit` and mouse routing (keys refined below). Decides the approach of phase P4 (ROADMAP).
+Extended by ADR-044 (2026-10-13, planned): a public `egui` feature with a `Game::egui` hook for the scene editor;
+the egui pass moves from the renderer to the runner, and keys are withheld while egui wants keyboard input. Refines ADR-038, which left open whether
 the overlay is a feature or a `crates/` member: it is a feature. Applies ADR-013: the dependencies are added in
 PP-037b, the first task that uses them, not in this decision.
 
@@ -2499,6 +2502,129 @@ beyond lock-file lines. Keeping it inside the engine preserves the boundary: wgp
 - After P4 the overlay is still only read-only numbers: then the own-overlay alternative is cheaper.
 - P5's ADR chooses a different UI approach.
 - egui's minimum Rust version rises above the stable Rust that CI and the owner use.
+
+---
+
+# ADR-044: Scene editor: a separate crate built as a `Game` on a public egui hook
+
+## Status
+Accepted (2026-10-13, PP-038a). Decides the shape of phase P5 (ROADMAP). Not implemented yet: the tasks are
+PP-038b–PP-038j (TASKS). Builds on ADR-043 (egui integration), ADR-035/036 (scene files, game components) and
+ADR-038 (`crates/` for new crates). Applies ADR-013: no new dependency is decided here.
+
+## Context
+P5's goal is to build levels without code: open a scene file, see it, select, move and place entities, save. Before
+choosing, these facts were checked:
+- **The engine can already do most of it.** `Context` loads and saves scenes (ADR-035/036), `World` gives every
+  entity, `Camera2D` converts between screen and world, and quad and sprite sizes are public. ADR-043 put egui inside
+  the engine, drawn in its own pass with mouse routing, but kept it crate-private, so nothing outside the engine can
+  draw a panel today.
+- **egui 0.36 builds a frame from a root `Ui`.** Panels take `&mut Ui` (`Panel::left(..).show(ui, ..)`); there is no
+  panel on a bare `Context` any more. A hook that hands out egui therefore has to run inside the frame's `run_ui`.
+- **A throwaway spike** in a scratch copy (not merged; see [spikes/pp-038a-editor-spike.md](spikes/pp-038a-editor-spike.md))
+  added a `Game::egui(&mut self, ctx: &mut Context, ui: &mut egui::Ui)` hook (about 60 lines in `app`, `debug` and
+  `render`) and an editor-like example (about 200 lines, public API only). Under Xvfb it opened `scenes/demo.ron` (19
+  entities, the example's two game components registered), showed an entity list in a left panel over the scene,
+  selected by clicking in the viewport, moved the selection by dragging, outlined it with egui's painter (no entity
+  added), undid the move with Ctrl+Z and saved: the saved file differed from `demo.ron` in exactly the moved
+  entity's position line. The game's `Input` and the egui hook did not interfere.
+- **The spike also found three problems** that the tasks below must handle:
+  1. **Scene loading is quadratic** in the number of numbers in the file. `ron` 0.12.2 (the latest release) searches
+     the whole rest of the input for `..` each time it guesses a number's type (`Parser::next_bytes_is_float`), which
+     happens for every number read without a known type: in PurplePie's version pre-check (`VersionOnly` skips the
+     rest of the file) and in game component values (`RawValue`). Measured in release builds: 1 000 quads parse in
+     **1.39 s**; parsing the full scene first (version pre-check only when that fails) takes **9.3 ms**. With a game
+     component on half the entities it is still **139 ms** for 1 000 and **12.5 s** for 10 000 entities, because raw
+     values go through the same path. ron's main branch already limits the search (unreleased as of 2026-10-13).
+  2. **Picking must follow what is drawn.** The spike's naive pick (highest layer under the cursor) chose the demo's
+     2 000 × 2 000 `Hidden` quad on layer 100. Picking has to skip `Hidden` and `ScreenSpace` entities, follow the
+     renderer's draw order (ADR-021: layer, then material, then entity), and account for rotation, scale and text
+     bounds.
+  3. **egui keyboard shortcuts** must be read with `consume_key` (each event carries its modifiers), not from the
+     frame's final modifier state: a fast Ctrl+Z (press and release within one frame) was missed.
+- **Undo cost.** A whole-scene snapshot of 1 000 entities (capture and write, then parse and load) cost about 13 ms
+  with engine components only, after fix 1 (3 ms writing, 10 ms reading), and about 150 ms with a game component on
+  half of them; a recorded move and its undo cost about 40 ns. Snapshots also respawn every entity, so entity ids
+  (and the selection) change on each undo.
+
+## Decision
+- **The editor is a separate crate, `crates/purplepie-editor`** (ADR-038), a workspace member with a library and a
+  `purplepie-editor` binary. It is an ordinary PurplePie **`Game`**: it depends on the engine by path with the new
+  `egui` feature and uses only the public API. The engine never depends on it.
+- **A public egui hook in the engine, behind a new optional feature `egui`** (off by default):
+  - `Game::egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui)`, with an empty default, called once per frame
+    after `update` and before drawing, inside the frame's `run_ui`. The game's UI is laid out first and the debug
+    overlay's windows after it, so they stay on top.
+  - `EngineConfig::with_egui(true)` turns the hook on (like `with_debug_overlay`: the method exists without the
+    feature, which then logs one warning). Off, the engine behaves exactly as today.
+  - `purplepie::egui` re-exports the egui crate, so the editor and games use the engine's egui version and never
+    declare their own.
+  - `debug-overlay` implies `egui` internally; the egui pass moves from the renderer to the runner (the renderer only
+    paints the finished output). The stats window's draw counts become the previous frame's.
+  - **Input:** while the hook is on, every window event goes to egui first. Pointer events egui consumes are withheld
+    from the game's `Input` (as for the overlay, ADR-043). Keys are withheld only while egui wants keyboard input (a
+    text field has focus), which refines PP-037b2's "keys always reach the game".
+- **The viewport is the engine's own frame.** The scene is drawn by the engine's renderer across the whole window; the
+  editor's panels are egui panels on top. The editor moves the camera so the scene is centred in the space the panels
+  leave free, and reads viewport clicks, drags, wheel and keys through egui (an interaction area over that space), so
+  panels and viewport share one input source. Selection outlines and handles are drawn with egui's painter, never as
+  entities, so saved scenes never contain editor objects.
+- **What it edits first: one scene file.** The first vertical slice (PP-038f, PP-038g) opens a scene given on the
+  command line, lists its entities, pans and zooms, selects by click, moves by dragging and arrow keys, undoes and
+  redoes moves, and saves through `Context::save_scene` (ADR-035 format, byte-identical where nothing changed). The
+  editor runs no game logic: animations stay at their saved frame.
+- **Game components:** the editor binary opens any scene. Components it does not know are kept as their RON text and
+  written back unchanged (an opt-in lenient load in the engine, PP-038e, which ADR-036 anticipated). A game that wants
+  its components checked while editing builds its own editor binary through the library and registers them
+  (PP-038j).
+- **Picking in the engine:** a public query for the entities drawn at a world point, topmost first, following the
+  draw order and skipping hidden and screen-space entities (PP-038d). Games can use it too (clicking on sprites).
+- **Undo is a command stack in the editor:** every change is a reversible edit (move, set a component, add, delete).
+  Deleting keeps the `Entity` and undoing restores it with `World::spawn_at`, so later edits still point at it. No
+  whole-scene snapshots.
+- **Rust version:** the `egui` feature and the editor crate need Rust 1.95, like `debug-overlay`. The CI `msrv` job
+  excludes the editor crate (`--exclude purplepie-editor`); RELEASING's exception covers the `egui` feature.
+- **Compatibility:** `egui` becomes a re-exported dependency of the public API with the feature on. Moving to an
+  incompatible egui needs a minor release, as for hecs and glam (RELEASING §2).
+
+## Alternatives Considered
+- **An editor mode inside the engine** (a feature and a key that turns a running game into an editor). No public egui,
+  and live editing of a running game. Rejected: the game's systems keep changing the world while it is edited (moving
+  squares, animations), so a save writes run-time state rather than the level; the editor's code (thousands of lines)
+  would live in the engine crate and its releases; and level editing would need the game running. Live tweaking stays
+  possible later through the same hook.
+- **A separate app with its own window and renderer** (eframe, or its own wgpu code). It would draw scenes differently
+  from the game unless the engine's renderer became public, the boundary ADR-043 kept. Rejected.
+- **Keeping egui private and giving the editor engine-defined widgets.** The editor needs lists, trees, text fields,
+  menus and painting; wrapping them would mean a second UI API to maintain. Rejected.
+- **Undo by whole-scene snapshots.** Simple, but measured at about 13 ms per 1 000 entities per undo, about 150 ms
+  with game components until ron is fixed, and it changes every entity id. Rejected in favour of commands.
+- **Exposing the egui `Context` instead of a `Ui`** (as the spike first did): egui 0.36 panels need a `Ui`. Rejected.
+
+## Rationale
+A separate crate on a small public hook keeps the engine a game library, lets the editor grow and change without
+engine releases, and is the most demanding test of the engine's public API: whatever the editor needs and cannot do
+through it becomes an engine improvement that games also get (picking, lenient scenes). The spike showed the hook is
+small and enough for the core interactions.
+
+## Consequences
+### Positive
+- Games and tools can build their own egui UIs (level tweakers, debug panels) with one feature and one config line.
+- The editor and the overlay share one egui integration and one input routing rule.
+- Scene loading gets fast for large scenes (PP-038b), and games get picking (PP-038d).
+### Negative
+- egui is now in the public API behind `egui`: an egui upgrade that changes its API is a PurplePie minor release, and
+  wgpu/winit upgrades still wait for egui (R-30).
+- The editor needs Rust 1.95 and compiles egui, about 4 minutes for a cold release build (ADR-043's measurement).
+- Game component values can still load slowly in large scenes until ron releases its fix (R-31).
+- The editor shows the engine's own frame under its panels, so the visible scene area is the window minus the panels
+  (no separate viewport texture).
+
+## Revisit Conditions
+- The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.
+- egui's API churn makes the public hook costly: wrap the needed parts behind engine types instead.
+- ron releases the fix: re-measure scene loading with game components and close R-31.
+- A game asks for live editing of a running game: build it on the same hook, not as an engine mode.
 
 ---
 

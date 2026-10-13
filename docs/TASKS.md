@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038a: Scene editor design (phase P5, item 1): ADR-044 on the editor's shape (separate app crate under `crates/` vs. an editor mode of the engine), how it reaches egui and the renderer without exposing wgpu/winit, what it edits first (scene files, ADR-035/036), and the first slice; split into implementation tasks** · P1 · TODO ← **next task**
+- [ ] **PP-038b: Scene loading speed: parse the whole scene first (version pre-check only on failure), avoiding ron 0.12.2's quadratic number scan for engine components; measure; R-31 for game component values (phase P5, item 2)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038a: Scene editor design: ADR-044 (separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui` hook behind an `egui` feature; command undo; engine picking and lenient loading), measured in a throwaway spike that found a quadratic scene parse; P5 split into PP-038b–PP-038j (phase P5, item 1)** · DONE (2026-10-13; spike on Linux)
 - [x] **PP-037d2: Debug overlay, part 3b: registered game components as RON in the inspector (`Registry::describe`); "Entities" window moved to the top right; phase P4 complete** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037d1: Debug overlay, part 3a: "Entities" window: entity list (by id, virtualized) and the selected entity's engine components; game components counted** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-037c: Debug overlay, part 2: stats window (frame time/FPS, fixed steps, entities, draw batches and instances, camera, window, cursor)** · DONE (2026-10-13; verified on Linux)
@@ -80,7 +81,16 @@ _None._
 
 ## Future
 
-- [ ] **P5 Scene editor: implementation tasks** · P2 · TODO (defined by PP-038a)
+P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
+
+- [ ] **PP-038c: Public egui hook: `egui` feature, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves from the renderer to the runner (game UI first, overlay windows on top); pointer routing whenever the hook is on, keys withheld while egui wants keyboard input; example, tests, RELEASING/CI notes** · P2 · TODO
+- [ ] **PP-038d: Picking: a public query for the entities drawn at a world point, topmost first in draw order (ADR-021), skipping `Hidden` and `ScreenSpace`, with rotation, scale and text bounds** · P2 · TODO
+- [ ] **PP-038e: Lenient scene loading: an opt-in load that keeps unknown game components as their RON text and writes them back unchanged (ADR-036 revisit)** · P2 · TODO
+- [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P2 · TODO
+- [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P2 · TODO
+- [ ] **PP-038h: Editor inspector editing: transform, layer, hidden, quad, sprite and text fields, game components as RON text checked on entry, each change undoable** · P2 · TODO
+- [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene** · P2 · TODO
+- [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
 
 ---
 
@@ -466,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038a: Scene editor design ← NEXT
+### PP-038b: Scene loading speed ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 1 · Priority P1 · TODO |
+| Stage | Phase P5, item 2 · Priority P1 · TODO |
+| Dependencies | PP-038a (DONE) |
+| Why now | The PP-038a spike measured scene loading as quadratic: 1 000 quads take 1.39 s to parse in a release build, 1 000 mixed entities 2.14 s ([spike](spikes/pp-038a-editor-spike.md)). The editor (and any game with a big level) loads scenes, so this comes before the editor work. Cause: ron 0.12.2's `Parser::next_bytes_is_float` searches the whole remaining input for `..` for every number read through `deserialize_any`; `from_text` sends the whole file through it with its `VersionOnly` pre-check, and game component `RawValue`s go through it too. ron's main branch has the fix, unreleased. |
+| Scope | `scene::from_text` parses `SceneFile` first and checks the version after; only when that parse fails does it parse `VersionOnly`, so a newer or broken file still gets "scene version N is not supported" / "not a PurplePie scene file" (existing tests keep passing unchanged). A regression test that fails on the old order without depending on timing if possible (e.g. compare the parse time of N and 4N entities with a generous factor, or a size large enough that quadratic parsing exceeds a bound by orders of magnitude). Measure before/after for 1 000 and 10 000 entities with and without game components, release and debug. Record the game-component case as R-31 (until ron releases its fix; then upgrade and re-measure). No format change: every fixture and `demo.ron` loads and saves back byte-for-byte. |
+| Acceptance criteria | Engine-component scenes parse in linear time (measured); error messages unchanged (tests); R-31 in RISKS; numbers in ADR-044's implementation notes. |
+
+### PP-038a: Scene editor design
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 1 · Priority P1 · **DONE** (2026-10-13; spike on Linux) |
 | Dependencies | P4 complete (PP-037d2) |
-| Why now | P4 (inspect a running game) is complete; P5 (build levels without code) is next. ADR-038 reserved `crates/` for an editor crate, and ADR-043 kept egui and the renderer crate-private, so the editor's shape is the open question that every later P5 task depends on. |
-| Scope | ADR-044: the editor as a separate binary crate (`crates/purplepie-editor`) or as an editor mode inside the engine behind a feature; how it gets egui, the viewport and input without public wgpu/winit (e.g. an engine-side editor hook behind the feature, building on the overlay's integration); what it edits first (a scene file: open, select, move entities, save, all through ADR-035/036's format); undo; and the first vertical slice. A throwaway spike if a question needs measuring. Then split P5 into small implementation tasks. |
-| Acceptance criteria | ADR-044 with alternatives and reasons (measured where possible); ROADMAP P5 row lists the implementation tasks; TASKS has the first one as next. |
+| Acceptance criteria | ✅ ADR-044 with alternatives (editor mode in the engine, separate app with its own renderer, engine-defined widgets, snapshot undo, a hook on egui's `Context`) and reasons. ✅ Measured in a throwaway spike ([spikes/pp-038a-editor-spike.md](spikes/pp-038a-editor-spike.md)): a `Game::egui` hook (~60 lines) and an editor-like example (~200 lines, public API only) opened `demo.ron` under Xvfb, picked, dragged, undid with Ctrl+Z and saved a file differing only in the moved entity's position; egui 0.36 panels need the root `Ui`, so the hook runs inside `run_ui`. Found and measured: quadratic scene parsing in ron 0.12.2 (1 000 quads 1.39 s → 9.3 ms when the whole scene is parsed first; game component values still slow: 139 ms / 1 000, 12.5 s / 10 000), picking must skip `Hidden`, shortcuts need `consume_key`; snapshot undo ≈ 13 ms (engine components) to 150 ms (game components) per 1 000 entities vs. ≈ 40 ns per move command. ✅ ROADMAP P5 lists PP-038b–PP-038j; TASKS has PP-038b as next. |
 
 ### PP-037d2: Debug overlay, part 3b: registered game components
 | Field | Value |
