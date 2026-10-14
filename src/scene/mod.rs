@@ -4,8 +4,9 @@
 //! [`Context::load_scene`](crate::Context::load_scene); this module only adds
 //! [`UnknownComponents`], what
 //! [`Context::load_scene_keeping_unknown`](crate::Context::load_scene_keeping_unknown)
-//! keeps of game components it cannot read, and [`InvalidRon`], the error of
-//! its setter (ADR-044).
+//! keeps of game components it cannot read, [`check_component`], which checks
+//! such text against a game component type, and [`InvalidRon`], their error
+//! (ADR-044).
 //!
 //! # Engine notes
 //!
@@ -31,6 +32,7 @@ use std::path::{Path, PathBuf};
 
 use ron::value::RawValue;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::ecs::{Entity, Velocity, World};
@@ -103,18 +105,50 @@ impl UnknownComponents {
     /// assert_eq!(kept.get("game::Speed"), Some("(value: 2.5)"), "unchanged");
     /// ```
     pub fn set(&mut self, name: &str, ron: &str) -> Result<Option<String>, InvalidRon> {
-        let raw = RawValue::from_ron(ron).map_err(|err| InvalidRon(err.to_string()))?;
+        let raw = RawValue::from_ron(ron).map_err(InvalidRon::syntax)?;
         let text = raw.trim().get_ron().to_owned();
         Ok(self.values.insert(name.to_owned(), text))
     }
 }
 
-/// Text that is not one valid RON value, refused by
-/// [`UnknownComponents::set`]; it says where and why, like
-/// "1:8-1:9: Unexpected end of RON".
+/// Checks that `ron` is a value of the game component type `T`, read exactly
+/// as a scene load reads a registered component (ADR-036), without needing an
+/// engine or a world. For tools that keep a game's components as text but
+/// know its types, such as a game's own scene editor (ADR-044).
+///
+/// ```
+/// use purplepie::scene::check_component;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Speed {
+///     value: f32,
+/// }
+///
+/// assert!(check_component::<Speed>("(value: 2.5)").is_ok());
+/// let err = check_component::<Speed>(r#"(value: "fast")"#).unwrap_err();
+/// assert!(err.to_string().starts_with("does not fit the type: "), "{err}");
+/// assert!(check_component::<Speed>("(value: 2.5").is_err(), "not RON at all");
+/// ```
+pub fn check_component<T: DeserializeOwned>(ron: &str) -> Result<(), InvalidRon> {
+    let raw = RawValue::from_ron(ron).map_err(InvalidRon::syntax)?;
+    raw.into_rust::<T>()
+        .map(drop)
+        .map_err(|err| InvalidRon(format!("does not fit the type: {err}")))
+}
+
+/// Text refused by [`UnknownComponents::set`] or [`check_component`]: not one
+/// valid RON value ("not valid RON: 1:8-1:9: Unexpected end of RON"), or, for
+/// `check_component`, not a value of the type ("does not fit the type: …").
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("not valid RON: {0}")]
+#[error("{0}")]
 pub struct InvalidRon(String);
+
+impl InvalidRon {
+    fn syntax(err: ron::error::SpannedError) -> Self {
+        Self(format!("not valid RON: {err}"))
+    }
+}
 
 /// Building [`UnknownComponents`] in the debug overlay's tests.
 #[cfg(all(test, feature = "egui"))]
@@ -1724,5 +1758,50 @@ mod tests {
             Some(r#"(value:2.50,  note: "fast")"#)
         );
         assert_eq!(kept.get("game::Tag"), Some("Boss"));
+    }
+
+    #[test]
+    fn checking_a_component_reads_it_exactly_like_a_scene_load() {
+        let values = [
+            "(speed: 0.8, direction: Clockwise)",
+            "(speed: 1, direction: CounterClockwise)",
+            "(speed: 0.8)",
+            r#"(speed: "fast", direction: Clockwise)"#,
+            "(speed: 0.8, direction: Sideways)",
+            "(speed: 0.8, direction: Clockwise, extra: 1)",
+            "(speed: 0.8, direction: Clockwise",
+            "",
+        ];
+        let mut registry = Registry::default();
+        registry
+            .register::<demo::Spin>("scene_demo::Spin")
+            .expect("spin");
+        for value in values {
+            let checked = check_component::<demo::Spin>(value);
+            let loaded = RawValue::from_ron(value)
+                .map_err(|e| e.to_string())
+                .and_then(|raw| {
+                    registry
+                        .load("scene_demo::Spin", raw)
+                        .map(drop)
+                        .map_err(|e| e.to_string())
+                });
+            assert_eq!(
+                checked.is_ok(),
+                loaded.is_ok(),
+                "{value}: {checked:?} vs {loaded:?}"
+            );
+        }
+        assert!(check_component::<demo::Spin>(values[0]).is_ok());
+        let wrong = check_component::<demo::Spin>(values[3]).expect_err("a string speed");
+        assert!(
+            wrong.to_string().starts_with("does not fit the type: "),
+            "{wrong}"
+        );
+        let broken = check_component::<demo::Spin>(values[6]).expect_err("unclosed");
+        assert!(
+            broken.to_string().starts_with("not valid RON: "),
+            "{broken}"
+        );
     }
 }

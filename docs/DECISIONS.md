@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene); PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`); PP-038j2 to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2580,7 +2580,7 @@ choosing, these facts were checked:
 - **Game components:** the editor binary opens any scene. Components it does not know are kept as their RON text and
   written back unchanged (an opt-in lenient load in the engine, PP-038e, which ADR-036 anticipated). A game that wants
   its components checked while editing builds its own editor binary through the library and registers them
-  (PP-038j).
+  (PP-038j; refined in PP-038j1: the game *gives* its types, and values are checked against them but stay text).
 - **Picking in the engine:** a public query for the entities drawn at a world point, topmost first, following the
   draw order and skipping hidden and screen-space entities (PP-038d). Games can use it too (clicking on sprites).
 - **Undo is a command stack in the editor:** every change is a reversible edit (move, set a component, add, delete).
@@ -2874,6 +2874,39 @@ small and enough for the core interactions.
   (`fonts/Poppins-Regular.ttf`) were added; the saved file had exactly those three new entities with relative asset
   paths; three undos gave the original file. A missing `fresh.ron` with a quad and a text added and saved became a
   two-entity file that opened again. 20 unit tests in the crate.
+
+## Implementation notes (PP-038j1)
+- **Split:** PP-038j into j1 (a game's types and checks) and j2 (guide, checklist, phase close-out).
+- **Decision: the game gives its types for checking; values stay text.** `purplepie_editor::GameComponents::new()
+  .with::<Spin>("scene_demo::Spin")` holds one check function per name (`fn(&str) -> Result<(), InvalidRon>`,
+  monomorphised from the engine's `scene::check_component::<T>`). The editor still opens scenes leniently, so every
+  game component stays RON text in `UnknownComponents`: it is saved back exactly as written, and delete, duplicate
+  and undo (PP-038i1's `Snapshot`) copy it like any other value. **Alternative considered:** registering the types
+  with the engine (`Context::register_scene_component`), so they load decoded. That needs new engine API to show and
+  set a registered component as RON and to copy registered components between entities, and it would re-format
+  values on save (their own `Serialize`); it also needs `Serialize` and `hecs::Component` from types the editor only
+  reads. Checking gives the same safety (a value that does not fit is never accepted) with one small engine
+  function. **Consequence:** a value is checked as the game will read it, but the editor cannot show typed widgets
+  (numbers, lists) for game components; revisit if that is wanted.
+- **Engine API:** `scene::check_component::<T: DeserializeOwned>(ron) -> Result<(), InvalidRon>` parses one RON
+  value and reads it as `T` through the same `RawValue::into_rust` the registry uses on load (a test compares the
+  two on 8 values: valid, integer for float, missing field, wrong type, unknown variant, extra field, unclosed, empty).
+  It lives in the engine so the editor needs no `ron` dependency and checks with the exact version the engine pins
+  (R-31). `InvalidRon`'s text now carries its own prefix: "not valid RON: …" (syntax) or "does not fit the type: …".
+- **Editor:** `run_with(options, components)` and `main_with(components) -> ExitCode` (arguments, `--help`, exit
+  codes, `PURPLEPIE_EDITOR_EXIT_AFTER_FRAMES`), so a game's editor is a three-line `main`; the plain binary is
+  `main_with(GameComponents::new())`. On open, every kept value whose name is known is checked: the status line
+  says how many were checked, or (red) how many do not fit with the first reason, and each is printed. The
+  inspector shows a name that does not fit in red with the reason on hover; known names hover "checked against the
+  game's type", others "checked as RON syntax only". An edit is checked against the type first, then stored with
+  `UnknownComponents::set`. The editor crate gains a `serde` dependency (already in the build) for the
+  `DeserializeOwned` bound.
+- **Verified under Xvfb** with `examples/scene_demo_editor.rs` (the `scene` example's types repeated, read-only):
+  "3 game component value(s) checked"; `#8`'s Spin typed with a string speed was refused ("does not fit the type:
+  1:8-1:9: Expected float"), then `(speed: 2.5, direction: CounterClockwise)` accepted; Ctrl+D copied `#8` with
+  it; the saved file, put in a copy of the asset folder, loaded strictly in the engine's `scene` example ("loaded
+  20 entities", "3 spinning sprites"). A file with `count: -1` opened with a red status ("Integer is out of
+  bounds") and a red label. The plain `purplepie-editor` opened `demo.ron` as before.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

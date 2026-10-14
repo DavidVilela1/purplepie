@@ -39,6 +39,8 @@ break compatibility and a patch version (0.x.**y**) may not.
   `UnknownComponents::set(name, ron)` replaces or adds a kept component's text after checking that it is exactly one
   valid RON value (its syntax, not the game's type); invalid text is refused with the new `scene::InvalidRon` error
   ("not valid RON: 1:8-1:9: Unexpected end of RON") and changes nothing.
+  `scene::check_component::<T>(ron)` checks that such text is a value of a game component type `T`, read exactly as
+  a scene load reads a registered component ("does not fit the type: 1:8-1:9: Expected float" otherwise).
 - `crates/purplepie-editor/`: the scene editor, first part (ADR-044): `cargo run -p purplepie-editor -- <scene.ron>`
   opens a scene with `load_scene_keeping_unknown`, lists its entities, pans and zooms beside its panel, fits the view
   (F) and saves (Ctrl+S), byte for byte when nothing changed; errors appear in a status line, and a file that exists
@@ -47,7 +49,9 @@ break compatibility and a patch version (0.x.**y**) may not.
   (size, tint, region), texts (content, size, colour, anchor) and the game's components as RON text checked when the
   field is left (velocity, animation and buttons read-only), adding quads, sprites (an image from the asset folder) and texts, deleting (Delete) and duplicating (Ctrl+D), moving
   (left drag, arrow keys, Shift for 10 units), undo/redo of every change (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an
-  unsaved-changes marker. A `Game` on the public API with the `egui`
+  unsaved-changes marker. A game's own editor: `purplepie_editor::main_with(GameComponents::new().with::<T>(name))`
+  checks the values of the game's components against its types when a scene opens and when they are edited
+  (`run_with` for more control; example `scene_demo_editor`). A `Game` on the public API with the `egui`
   feature; Rust 1.95.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,

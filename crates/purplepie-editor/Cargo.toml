@@ -13,6 +13,12 @@ publish = false
 # under `crates/` (ADR-038). egui comes only through `purplepie::egui`.
 [dependencies]
 purplepie = { path = "../..", features = ["egui"] }
+# Only for the `DeserializeOwned` bound of `GameComponents::with` (PP-038j1);
+# the engine already depends on serde 1, so nothing new is built.
+serde = "1.0.229"
+
+[dev-dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
 
 [lints.rust]
 unsafe_code = "forbid"

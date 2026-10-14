@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing; deleting and duplicating must then copy registered components too, e.g. through their scene RON); GUIDE section; CHECKLIST step for Windows; phase P5 complete; split at its start if it does not fit one session** · P1 · TODO ← **next task**
+- [ ] **PP-038j2: A game's own editor, part 2: GUIDE section (running the editor, a game's own editor binary with `main_with`), CHECKLIST step 9 with the example editor (owner runs it on Windows), ROADMAP/STATUS: phase P5 complete** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038j1: A game's own editor, part 1: `purplepie_editor::GameComponents` (`with::<T>(name)`), `run_with`, `main_with` (the whole editor program for a game's `main`); kept game component values checked against the game's types when the scene opens (red in the inspector, listed in the status line) and when edited (refused if they do not fit); values stay RON text, so copying, undo and saving are unchanged; engine: `scene::check_component::<T>(ron)`; example `scene_demo_editor` (phase P5, item 12; PP-038j split into j1 and j2)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038i2: Editor placing, part 2: "Add" row: a quad, a sprite (image chosen from the asset folder) or a text (font chosen from the asset folder) at the centre of the view, selected, each one undoable step; a missing scene file opens as a new scene with a plain message (no separate "New" command) (phase P5, item 11)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038i1: Editor placing, part 1: delete and duplicate the selection (Delete / Ctrl+D, buttons), each one undoable step; undoing a delete brings back the same `Entity` (`World::spawn_at`) with all its components (editor `Snapshot`); entities with components the editor does not know are refused (phase P5, item 10; PP-038i split into i1 and i2)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038h2: Editor inspector editing, part 2: quad size and colour, sprite size, tint and region, text content, size, colour and anchor, kept game components as RON text checked when the field is left (engine: `UnknownComponents::set`, `scene::InvalidRon`); one undo step per field (phase P5, item 9)** · DONE (2026-10-14; verified on Linux)
@@ -478,10 +479,26 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038j: A game's own editor ← NEXT
+### PP-038j2: A game's own editor, part 2 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 12 (last) · Priority P1 · TODO |
+| Stage | Phase P5, item 13 (last) · Priority P1 · TODO |
+| Dependencies | PP-038j1 (DONE); ADR-044 |
+| Why now | The editor is feature-complete for P5; a game author needs to learn how to use it and how to build their own editor binary, and the Windows check is still open. |
+| Scope | GUIDE: a section on the scene editor (opening a scene, the controls, the asset folder, a game's own editor binary with `GameComponents` + `main_with`, a compiled doctest where possible). CHECKLIST step 9: the example editor (`cargo run -p purplepie-editor --example scene_demo_editor -- …`), a value that does not fit refused. README editor paragraph tidied; ROADMAP: P5 complete, PROJECT_STATUS current stage; RISKS reviewed (R-29/R-30 editor-related). No new features. |
+| Acceptance criteria | The guide's new blocks pass as doctests; the checklist steps were run on Linux; documents agree on P5 being complete; owner runs step 9 on Windows (reported separately). |
+
+### PP-038j1: A game's own editor, part 1
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 12 · Priority P1 · **DONE** (2026-10-14; verified on Linux) |
+| Dependencies | PP-038i2 (DONE); ADR-036, ADR-044 |
+| Acceptance criteria | ✅ PP-038j split: j1 (types and checks), j2 (guide, checklist, phase close-out). ✅ Decision (ADR-044 notes): the game *gives* its types for checking instead of registering them with the engine; values stay RON text in `UnknownComponents`, so saving verbatim, delete/duplicate/undo (PP-038i1) and the inspector work unchanged, and no engine API for reading/writing registered components by RON was needed. ✅ Engine: `scene::check_component::<T: DeserializeOwned>(ron) -> Result<(), scene::InvalidRon>` reads the text exactly as a scene load reads a registered component (test compares both for 8 values); `InvalidRon` now says "not valid RON: …" or "does not fit the type: …". ✅ Editor: `GameComponents::new().with::<T>(name)`, `run_with(options, components)`, `main_with(components) -> ExitCode` (the binary's `main` is now `main_with(GameComponents::new())`); on open, every kept value of a known type is checked ("3 game component value(s) checked…", or a red status listing those that do not fit, also printed); the inspector shows such names in red with the reason on hover; an edited value that does not fit is refused ("… not changed: does not fit the type: 1:8-1:9: Expected float"). ✅ Example `crates/purplepie-editor/examples/scene_demo_editor.rs`. ✅ Xvfb with the example: string speed refused, valid value changed, entity duplicated with it, saved; the engine's `scene` example loaded that file strictly (`loaded 20 entities`, `3 spinning sprites`); a file with `count: -1` opened with a red status and a red `scene_demo::Visits` label; the plain editor binary unchanged. ✅ 21 unit tests + 3 doctests in the crate; 1 engine test + doctest. `Cargo.lock`: `serde` added to the editor's dependency list only. |
+
+### PP-038j: A game's own editor (split into j1 and j2 on 2026-10-14)
+| Field | Value |
+|---|---|
+| Stage | Phase P5 · split |
 | Dependencies | PP-038i2 (DONE); ADR-036, ADR-044 |
 | Why now | The editor can build and edit levels, but a game's own components are only RON text checked for syntax; a game should be able to run the editor with its component types registered, so values are checked against them. Then P5 is complete. |
 | Scope | Library entry point that lets a game register its scene components before the scene opens (e.g. a `register` callback in `Options` or `run_with`), so registered components load decoded instead of as text. The inspector then needs their values as RON and a way to set them (a small engine API over the existing `Registry`, e.g. read/replace a registered component of an entity as RON, rejected when the type cannot read it), and `Snapshot` must copy them (through the same RON). GUIDE section on running the editor for your own game; CHECKLIST step 9 on Windows (owner); ROADMAP: P5 complete. Probably split at its start: PP-038j1 (registration + engine RON access + copying), PP-038j2 (guide, checklist, phase close-out). |

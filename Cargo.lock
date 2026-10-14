@@ -1889,6 +1889,7 @@ name = "purplepie-editor"
 version = "0.1.0"
 dependencies = [
  "purplepie",
+ "serde",
 ]
 
 [[package]]

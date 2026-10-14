@@ -16,6 +16,7 @@ use purplepie::render::{
 use purplepie::scene::UnknownComponents;
 use purplepie::{Context, Game};
 
+use crate::components::GameComponents;
 use crate::history::{Edit, History};
 use crate::library;
 use crate::select;
@@ -130,6 +131,9 @@ pub(crate) struct Editor {
     fonts: Vec<String>,
     /// The world point at the centre of the free view, where additions go.
     view_center: Option<Vec2>,
+    /// The game's component types, if it gave them: kept values are checked
+    /// against them.
+    components: GameComponents,
     /// Whether the window title shows the unsaved-changes marker.
     title_dirty: Option<bool>,
     /// Frames to run before exiting, for automated checks.
@@ -138,7 +142,7 @@ pub(crate) struct Editor {
 }
 
 impl Editor {
-    pub(crate) fn new(file: PathBuf, exit_after: Option<u32>) -> Self {
+    pub(crate) fn new(file: PathBuf, components: GameComponents, exit_after: Option<u32>) -> Self {
         Self {
             file,
             fit_pending: true,
@@ -158,6 +162,7 @@ impl Editor {
             fonts: Vec::new(),
             view_center: None,
             title_dirty: None,
+            components,
             exit_after,
             frames: 0,
         }
@@ -282,7 +287,11 @@ impl Editor {
         if before == text {
             return;
         }
-        let result = kept.set(&name, &text);
+        // The game's type, when known, decides; otherwise only the syntax.
+        let result = match self.components.check(&name, &text) {
+            Some(Err(error)) => Err(error),
+            _ => kept.set(&name, &text),
+        };
         let after = kept.get(&name).map(str::to_owned).unwrap_or_default();
         drop(kept);
         match result {
@@ -469,6 +478,39 @@ impl Editor {
         if let Some(addition) = chosen {
             self.add_entity(ctx, addition);
         }
+    }
+
+    /// Checks every kept game component whose type the game gave: how many
+    /// were checked, and "#8 name: why" for each that does not fit.
+    fn check_game_components(&self, ctx: &Context<'_>) -> (usize, Vec<String>) {
+        let mut kept: Vec<(Entity, Vec<(String, String)>)> = ctx
+            .world()
+            .query::<(Entity, &UnknownComponents)>()
+            .iter()
+            .map(|(entity, kept)| {
+                let values = kept
+                    .iter()
+                    .map(|(n, v)| (n.to_owned(), v.to_owned()))
+                    .collect();
+                (entity, values)
+            })
+            .collect();
+        kept.sort_by_key(|(entity, _)| entity.id());
+        let mut checked = 0;
+        let mut problems = Vec::new();
+        for (entity, values) in kept {
+            for (name, value) in values {
+                match self.components.check(&name, &value) {
+                    Some(Ok(())) => checked += 1,
+                    Some(Err(error)) => {
+                        checked += 1;
+                        problems.push(format!("#{} {name}: {error}", entity.id()));
+                    }
+                    None => {}
+                }
+            }
+        }
+        (checked, problems)
     }
 
     /// Whether the scene differs from the file (including an edit in progress).
@@ -732,7 +774,21 @@ impl Editor {
                             text_fields(ui, &mut fields, t);
                         }
                         for (name, value) in &kept {
-                            ui.label(name);
+                            // Red, with the reason, when it does not fit the game's type.
+                            let _ = match self.components.check(name, value) {
+                                Some(Ok(())) => ui
+                                    .label(name)
+                                    .on_hover_text("checked against the game's type"),
+                                Some(Err(error)) => ui
+                                    .label(
+                                        egui::RichText::new(name)
+                                            .color(ui.visuals().error_fg_color),
+                                    )
+                                    .on_hover_text(error.to_string()),
+                                None => ui.label(name).on_hover_text(
+                                    "the game's type is not known here: checked as RON syntax only",
+                                ),
+                            };
                             let draft = self
                                 .kept_draft
                                 .as_ref()
@@ -1207,12 +1263,30 @@ impl Game for Editor {
         // stays open to show why.
         match ctx.load_scene_keeping_unknown(&self.file) {
             Ok(entities) => {
-                let text = format!(
+                let mut text = format!(
                     "opened {}: {} entities",
                     self.file.display(),
                     entities.len()
                 );
-                self.report(text, false);
+                let (checked, problems) = self.check_game_components(ctx);
+                if checked > 0 {
+                    text.push_str(&format!(
+                        "; {checked} game component value(s) checked against the game's types"
+                    ));
+                }
+                match problems.first() {
+                    None => self.report(text, false),
+                    Some(first) => {
+                        for problem in &problems {
+                            eprintln!("editor: {problem}");
+                        }
+                        let count = problems.len();
+                        text.push_str(&format!(
+                            "; {count} do(es) not fit (in red in the inspector), first: {first}"
+                        ));
+                        self.report(text, true);
+                    }
+                }
             }
             Err(error) => {
                 // A missing file is a new scene; an existing one is kept safe.

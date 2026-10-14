@@ -19,8 +19,8 @@ quadratic, PP-038b), the public egui hook (`egui` feature, `Game::egui`, PP-038c
 crate's first slice (`crates/purplepie-editor`: open, list, pan/zoom, save, PP-038f; select, move, undo/redo,
 PP-038g) and an inspector that edits every saved value: transform, layer and hidden (PP-038h1), quads, sprites,
 texts and game components kept as RON text (PP-038h2), deleting and duplicating entities with undo (PP-038i1) and
-adding quads, sprites and texts (PP-038i2). A game's own editor with its component types registered (PP-038j) is
-the last P5 task.
+adding quads, sprites and texts (PP-038i2), and a game's own editor that checks its component types (PP-038j1).
+The guide section and phase close-out (PP-038j2) are the last P5 task.
 
 ## Current Stage
 
@@ -70,7 +70,9 @@ hidden, each change one undo step. PP-038h2 added quads (size, colour), sprites 
 left (`UnknownComponents::set`). PP-038i1 added deleting (Delete) and duplicating (Ctrl+D), each one undo step;
 undoing a delete brings back the same entity with everything it had. PP-038i2 added an "Add" row (a quad, a sprite
 chosen from the asset folder's images, a text in one of its fonts) and a plain "new scene" message for a file that
-does not exist yet. Next: **PP-038j**, a game's own editor with its components registered.
+does not exist yet. PP-038j1 lets a game build its own editor in three lines (`purplepie_editor::main_with` with
+`GameComponents`): values of its components are checked against its types when the scene opens and when edited
+(engine: `scene::check_component`). Next: **PP-038j2**, the guide section, the checklist step and P5's close-out.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -152,6 +154,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038j1: a game's own editor: `purplepie_editor::GameComponents`, `run_with`, `main_with`; kept game component values checked against the game's types on open and on edit (still saved as text); engine `scene::check_component::<T>`; example `scene_demo_editor`.
 - PP-038i2: editor adds quads, sprites (image from the asset folder) and texts (font from the asset folder) at the view's centre, each one undo step; a missing scene file opens as a new scene with a plain message.
 - PP-038i1: editor deletes (Delete) and duplicates (Ctrl+D) the selection, each one undo step; undoing a delete brings back the same entity (`World::spawn_at`) with all its components; entities with components the editor does not know are refused.
 - PP-038h2: editor inspector edits quads (size, colour), sprites (size, tint, region), texts (content, size, colour, anchor) and kept game components as RON text checked on leaving the field (engine: `scene::UnknownComponents::set`, `scene::InvalidRon`); one undo step per field.
@@ -197,7 +200,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038j: A game's own editor** (phase P5, item 12, last; ADR-044): a library entry point that registers the game's scene components, their values shown, edited and copied as RON through a small engine API; GUIDE section; P5 complete. Probably split into j1/j2 at its start. See [TASKS.md](TASKS.md#pp-038j-a-games-own-editor--next).
+- **PP-038j2: A game's own editor, part 2** (phase P5, item 13, last; ADR-044): GUIDE section on the editor and a game's own editor binary, CHECKLIST step 9 with the example editor, P5 complete. See [TASKS.md](TASKS.md#pp-038j2-a-games-own-editor-part-2--next).
 
 ## Blocked
 
@@ -235,10 +238,14 @@ executable, else `assets/` in the working directory (ADR-025).
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
 - Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys reach the game except while an egui text field has the focus; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - `egui` hook (optional feature, PP-038c): an egui pass runs every frame while `with_egui` is on (cost not measured separately; the visible overlay costs about a quarter of the frame rate in debug builds on a software GPU); the game's UI covers the scene drawn under it (no separate viewport); the egui context is recreated when the platform suspends the app, so panel sizes and positions reset then. Seen only on Linux/lavapipe.
-- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are checked only as RON syntax, not against the game's types (PP-038j); velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
+- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are RON text checked as syntax, and against the game's types only in a game's own editor (PP-038j1), with no typed widgets; game components cannot be added to or removed from an entity; velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-14: PP-038j1 A game's own scene editor.**
+  - A game builds its own editor with `purplepie_editor::main_with(GameComponents::new().with::<Spin>("my_game::Spin"))`: values of its components are checked against its types when a scene opens (those that do not fit are shown in red) and when edited (refused). The values stay text, so they are saved exactly as written.
+  - Engine: `scene::check_component::<T>(ron)`. Example `cargo run -p purplepie-editor --example scene_demo_editor -- assets/scenes/demo.ron`. PP-038j was split; the guide section and P5's close-out are PP-038j2.
 
 - **2026-10-14: PP-038i2 Editor adds quads, sprites and texts.**
   - An "Add" row in the panel: Quad, Sprite (pick an image from the asset folder) and Text (pick a font); the new entity appears at the centre of the view, selected, and is one undo step. Asset paths are saved relative to the asset folder.
@@ -590,15 +597,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038i2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038j1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 244 unit tests + 56 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--workspace --all-features` 260 + 57, 13 ignored; editor 20 + 1 doctest; Purple Swarm 10 |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 57 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--workspace --all-features` 261 + 58, 13 ignored; editor 21 + 3 doctests; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| A game's own editor (PP-038j1) | ✅ GitHub `main` (`f31060d`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with the `scene_demo_editor` example: a string speed refused, a valid value accepted, the entity duplicated, saved; that file loaded strictly by the engine's `scene` example (20 entities, 3 spinning sprites); `count: -1` → red status and label; plain editor unchanged, `--help` exit 0, bad option exit 2 |
 | Editor adding (PP-038i2) | ✅ GitHub `main` (`80e08de`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb on a copy of `demo.ron`: Quad, Sprite (`textures/breakout/ball.png`), Text added → saved diff exactly three new entities with relative asset paths; three undos → identical file; missing `fresh.ron` → "new scene" message, quad + text saved, file reopens with 2 entities |
 | Editor delete and duplicate (PP-038i1) | ✅ GitHub `main` (`b7f7c5c`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). Xvfb on a copy of `demo.ron`: duplicate + two deletes → saved diff shows exactly those; undo ×3 → identical file, redo ×3 → identical to the first save, undo ×3 → identical; delete + undo of the kept-component-only `#10` → identical |
 | Editor inspector editing, part 2 (PP-038h2) | ✅ GitHub `main` (`8f70598`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb on a copy of `demo.ron`: quad colour, sprite region, kept component (an invalid value refused in red), text content → saved file differs in exactly those four lines; four undos → identical file; anchor change + undo → identical file |
@@ -651,4 +659,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-14. PP-038i2 done (adding quads, sprites, texts). PP-038j (a game's own editor; last P5 task) is next.
+2026-10-14. PP-038j1 done (a game's own editor checks its component types). PP-038j2 (guide, checklist, P5 close-out) is next.

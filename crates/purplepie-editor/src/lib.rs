@@ -17,7 +17,9 @@
 //! each field change one undoable step. Delete removes the selection and Ctrl+D
 //! duplicates it (PP-038i1); undoing a delete brings the same entity back. The
 //! Add row places a quad, a sprite or a text at the centre of the view
-//! (PP-038i2); a file that does not exist yet opens as a new scene.
+//! (PP-038i2); a file that does not exist yet opens as a new scene. A game's
+//! own editor gives its component types ([`GameComponents`], [`main_with`]),
+//! and their values are checked against them (PP-038j1).
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
@@ -30,6 +32,7 @@
 //! }
 //! ```
 
+mod components;
 mod editor;
 mod history;
 mod library;
@@ -41,7 +44,10 @@ mod view;
 
 use std::path::Path;
 
+pub use components::GameComponents;
 pub use options::{Options, USAGE, asset_folder_of};
+
+use std::process::ExitCode;
 
 use purplepie::{Engine, EngineConfig};
 
@@ -52,12 +58,65 @@ use purplepie::{Engine, EngineConfig};
 /// or else the engine's usual lookup. A scene that cannot be read is shown
 /// as an error in the window, not returned.
 pub fn run(options: Options) -> purplepie::Result<()> {
-    run_frames(options, None)
+    run_with(options, GameComponents::new())
 }
 
-/// [`run`], exiting after `frames` frames when given (automated checks).
-#[doc(hidden)]
-pub fn run_frames(options: Options, frames: Option<u32>) -> purplepie::Result<()> {
+/// [`run`] for a game whose component types are known: their values are
+/// checked against them when the scene opens and when they are edited.
+pub fn run_with(options: Options, components: GameComponents) -> purplepie::Result<()> {
+    run_frames(options, components, None)
+}
+
+/// The whole `purplepie-editor` program (arguments, `--help`, errors, exit
+/// code) with `components` known: a game's own editor is a `main` that calls
+/// this.
+///
+/// ```no_run
+/// use purplepie_editor::GameComponents;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Speed {
+///     value: f32,
+/// }
+///
+/// fn main() -> std::process::ExitCode {
+///     purplepie_editor::main_with(GameComponents::new().with::<Speed>("my_game::Speed"))
+/// }
+/// ```
+///
+/// `PURPLEPIE_EDITOR_EXIT_AFTER_FRAMES=N` closes it after N frames (for
+/// automated checks).
+pub fn main_with(components: GameComponents) -> ExitCode {
+    let options = match Options::from_args(std::env::args().skip(1)) {
+        Ok(options) => options,
+        Err(None) => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Err(Some(problem)) => {
+            eprintln!("error: {problem}\n\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let frames = std::env::var("PURPLEPIE_EDITOR_EXIT_AFTER_FRAMES")
+        .ok()
+        .and_then(|value| value.parse().ok());
+    match run_frames(options, components, frames) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// [`run_with`], exiting after `frames` frames when given (automated checks).
+fn run_frames(
+    options: Options,
+    components: GameComponents,
+    frames: Option<u32>,
+) -> purplepie::Result<()> {
     let scene = absolute(&options.scene);
     let assets = options
         .assets
@@ -72,7 +131,7 @@ pub fn run_frames(options: Options, frames: Option<u32>) -> purplepie::Result<()
     if let Some(assets) = assets {
         config = config.with_asset_root(assets);
     }
-    Engine::new(config)?.run(editor::Editor::new(scene, frames))
+    Engine::new(config)?.run(editor::Editor::new(scene, components, frames))
 }
 
 /// `path` relative to the current folder made absolute, so it does not depend
