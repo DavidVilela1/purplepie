@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete); PP-038h–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden); PP-038h2–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2773,6 +2773,26 @@ small and enough for the core interactions.
   a list click selected the screen-space `#13`, whose Right step was refused; Ctrl+S then wrote a file identical to
   the original. A separate run (drag 90 px, save) changed exactly one line: `#7`'s position, (0.0, 40.0) →
   (100.0, 40.0). 13 unit tests in the crate (history, selection, outline, inspector rows added).
+
+## Implementation notes (PP-038h1)
+- **General edits:** `history::Edit` is now one component's value on one entity, before and after:
+  `Transform { before, after: Transform2D }`, `Layer { before, after: Option<Layer> }` (`None`: no component) and
+  `Hidden { before, after: bool }`; a move is a transform edit (`Edit::moved`). Merging (arrow-key bursts) now
+  extends any edit of the same kind on the same entity; `apply` inserts or removes `Layer`/`Hidden` as needed.
+- **Inspector fields:** position x/y and scale x/y and rotation (degrees) as `egui::DragValue`s, layer as a checkbox
+  (has a `Layer`) plus a number, hidden as a checkbox; the other components stay read-only below. A change is
+  applied to the world at once but recorded only when the field is let go: the first change opens a pending edit
+  holding the value before it, and it is recorded (`Edit::ending_now`) in the first frame no inspector field is
+  dragged or focused, so a drag or a typed number is one undo step, not one per frame. A pending edit is also
+  recorded before an undo or redo, a save, a selection change, a view drag or an arrow step, and the
+  unsaved-changes marker counts it. Keys typed into a field never move the selection (shortcuts stop while a text
+  field has the focus).
+- **Verified under Xvfb** on a copy of `demo.ron` (`#7`): a 50 px drag on Position x (45 after egui's drag
+  threshold), Hidden ticked, Layer ticked and dragged to 6, Rotation typed as 45: the saved file differed in exactly
+  those values (position 45, rotation 0.7853982, layer 6, hidden) and the outline turned 45°; in a second run five
+  undos took back exactly those five steps (title clean again), a redo and an undo, and the saved file was identical
+  to the original; in a third, arrow keys typed into the Position field moved nothing. 14 unit tests in the crate
+  (every edit kind applied and reverted, merging across kinds).
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

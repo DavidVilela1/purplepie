@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use purplepie::ecs::Entity;
 use purplepie::egui;
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{ScreenSpace, Text};
+use purplepie::render::{Hidden, Layer, ScreenSpace, Text};
 use purplepie::{Context, Game};
 
 use crate::history::{Edit, History};
@@ -27,7 +27,8 @@ struct Status {
 #[derive(Debug, Clone, Copy)]
 struct Drag {
     entity: Entity,
-    from: Vec2,
+    /// The entity's transform when the drag started.
+    from: Transform2D,
     origin: egui::Pos2,
 }
 
@@ -57,6 +58,9 @@ pub(crate) struct Editor {
     drag: Option<Drag>,
     /// The entity and time of the last arrow-key step, to merge a burst.
     last_nudge: Option<(Entity, f64)>,
+    /// An inspector edit in progress (a field being dragged or typed into):
+    /// its value before the edit; recorded as one step when the field is let go.
+    pending: Option<Edit>,
     /// Whether the window title shows the unsaved-changes marker.
     title_dirty: Option<bool>,
     /// Frames to run before exiting, for automated checks.
@@ -79,6 +83,7 @@ impl Editor {
             history: History::new(),
             drag: None,
             last_nudge: None,
+            pending: None,
             title_dirty: None,
             exit_after,
             frames: 0,
@@ -103,6 +108,7 @@ impl Editor {
     }
 
     fn save(&mut self, ctx: &mut Context<'_>) {
+        self.commit_pending(ctx);
         if self.keep_file {
             let text = format!(
                 "not saved: {} could not be opened, and saving would replace it",
@@ -124,6 +130,7 @@ impl Editor {
     /// Selects `entity` (or nothing) and says so in the status line.
     fn select(&mut self, ctx: &Context<'_>, entity: Option<Entity>, reveal: bool) {
         if self.selected != entity {
+            self.commit_pending(ctx);
             self.selected = entity;
             self.reveal_selection = reveal && entity.is_some();
             match entity {
@@ -137,6 +144,8 @@ impl Editor {
 
     /// Reverts the last edit (`undo`) or applies the last reverted one again.
     fn step_history(&mut self, ctx: &mut Context<'_>, undo: bool) {
+        // An inspector edit still in progress becomes the last step first.
+        self.commit_pending(ctx);
         let edit = if undo {
             self.history.undo()
         } else {
@@ -146,33 +155,58 @@ impl Editor {
             return;
         };
         self.last_nudge = None;
-        let Edit::Move { entity, from, to } = edit;
         let word = if undo { "undid" } else { "redid" };
+        let entity = edit.entity();
         if edit.apply(ctx.world_mut(), !undo) {
-            let at = if undo { from } else { to };
             self.select(ctx, Some(entity), true);
-            self.report(
-                format!(
-                    "{word} the move of #{} to ({:.1}, {:.1})",
-                    entity.id(),
-                    at.x,
-                    at.y
-                ),
-                false,
-            );
+            self.report(format!("{word} {}", edit.describe()), false);
         } else {
             self.report(format!("{word}: #{} no longer exists", entity.id()), true);
         }
     }
 
-    /// The selection's position, if it can be moved (it has a transform and
-    /// is not in screen space, whose moves come later).
-    fn movable_position(ctx: &Context<'_>, entity: Entity) -> Option<Vec2> {
+    /// Starts an inspector edit of the component `before` describes (its
+    /// value now), unless one of the same kind on the same entity is already
+    /// in progress; a different one in progress is recorded first.
+    fn begin_edit(&mut self, ctx: &Context<'_>, before: Edit) {
+        if let Some(pending) = self.pending {
+            if std::mem::discriminant(&pending) == std::mem::discriminant(&before)
+                && pending.entity() == before.entity()
+            {
+                return;
+            }
+            self.commit_pending(ctx);
+        }
+        self.pending = Some(before);
+        self.last_nudge = None;
+    }
+
+    /// Records the inspector edit in progress, if any, as one step.
+    fn commit_pending(&mut self, ctx: &Context<'_>) {
+        if let Some(pending) = self.pending.take() {
+            let edit = pending.ending_now(ctx.world());
+            if !edit.changes_nothing() {
+                self.history.record(edit, false);
+            }
+        }
+    }
+
+    /// Whether the scene differs from the file (including an edit in progress).
+    fn is_dirty(&self, ctx: &Context<'_>) -> bool {
+        self.history.is_dirty()
+            || self
+                .pending
+                .is_some_and(|p| !p.ending_now(ctx.world()).changes_nothing())
+    }
+
+    /// The selection's transform, if it can be moved in the view (it has a
+    /// transform and is not in screen space, whose moves come later).
+    fn movable_transform(ctx: &Context<'_>, entity: Entity) -> Option<Transform2D> {
         let world = ctx.world();
         if world.get::<&ScreenSpace>(entity).is_ok() {
             return None;
         }
-        world.get::<&Transform2D>(entity).ok().map(|t| t.position)
+        world.get::<&Transform2D>(entity).ok().map(|t| *t)
     }
 
     fn set_position(ctx: &mut Context<'_>, entity: Entity, position: Vec2) {
@@ -226,7 +260,7 @@ impl Editor {
         let Some(entity) = self.selected else {
             return;
         };
-        let Some(from) = Self::movable_position(ctx, entity) else {
+        let Some(before) = Self::movable_transform(ctx, entity) else {
             self.report(
                 format!(
                     "#{} cannot be moved (screen space or no transform)",
@@ -236,13 +270,14 @@ impl Editor {
             );
             return;
         };
-        let to = from + step;
+        self.commit_pending(ctx);
+        let to = before.position + step;
         Self::set_position(ctx, entity, to);
         let now = ctx.time().elapsed();
         let merge = self
             .last_nudge
             .is_some_and(|(e, at)| e == entity && now - at < NUDGE_MERGE_SECONDS);
-        self.history.record(Edit::Move { entity, from, to }, merge);
+        self.history.record(Edit::moved(entity, before, to), merge);
         self.last_nudge = Some((entity, now));
     }
 
@@ -310,18 +345,147 @@ impl Editor {
             });
     }
 
-    /// The selection's components, read-only for now.
-    fn inspector(&self, ctx: &Context<'_>, ui: &mut egui::Ui) {
+    /// The selection's components: transform, layer and hidden editable
+    /// (each change one undoable step when its field is let go), the rest
+    /// read-only.
+    fn inspector(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
         let Some(entity) = self.selected else {
             ui.label("Click an entity in the view or the list to select it.");
             return;
         };
-        let rows = details(ctx.world(), entity);
-        if rows.is_empty() {
+        if !ctx.world().contains(entity) {
             ui.label(format!("#{} no longer exists.", entity.id()));
             return;
         }
         ui.strong(format!("#{}", entity.id()));
+        let mut active = false;
+        let mut track = |response: &egui::Response| {
+            active |= response.dragged() || response.has_focus();
+            response.changed()
+        };
+        let transform = ctx.world().get::<&Transform2D>(entity).ok().map(|t| *t);
+        let layer = ctx.world().get::<&Layer>(entity).ok().map(|l| *l);
+        let hidden = ctx.world().get::<&Hidden>(entity).is_ok();
+        let mut new_transform = transform;
+        let mut new_layer = layer;
+        let mut new_hidden = hidden;
+        egui::Grid::new("purplepie editor fields")
+            .num_columns(2)
+            .show(ui, |ui| {
+                if let Some(t) = &mut new_transform {
+                    ui.label("Position");
+                    ui.horizontal(|ui| {
+                        track(
+                            &ui.add(
+                                egui::DragValue::new(&mut t.position.x)
+                                    .speed(1.0)
+                                    .prefix("x "),
+                            ),
+                        );
+                        track(
+                            &ui.add(
+                                egui::DragValue::new(&mut t.position.y)
+                                    .speed(1.0)
+                                    .prefix("y "),
+                            ),
+                        );
+                    });
+                    ui.end_row();
+                    ui.label("Rotation");
+                    let mut degrees = t.rotation.to_degrees();
+                    if track(&ui.add(egui::DragValue::new(&mut degrees).speed(1.0).suffix("°"))) {
+                        t.rotation = degrees.to_radians();
+                    }
+                    ui.end_row();
+                    ui.label("Scale");
+                    ui.horizontal(|ui| {
+                        track(
+                            &ui.add(
+                                egui::DragValue::new(&mut t.scale.x)
+                                    .speed(0.01)
+                                    .prefix("x "),
+                            ),
+                        );
+                        track(
+                            &ui.add(
+                                egui::DragValue::new(&mut t.scale.y)
+                                    .speed(0.01)
+                                    .prefix("y "),
+                            ),
+                        );
+                    });
+                    ui.end_row();
+                }
+                ui.label("Layer");
+                ui.horizontal(|ui| {
+                    let mut has_layer = new_layer.is_some();
+                    let mut value = new_layer.map_or(0, |l| l.0);
+                    track(&ui.checkbox(&mut has_layer, ""));
+                    track(&ui.add_enabled(has_layer, egui::DragValue::new(&mut value)));
+                    new_layer = has_layer.then_some(Layer(value));
+                });
+                ui.end_row();
+                ui.label("Hidden");
+                track(&ui.checkbox(&mut new_hidden, ""));
+                ui.end_row();
+            });
+        if let (Some(before), Some(after)) = (transform, new_transform)
+            && before != after
+        {
+            self.begin_edit(
+                ctx,
+                Edit::Transform {
+                    entity,
+                    before,
+                    after: before,
+                },
+            );
+            if let Ok(mut t) = ctx.world_mut().get::<&mut Transform2D>(entity) {
+                *t = after;
+            }
+        }
+        if new_layer != layer {
+            self.begin_edit(
+                ctx,
+                Edit::Layer {
+                    entity,
+                    before: layer,
+                    after: layer,
+                },
+            );
+            Edit::Layer {
+                entity,
+                before: layer,
+                after: new_layer,
+            }
+            .apply(ctx.world_mut(), true);
+        }
+        if new_hidden != hidden {
+            self.begin_edit(
+                ctx,
+                Edit::Hidden {
+                    entity,
+                    before: hidden,
+                    after: hidden,
+                },
+            );
+            Edit::Hidden {
+                entity,
+                before: hidden,
+                after: new_hidden,
+            }
+            .apply(ctx.world_mut(), true);
+        }
+        if !active {
+            self.commit_pending(ctx);
+        }
+
+        ui.separator();
+        let editable = ["Position", "Rotation", "Scale", "Layer", "Hidden"];
+        let rows: Vec<(String, String)> = details(ctx.world(), entity)
+            .into_iter()
+            .filter(|(label, _)| !editable.contains(&label.as_str()))
+            .collect();
         egui::ScrollArea::vertical()
             .id_salt("purplepie editor inspector")
             .auto_shrink([false, true])
@@ -341,10 +505,11 @@ impl Editor {
 
     /// The bottom line: the last message (red for errors) and whether there
     /// are unsaved changes.
-    fn status_line(&self, ui: &mut egui::Ui) {
+    fn status_line(&self, ctx: &Context<'_>, ui: &mut egui::Ui) {
+        let dirty = self.is_dirty(ctx);
         egui::Panel::bottom("purplepie editor status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                if self.history.is_dirty() {
+                if dirty {
                     ui.strong("* unsaved changes");
                     ui.separator();
                 }
@@ -442,8 +607,9 @@ impl Editor {
             let picked = picked_at(ctx, origin);
             let target = select::drag_target(&picked, self.selected);
             self.select(ctx, target, true);
+            self.commit_pending(ctx);
             self.drag = target.and_then(|entity| {
-                Self::movable_position(ctx, entity).map(|from| Drag {
+                Self::movable_transform(ctx, entity).map(|from| Drag {
                     entity,
                     from,
                     origin,
@@ -459,20 +625,15 @@ impl Editor {
                     Vec2::new(pointer.x - drag.origin.x, pointer.y - drag.origin.y),
                     camera.effective_zoom(),
                 );
-                Self::set_position(ctx, drag.entity, drag.from + offset);
+                Self::set_position(ctx, drag.entity, drag.from.position + offset);
             }
             if response.drag_stopped_by(egui::PointerButton::Primary) {
                 self.drag = None;
-                if let Some(to) = Self::movable_position(ctx, drag.entity) {
-                    self.history.record(
-                        Edit::Move {
-                            entity: drag.entity,
-                            from: drag.from,
-                            to,
-                        },
-                        false,
-                    );
-                    if to != drag.from {
+                if let Some(now) = Self::movable_transform(ctx, drag.entity) {
+                    let to = now.position;
+                    self.history
+                        .record(Edit::moved(drag.entity, drag.from, to), false);
+                    if to != drag.from.position {
                         self.report(
                             format!("moved #{} to ({:.1}, {:.1})", drag.entity.id(), to.x, to.y),
                             false,
@@ -485,7 +646,7 @@ impl Editor {
 
     /// Keeps the window title in step with unsaved changes ("* name").
     fn update_title(&mut self, ctx: &mut Context<'_>) {
-        let dirty = self.history.is_dirty();
+        let dirty = self.is_dirty(ctx);
         if self.title_dirty != Some(dirty) {
             self.title_dirty = Some(dirty);
             let mark = if dirty { "* " } else { "" };
@@ -562,7 +723,7 @@ impl Game for Editor {
         self.shortcuts(ctx, ui);
         // Side and bottom panels first, so the viewport is what they leave.
         self.entities_panel(ctx, ui);
-        self.status_line(ui);
+        self.status_line(ctx, ui);
         self.viewport(ctx, ui);
         self.update_title(ctx);
     }

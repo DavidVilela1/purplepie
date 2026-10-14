@@ -40,8 +40,9 @@ break compatibility and a patch version (0.x.**y**) may not.
   opens a scene with `load_scene_keeping_unknown`, lists its entities, pans and zooms beside its panel, fits the view
   (F) and saves (Ctrl+S), byte for byte when nothing changed; errors appear in a status line, and a file that exists
   but could not be opened is never overwritten. Selecting (click in the view, again for the entity below, or in the
-  list; outlined), a read-only inspector, moving (left drag, arrow keys, Shift for 10 units), undo/redo of moves
-  (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an unsaved-changes marker. A `Game` on the public API with the `egui`
+  list; outlined), an inspector that edits position, rotation, scale, layer and hidden (the rest read-only), moving
+  (left drag, arrow keys, Shift for 10 units), undo/redo of every change (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an
+  unsaved-changes marker. A `Game` on the public API with the `egui`
   feature; Rust 1.95.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,

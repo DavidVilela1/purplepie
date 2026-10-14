@@ -253,7 +253,9 @@ scene centred in the rest of the window, and "opened … 19 entities" at the bot
 button pans; the wheel zooms around the cursor; F fits the scene again. Click the green square: it gets an orange
 outline, its row lights up and its components appear under the list. Drag it a little to the right: the title gets a
 `*` and the bottom line says "unsaved changes"; Right arrow moves it one more unit. Ctrl+Z twice puts it back (the `*`
-goes away); Ctrl+Shift+Z brings the move back; Ctrl+Z again. Ctrl+S prints "saved …". Close the window, then
+goes away); Ctrl+Shift+Z brings the move back; Ctrl+Z again. Under the list, click the Rotation number, type 45
+and press Enter: the square turns; tick Hidden: it disappears (its outline stays); Ctrl+Z twice brings both back.
+Ctrl+S prints "saved …". Close the window, then
 `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
 
 ## macOS or Linux

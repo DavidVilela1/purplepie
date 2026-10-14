@@ -11,7 +11,9 @@
 //! right drag) and zoom (wheel) the view, fit it (F), select an entity (click it
 //! in the view, again to reach the one below, or in the list), inspect it, move
 //! it (left drag, arrow keys, Shift for 10 units), undo and redo moves (Ctrl+Z,
-//! Ctrl+Shift+Z or Ctrl+Y), and save (Ctrl+S). Editing values comes next.
+//! Ctrl+Shift+Z or Ctrl+Y), and save (Ctrl+S). Since PP-038h1 the inspector
+//! edits position, rotation, scale, layer and hidden, each change one undoable
+//! step; the drawables' values and game components come next.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
