@@ -10,13 +10,14 @@ use purplepie::ecs::Entity;
 use purplepie::egui;
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{
-    Color, Hidden, HorizontalAnchor, Layer, Quad, ScreenSpace, Sprite, Text, TextureRegion,
-    VerticalAnchor,
+    Color, Hidden, HorizontalAnchor, Layer, Quad, ScreenSpace, Sprite, Text, TextAnchor,
+    TextureRegion, VerticalAnchor,
 };
 use purplepie::scene::UnknownComponents;
 use purplepie::{Context, Game};
 
 use crate::history::{Edit, History};
+use crate::library;
 use crate::select;
 use crate::snapshot::{DUPLICATE_OFFSET, NotCopied, Snapshot};
 use crate::summary::{details, entity_ids, summary};
@@ -79,6 +80,23 @@ impl Fields {
 /// together.
 const NUDGE_MERGE_SECONDS: f64 = 1.0;
 
+/// What a new quad looks like.
+const NEW_QUAD_SIZE: Vec2 = Vec2::new(64.0, 64.0);
+const NEW_QUAD_COLOR: Color = Color::PURPLEPIE;
+/// What a new text says, and its size.
+const NEW_TEXT: &str = "Text";
+const NEW_TEXT_SIZE: f32 = 32.0;
+
+/// Something to add to the scene.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Addition {
+    Quad,
+    /// A sprite showing the image at this path (relative to the asset folder).
+    Sprite(String),
+    /// A text in the font at this path (relative to the asset folder).
+    Text(String),
+}
+
 /// The outline drawn around the selection.
 const OUTLINE: egui::Color32 = egui::Color32::from_rgb(255, 200, 40);
 
@@ -106,6 +124,12 @@ pub(crate) struct Editor {
     pending: Option<Pending>,
     /// A game component's text being typed, applied when the field is left.
     kept_draft: Option<KeptDraft>,
+    /// Image and font files in the asset folder (relative paths), listed when
+    /// the scene is opened, for adding sprites and texts.
+    images: Vec<String>,
+    fonts: Vec<String>,
+    /// The world point at the centre of the free view, where additions go.
+    view_center: Option<Vec2>,
     /// Whether the window title shows the unsaved-changes marker.
     title_dirty: Option<bool>,
     /// Frames to run before exiting, for automated checks.
@@ -130,6 +154,9 @@ impl Editor {
             last_nudge: None,
             pending: None,
             kept_draft: None,
+            images: Vec::new(),
+            fonts: Vec::new(),
+            view_center: None,
             title_dirty: None,
             exit_after,
             frames: 0,
@@ -353,6 +380,97 @@ impl Editor {
         self.report(text, false);
     }
 
+    /// Adds a quad, a sprite or a text at the centre of the view (whole world
+    /// units) and selects it: one undoable step.
+    fn add_entity(&mut self, ctx: &mut Context<'_>, addition: Addition) {
+        self.finish_edits(ctx);
+        let at = self.view_center.unwrap_or(Vec2::ZERO).round();
+        let transform = Transform2D::from_position(at);
+        let entity = match &addition {
+            Addition::Quad => ctx
+                .world_mut()
+                .spawn((transform, Quad::new(NEW_QUAD_SIZE, NEW_QUAD_COLOR))),
+            Addition::Sprite(path) => match ctx.load_texture(path) {
+                Ok(texture) => {
+                    // The image's own size; easy to change in the inspector.
+                    let size = ctx.texture_size(texture).unwrap_or(NEW_QUAD_SIZE);
+                    ctx.world_mut()
+                        .spawn((transform, Sprite::new(texture, size)))
+                }
+                Err(error) => {
+                    self.report(format!("could not add: {}", explain(&error)), true);
+                    return;
+                }
+            },
+            Addition::Text(path) => match ctx.load_font(path) {
+                Ok(font) => {
+                    let text =
+                        Text::new(NEW_TEXT, font, NEW_TEXT_SIZE).with_anchor(TextAnchor::CENTER);
+                    ctx.world_mut().spawn((transform, text))
+                }
+                Err(error) => {
+                    self.report(format!("could not add: {}", explain(&error)), true);
+                    return;
+                }
+            },
+        };
+        let Ok(snapshot) = Snapshot::of(ctx.world(), entity) else {
+            return;
+        };
+        self.history.record(
+            Edit::Exists {
+                entity,
+                snapshot: Box::new(snapshot),
+                added: true,
+            },
+            false,
+        );
+        self.last_nudge = None;
+        self.select(ctx, Some(entity), true);
+        let text = format!("added {}", summary(ctx.world(), entity));
+        self.report(text, false);
+    }
+
+    /// The "Add" row: a quad, a sprite from the asset folder's images, a text
+    /// in one of its fonts.
+    fn add_buttons(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
+        let mut chosen = None;
+        ui.horizontal(|ui| {
+            ui.label("Add");
+            if ui.button("Quad").clicked() {
+                chosen = Some(Addition::Quad);
+            }
+            let menus = [
+                ("Sprite", &self.images, "no images in the asset folder"),
+                ("Text", &self.fonts, "no fonts in the asset folder"),
+            ];
+            for (label, files, none) in menus {
+                ui.menu_button(label, |ui| {
+                    if files.is_empty() {
+                        ui.label(none);
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            for file in files {
+                                if ui.button(file).clicked() {
+                                    chosen = Some(if label == "Sprite" {
+                                        Addition::Sprite(file.clone())
+                                    } else {
+                                        Addition::Text(file.clone())
+                                    });
+                                    ui.close();
+                                }
+                            }
+                        });
+                });
+            }
+        });
+        if let Some(addition) = chosen {
+            self.add_entity(ctx, addition);
+        }
+    }
+
     /// Whether the scene differs from the file (including an edit in progress).
     fn is_dirty(&self, ctx: &Context<'_>) -> bool {
         self.history.is_dirty()
@@ -497,6 +615,7 @@ impl Editor {
                         self.delete_selection(ctx);
                     }
                 });
+                self.add_buttons(ctx, ui);
                 ui.separator();
                 let ids = entity_ids(ctx.world());
                 ui.label(format!("{} entities", ids.len()));
@@ -782,6 +901,8 @@ impl Editor {
                         viewport,
                     );
                 }
+                let center = Vec2::new(rect.center().x, rect.center().y);
+                self.view_center = Some(ctx.camera().screen_to_world(center, viewport));
                 let response = ui.interact(
                     rect,
                     ui.id().with("purplepie editor viewport"),
@@ -1096,8 +1217,20 @@ impl Game for Editor {
             Err(error) => {
                 // A missing file is a new scene; an existing one is kept safe.
                 self.keep_file = self.file.exists();
-                self.report(format!("could not open: {}", explain(&error)), true);
+                if self.keep_file {
+                    self.report(format!("could not open: {}", explain(&error)), true);
+                } else {
+                    let text = format!(
+                        "new scene: {} does not exist yet; saving (Ctrl+S) creates it",
+                        self.file.display()
+                    );
+                    self.report(text, false);
+                }
             }
+        }
+        if let Some(root) = ctx.asset_root() {
+            self.images = library::files_under(root, library::IMAGES);
+            self.fonts = library::files_under(root, library::FONTS);
         }
         self.update_title(ctx);
         Ok(())

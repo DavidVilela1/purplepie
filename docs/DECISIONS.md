@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`); PP-038i2–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene); PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2854,6 +2854,26 @@ small and enough for the core interactions.
   undos and a save gave a file identical to the original, three redos one identical to the first save, three
   undos again the original. Deleting `#10`, which holds only a kept game component, and undoing also gave the
   original. 19 unit tests in the crate.
+
+## Implementation notes (PP-038i2)
+- **Adding:** an "Add" row with Quad (64 × 64, `Color::PURPLEPIE`), Sprite (a menu of the asset folder's PNG files;
+  natural size from `Context::texture_size`) and Text ("Text", size 32, `TextAnchor::CENTER`; a menu of its TTF/OTF
+  files). The new entity is placed at the world point under the centre of the free view, rounded to whole units,
+  selected, and recorded as `Edit::Exists { added: true }`; a file that fails to load is reported and nothing is
+  added. Assets are loaded through `Context::load_texture`/`load_font` with paths relative to the asset folder, so
+  the saved file references them the same way (`capture` makes paths relative to the asset root). Textures and fonts
+  stay loaded after an undo (the engine does not unload), so redo reuses them.
+- **Asset lists:** `library::files_under(root, extensions)` lists matching files under the asset folder (relative,
+  `/`-separated, sorted, hidden entries skipped, at most 500), once when the scene opens; files added later appear
+  after reopening.
+- **New scene: no "New" command.** Opening a path that does not exist already gives an empty scene that Ctrl+S
+  creates (PP-038f); with adding, that is the whole flow, and it now says so plainly ("new scene: … does not exist
+  yet; saving (Ctrl+S) creates it") instead of a red error. A "New"/"Open"/"Save as" set belongs with file dialogs,
+  which the editor does not have; revisit if a level designer needs several files per session.
+- **Verified under Xvfb:** on a copy of `demo.ron`, Quad, Sprite (`textures/breakout/ball.png`) and Text
+  (`fonts/Poppins-Regular.ttf`) were added; the saved file had exactly those three new entities with relative asset
+  paths; three undos gave the original file. A missing `fresh.ron` with a quad and a text added and saved became a
+  two-entity file that opened again. 20 unit tests in the crate.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

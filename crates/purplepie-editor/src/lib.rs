@@ -15,7 +15,9 @@
 //! rotation, scale, layer and hidden (PP-038h1), quads, sprites and texts, and
 //! the game's components as RON text checked when the field is left (PP-038h2),
 //! each field change one undoable step. Delete removes the selection and Ctrl+D
-//! duplicates it (PP-038i1); undoing a delete brings the same entity back.
+//! duplicates it (PP-038i1); undoing a delete brings the same entity back. The
+//! Add row places a quad, a sprite or a text at the centre of the view
+//! (PP-038i2); a file that does not exist yet opens as a new scene.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
@@ -30,6 +32,7 @@
 
 mod editor;
 mod history;
+mod library;
 mod options;
 mod select;
 mod snapshot;

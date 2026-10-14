@@ -167,7 +167,9 @@ see its components; drag it or use the arrow keys (Shift: 10 units) to move it; 
 undo and redo; `*` in the title marks unsaved changes. The inspector edits position, rotation, scale, layer, hidden,
 quads (size, colour), sprites (size, tint, region) and texts (content, size, colour, anchor) — drag a number or click
 it to type — and the game's own components as RON text, checked when you leave the field. Delete removes the
-selection and Ctrl+D duplicates it (both undoable). Adding new entities comes next.
+selection and Ctrl+D duplicates it; the Add row places a quad, a sprite (an image from the asset folder) or a text at
+the centre of the view (all undoable). Opening a file that does not exist starts a new scene. Registering a game's
+own component types in the editor comes next.
 
 The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
 square at the cursor (the top-right "Reset camera" button resets the view), Escape quits; a text label at the bottom left lists these controls.

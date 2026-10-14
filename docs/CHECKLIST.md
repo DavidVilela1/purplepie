@@ -260,7 +260,8 @@ press Enter ("changed scene_demo::Spin of #8"); then type `(speed:` and press En
 and the field shows the previous value again. Ctrl+Z puts `0.8` back. Press Ctrl+D: a copy of #8 appears a little to the
 right and below, selected, at the end of the list (20 entities); press Delete: it is gone. Click the green square
 and press Delete: it disappears. Ctrl+Z three times: the square comes back, then the copy, then the copy goes again
-(19 entities).
+(19 entities). Click Quad in the "Add" row: a purple square appears in the middle of the view, selected; under
+Sprite, pick `textures/breakout/ball.png`: a ball appears there too. Ctrl+Z twice removes both.
 Ctrl+S prints "saved …". Close the window, then
 `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
 
