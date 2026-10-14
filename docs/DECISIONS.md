@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save); PP-038g–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete); PP-038h–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2748,6 +2748,31 @@ small and enough for the core interactions.
   broken file was refused. 7 unit tests (arguments, asset folder, bounds, fit, pan and zoom, summaries, error text).
 - **Seen, not handled yet:** screen-space entities (HUD) are drawn relative to the whole window, so the panel can
   cover them (the demo's "SCENE DEMO" label at the top left); selecting and editing them is for later tasks.
+
+## Implementation notes (PP-038g)
+- **Selection:** a left click picks with `Context::entities_at` at the click (topmost first); clicking the same spot
+  again selects the next entity down the stack (`select::after_click`), an empty spot clears it; a list row selects
+  too, and a selection made in the view scrolls the list to its row. The outline is an egui `closed_line` through the
+  four corners of the drawn rectangle (`view::outline`: transform, then the camera, or the anchor for screen-space
+  entities), never an entity. A read-only inspector under the list shows transform, layer, hidden, screen space, the
+  drawable, animation, velocity, button and the kept game components (`summary::details`).
+- **Moving:** a left drag moves the selection if it is under the pointer, else the topmost entity there
+  (`select::drag_target`); the position follows `from + (pointer − press origin) / zoom` (Y flipped), so the few
+  pixels before egui's drag threshold are not lost; the drag is one move on release. Arrow keys move by 1 world unit,
+  10 with Shift; steps on the same entity less than a second apart merge into one undoable move. Screen-space
+  entities are listed and inspected but not moved yet (the status line says so).
+- **Undo:** `history::History` of `Edit::Move { entity, from, to }` with undo and redo lists; a new edit drops the
+  redo list; empty moves are not recorded. It tracks the edit count at the last save (or at opening), so the title
+  shows `* ` and the status line "unsaved changes" exactly when the scene differs from the file: undoing back to the
+  save clears them, and the saved state becomes unreachable (always dirty) once a new edit replaces undone ones or a
+  merge changes the saved edit. Undo/redo select the entity they touched.
+- **Verified under Xvfb** on a copy of `demo.ron`: a click selected `#7`; a 100 × 50 px drag at zoom 0.9 moved it to
+  (111.1, −15.6); three Right steps and Shift+Up made one merged move to (114.1, −5.6); the title read
+  `* demo.ron - PurplePie Editor`; two undos, a redo with Ctrl+Shift+Z and one with Ctrl+Y, and two undos again
+  restored (0, 40) and the clean title; two clicks on the caption selected `#12` and then the panel below it, `#0`;
+  a list click selected the screen-space `#13`, whose Right step was refused; Ctrl+S then wrote a file identical to
+  the original. A separate run (drag 90 px, save) changed exactly one line: `#7`'s position, (0.0, 40.0) →
+  (100.0, 40.0). 13 unit tests in the crate (history, selection, outline, inspector rows added).
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

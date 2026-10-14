@@ -7,9 +7,11 @@
 //! [`Context::load_scene_keeping_unknown`](purplepie::Context::load_scene_keeping_unknown),
 //! so game components it does not know are kept and saved back unchanged.
 //!
-//! So far (PP-038f): open a scene, list its entities, pan (middle or right
-//! drag) and zoom (wheel) the view, fit it (F), and save (Ctrl+S). Selecting
-//! and moving come next (PP-038g).
+//! So far (PP-038f, PP-038g): open a scene, list its entities, pan (middle or
+//! right drag) and zoom (wheel) the view, fit it (F), select an entity (click it
+//! in the view, again to reach the one below, or in the list), inspect it, move
+//! it (left drag, arrow keys, Shift for 10 units), undo and redo moves (Ctrl+Z,
+//! Ctrl+Shift+Z or Ctrl+Y), and save (Ctrl+S). Editing values comes next.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
@@ -23,7 +25,9 @@
 //! ```
 
 mod editor;
+mod history;
 mod options;
+mod select;
 mod summary;
 mod view;
 

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P1 · TODO ← **next task**
+- [ ] **PP-038h1: Editor inspector editing, part 1: transform (position, rotation, scale), layer and hidden as editable fields; edits generalized from moves to before/after component values, each change one undoable step** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038g: Editor first slice part 2: select (click, cycling, list), outline, read-only inspector, move (drag, arrow keys), undo/redo, unsaved-changes marker; first vertical slice complete (phase P5, item 7)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038f: Editor crate, first slice part 1: `crates/purplepie-editor` opens a scene (lenient), lists its entities, pans/zooms/fits beside its panel, saves (Ctrl+S), reports errors in a status line (phase P5, item 6)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038e: Lenient scene loading: `Context::load_scene_keeping_unknown`, public `scene::UnknownComponents` (unregistered game components kept as RON text, saved back unchanged) (phase P5, item 5)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038d: Picking: `Context::entities_at(point)`, topmost first in draw order, hidden and screen-space entities excluded, rotation/scale and text bounds (phase P5, item 4)** · DONE (2026-10-13; verified on Linux)
@@ -86,9 +87,9 @@ _None._
 
 ## Future
 
-P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
+P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice (complete 2026-10-14); PP-038h was split into h1 and h2 before it started:
 
-- [ ] **PP-038h: Editor inspector editing: transform, layer, hidden, quad, sprite and text fields, game components as RON text checked on entry, each change undoable** · P2 · TODO
+- [ ] **PP-038h2: Editor inspector editing, part 2: quad size and colour, sprite size, tint and region, text content, size, colour and anchor, and kept game components as RON text checked on entry (needs a setter on `scene::UnknownComponents`), each undoable** · P2 · TODO
 - [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene** · P2 · TODO
 - [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
 
@@ -476,14 +477,22 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038g: Editor slice part 2: select, move, undo ← NEXT
+### PP-038h1: Editor inspector editing, part 1 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 7 · Priority P1 · TODO |
-| Dependencies | PP-038f (DONE); PP-038d (picking); ADR-044 |
-| Why now | Completes the first vertical slice ADR-044 defined: open, select, move, undo, save. |
-| Scope | In `crates/purplepie-editor`: select by clicking in the viewport (`Context::entities_at` at the press origin, topmost first; clicking again on the same spot may cycle through the stack) and by clicking a row in the list (selectable rows; the selected row scrolls into view); outline the selection with egui's painter (its drawn rectangle through the camera, rotated corners), never as an entity; move it by dragging with the left button (world delta = screen delta / zoom, Y flipped) and with the arrow keys (1 unit, Shift 10) when no text field has focus; a read-only inspector under the list (position, rotation, scale, layer, drawable, kept game components); an undo stack of move commands (`Edit::Move { entity, from, to }`; one command per drag or key burst) with Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y), buttons, and an unsaved-changes marker (`*` in the title and the status line) that saving clears. Screen-space entities: listed and inspected, not picked in the viewport (PP-038d), not moved in this task. Pure logic (command stack, merge rules, outline corners, key steps) unit-tested; Xvfb: select by click and by list, drag, arrows, undo/redo, save, and the saved file differs from the original only in the moved entity's position. |
-| Acceptance criteria | Selecting, moving, undoing and redoing work as above (Xvfb evidence); a move then undo saves a file identical to the original; no engine change unless needed (then recorded). |
+| Stage | Phase P5, item 8 · Priority P1 · TODO |
+| Dependencies | PP-038g (DONE); ADR-044 |
+| Split | PP-038h (all inspector editing) was split before it started: h1 makes the inspector editable for the components every entity shares and generalizes the undo history; h2 adds the drawables and the kept game components (which needs an engine setter). |
+| Why now | The first slice is complete; the inspector is read-only. Editing values is the next step of ADR-044's plan and needs a general edit model before more fields are added. |
+| Scope | In `crates/purplepie-editor`: generalize `history::Edit` from moves to a change of one component's value on one entity (e.g. `Edit::Transform { entity, before, after }`, `Edit::Layer { entity, before: Option<Layer>, after: Option<Layer> }`, `Edit::Hidden { entity, before: bool, after: bool }`), keeping the existing move behaviour (drags and arrow steps become transform edits; merging rules unchanged). The inspector shows editable fields for position (x, y), rotation (degrees), scale (x, y) with `egui::DragValue`, layer (add/remove and a number) and hidden (checkbox); a field drag or typed value is one undoable step when it ends (not one per frame). Keys typed into fields must not move the selection (text focus already withholds them). Unit tests for applying and reverting each edit kind and for merging; Xvfb: change each field, undo/redo, save and diff. |
+| Acceptance criteria | Every editable field changes the scene, is undone/redone in one step, marks the scene unsaved, and saves as expected (one-line diffs); moves still work as in PP-038g. |
+
+### PP-038g: Editor first slice part 2: select, move, undo
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 7 · Priority P1 · **DONE** (2026-10-14; verified on Linux; first vertical slice complete) |
+| Dependencies | PP-038f (DONE); PP-038d |
+| Acceptance criteria | ✅ Select by click (`Context::entities_at`; again on the same spot → next one down; empty spot → none), by list row (and the list scrolls to a selection made in the view), Escape deselects; outline drawn with egui's painter through the camera (or the anchor for screen space). ✅ Read-only inspector (`summary::details`). ✅ Left drag moves the selection or the topmost entity under the pointer (`from + (pointer − origin) / zoom`, Y flipped), one undoable move per drag; arrow keys 1 unit, Shift 10, steps within 1 s merged; screen-space entities refused with a message. ✅ `history::History` with undo/redo (buttons, Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y), saved-state tracking: `* ` in the title and "unsaved changes" in the status line exactly when the scene differs from the file. ✅ Xvfb: select, drag (100 × 50 px at zoom 0.9 → (111.1, −15.6)), merged arrow steps, undo/redo both ways, clean title after undoing everything, click cycling `#12` → `#0`, screen-space move refused, save identical to the original; a drag-and-save run changed exactly `#7`'s position line. ✅ 13 unit tests in the crate. No engine change. |
 
 ### PP-038f: Editor crate, first slice part 1
 | Field | Value |

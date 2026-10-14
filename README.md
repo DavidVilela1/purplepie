@@ -162,7 +162,9 @@ fn main() -> purplepie::Result<()> {
 
 The scene editor (`crates/purplepie-editor`, in progress, ADR-044) opens a scene file, lists its entities, pans (middle
 or right drag) and zooms (wheel) beside its panel, fits the view (F) and saves (Ctrl+S); game components it does not
-know are kept and written back unchanged. Selecting and moving entities come next.
+know are kept and written back unchanged. Click an entity (again for the one below it) or a list row to select it and
+see its components; drag it or use the arrow keys (Shift: 10 units) to move it; Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y)
+undo and redo moves; `*` in the title marks unsaved changes. Editing values and placing entities come next.
 
 The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
 square at the cursor (the top-right "Reset camera" button resets the view), Escape quits; a text label at the bottom left lists these controls.

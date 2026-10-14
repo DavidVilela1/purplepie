@@ -3,7 +3,7 @@
 //! free. Plain functions, unit-tested without a window.
 
 use purplepie::Context;
-use purplepie::ecs::World;
+use purplepie::ecs::{Entity, World};
 use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Camera2D, Hidden, Quad, ScreenSpace, Sprite, Text};
 
@@ -61,6 +61,50 @@ pub(crate) fn scene_bounds(
         }
     }
     bounds
+}
+
+/// The local rectangle (min, max) of what `entity` draws: its quad, else its
+/// sprite, else its text (`text_bounds` as for [`scene_bounds`]).
+fn drawn_rect(
+    world: &World,
+    entity: Entity,
+    text_bounds: impl Fn(&Text) -> Option<(Vec2, Vec2)>,
+) -> Option<(Vec2, Vec2)> {
+    let e = world.entity(entity).ok()?;
+    if let Some(quad) = e.get::<&Quad>() {
+        return Some((-quad.size.abs() * 0.5, quad.size.abs() * 0.5));
+    }
+    if let Some(sprite) = e.get::<&Sprite>() {
+        return Some((-sprite.size.abs() * 0.5, sprite.size.abs() * 0.5));
+    }
+    let text = e.get::<&Text>()?;
+    text_bounds(&text)
+}
+
+/// The four corners, in window pixels (+Y down), of the rectangle `entity`
+/// draws, turned and scaled by its transform and seen through `camera` (or
+/// placed from its anchor when it is in screen space). `None` when it draws
+/// nothing or has no transform.
+pub(crate) fn outline(
+    world: &World,
+    entity: Entity,
+    camera: &Camera2D,
+    viewport: Vec2,
+    text_bounds: impl Fn(&Text) -> Option<(Vec2, Vec2)>,
+) -> Option<[Vec2; 4]> {
+    let (min, max) = drawn_rect(world, entity, text_bounds)?;
+    let transform = *world.get::<&Transform2D>(entity).ok()?;
+    let screen = world.get::<&ScreenSpace>(entity).ok().map(|s| *s);
+    let matrix = transform.to_mat4();
+    let corners = [min, Vec2::new(max.x, min.y), max, Vec2::new(min.x, max.y)].map(|corner| {
+        let p = matrix.transform_point3(corner.extend(0.0));
+        let p = Vec2::new(p.x, p.y);
+        match &screen {
+            Some(screen) => screen.to_window(p, viewport),
+            None => camera.world_to_screen(p, viewport),
+        }
+    });
+    corners.iter().all(|c| c.is_finite()).then_some(corners)
 }
 
 /// [`scene_bounds`] for the world in `ctx`, measuring texts with its fonts.
@@ -150,6 +194,42 @@ mod tests {
         let (min, max) = scene_bounds(&world, |_| None).expect("not empty");
         assert!(close(min, Vec2::new(-11.0, -1.0)), "{min}");
         assert!(close(max, Vec2::new(12.0, 7.0)), "{max}");
+    }
+
+    #[test]
+    fn outlines_follow_the_transform_the_camera_and_screen_space() {
+        let viewport = Vec2::new(800.0, 600.0);
+        let camera = Camera2D::new(Vec2::new(10.0, 0.0), 2.0);
+        let mut world = World::new();
+        let quad = world.spawn((
+            Transform2D::from_position(Vec2::new(10.0, 0.0))
+                .with_rotation(std::f32::consts::FRAC_PI_2),
+            Quad::new(Vec2::new(4.0, 2.0), Color::WHITE),
+        ));
+        let corners = outline(&world, quad, &camera, viewport, |_| None).expect("drawn");
+        // Turned 90°: 2 wide, 4 tall around the window centre, at zoom 2.
+        let xs: Vec<f32> = corners.iter().map(|c| c.x).collect();
+        let ys: Vec<f32> = corners.iter().map(|c| c.y).collect();
+        let span = |v: &[f32]| {
+            v.iter().copied().fold(f32::MIN, f32::max) - v.iter().copied().fold(f32::MAX, f32::min)
+        };
+        assert!((span(&xs) - 4.0).abs() < 1e-3 && (span(&ys) - 8.0).abs() < 1e-3);
+        assert!(corners.iter().all(|c| (c.x - 400.0).abs() <= 2.001));
+
+        // A HUD quad 20 px right of and 10 px below the top-left corner.
+        let hud = world.spawn((
+            Transform2D::from_position(Vec2::new(20.0, -10.0)),
+            Quad::new(Vec2::splat(4.0), Color::WHITE),
+            ScreenSpace::TOP_LEFT,
+        ));
+        let corners = outline(&world, hud, &camera, viewport, |_| None).expect("drawn");
+        assert!(close(corners[0], Vec2::new(18.0, 12.0)), "{:?}", corners);
+        assert!(close(corners[2], Vec2::new(22.0, 8.0)), "{:?}", corners);
+
+        let bare = world.spawn((Transform2D::default(),));
+        assert!(outline(&world, bare, &camera, viewport, |_| None).is_none());
+        let text = world.spawn((Transform2D::default(), 5_u8));
+        assert!(outline(&world, text, &camera, viewport, |_| None).is_none());
     }
 
     #[test]
