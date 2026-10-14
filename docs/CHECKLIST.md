@@ -243,6 +243,16 @@ colour; arrows move it; a click in the purple area stamps an orange dot, and the
 Click the title field, type a few letters: the window title changes and the arrows move the text cursor, not the
 square; click the purple area and the arrows move the square again. "Remove stamps" removes the dots.
 
+```powershell
+Copy-Item assets\scenes\demo.ron $env:TEMP\demo-copy.ron
+cargo run -p purplepie-editor -- --assets assets $env:TEMP\demo-copy.ron
+```
+
+**Expect:** the scene editor: a list of 19 entities on the left (#8, #9 and #10 say "+1 game component"), the demo
+scene centred in the rest of the window, and "opened … 19 entities" at the bottom. Dragging with the right or middle
+button pans; the wheel zooms around the cursor; F fits the scene again; Ctrl+S prints "saved …". Close the window,
+then `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
+
 ## macOS or Linux
 
 The same steps in Terminal (bash/zsh). Linux also needs `sudo apt install libasound2-dev` first.

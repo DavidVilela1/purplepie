@@ -1,0 +1,21 @@
+[package]
+name = "purplepie-editor"
+version = "0.1.0"
+edition = "2024"
+# egui (through PurplePie's `egui` feature) needs Rust 1.95, so the CI `msrv`
+# job (Rust 1.90) excludes this crate (ADR-044).
+rust-version = "1.95"
+description = "PurplePie's scene editor: opens, shows and saves scene files (ADR-044)."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# A `Game` on PurplePie's public API with the `egui` hook (ADR-044); it lives
+# under `crates/` (ADR-038). egui comes only through `purplepie::egui`.
+[dependencies]
+purplepie = { path = "../..", features = ["egui"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"

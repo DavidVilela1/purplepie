@@ -32,7 +32,7 @@ What a patch release keeps working:
 | **Re-exported dependencies** | `ecs::hecs` / `ecs::World` / `ecs::Entity` (hecs 0.11), `math::Vec2` / `math::Mat4` (glam 0.33), and the `serde` 1 bounds of `register_scene_component` are part of the API. With the optional `egui` feature, so are `purplepie::egui` and `Game::egui` (egui 0.36, ADR-044). Moving them to an incompatible version needs a minor release. |
 | **Scene files** | Files of format version 1 keep loading. A patch release never writes a file that the same 0.x.0 cannot read. |
 | **Assets** | PNG textures, TrueType/OpenType fonts, WAV and OGG Vorbis sounds, and the asset-folder lookup rules (ADR-025). |
-| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `egui` and `debug-overlay` features (ADR-043, ADR-044) need Rust 1.95 because egui does, so the `msrv` job builds without them. |
+| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `egui` and `debug-overlay` features (ADR-043, ADR-044) need Rust 1.95 because egui does, so the `msrv` job builds without them, and without the scene editor (`crates/purplepie-editor`, a tool that is not released as a crate and declares Rust 1.95). |
 | **Platforms** | Windows, Linux (X11; Wayland untested) and macOS are built and tested in CI on every push. Rendering is verified by hand: on Linux by Cowork (software GPU), on Windows by the owner's checklist (`docs/CHECKLIST.md`). macOS rendering is not yet verified. |
 
 Not covered by the promise:

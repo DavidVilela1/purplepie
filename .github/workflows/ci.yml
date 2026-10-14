@@ -14,7 +14,8 @@
 #   Cargo.toml, 1.90): the promise of docs/RELEASING.md (R-19).
 #
 # Every job uses `--workspace`, so the example games under games/ (ADR-042)
-# are built, linted and tested with each engine change.
+# and the scene editor under crates/ (ADR-044) are built, linted and tested
+# with each engine change.
 #
 # The toolchain comes from the rustup preinstalled on GitHub-hosted runners.
 # `--locked` makes CI fail if Cargo.lock is out of date with Cargo.toml.
@@ -115,6 +116,7 @@ jobs:
       # Rust 1.95 (ADR-043, ADR-044; RELEASING). They are the only features
       # today, so: no features (the `egui_panel` example needs `egui` and is
       # skipped). The other jobs build them on the latest stable with
-      # `--all-features`.
+      # `--all-features`. The scene editor needs the `egui` feature, so it is
+      # excluded here (its own `rust-version` is 1.95).
       - name: Check with the minimum version
-        run: cargo +1.90 check --locked --workspace --all-targets
+        run: cargo +1.90 check --locked --workspace --all-targets --exclude purplepie-editor

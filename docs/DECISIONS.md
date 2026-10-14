@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`); PP-038f–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save); PP-038g–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2039,6 +2039,8 @@ events (e.g. to refresh thumbnails).
 
 ## Status
 Accepted (2026-10-08, PP-030). Closes the P3 "workspace split" item. Refines ADR-002 and ADR-026 (single package).
+The first `crates/` member arrived with PP-038f (2026-10-14): `crates/purplepie-editor` (ADR-044); CI already runs
+with `--workspace`, and the `msrv` job excludes the editor (it needs Rust 1.95).
 
 ## Context
 ADR-026 kept one crate until a second consumer needs its own. P4 (debug overlay) and P5 (editor) will add crates, and
@@ -2719,6 +2721,33 @@ small and enough for the core interactions.
   verbatim; a later registered value replaces the kept text on save. A mutation that saves only registered
   components fails four tests. The overlay's inspector lists kept components as "name (kept as text)" after the
   registered ones and no longer counts them as unregistered. The scene example's frozen frame is unchanged.
+
+## Implementation notes (PP-038f)
+- **Crate:** `crates/purplepie-editor` (workspace member, `publish = false`, `rust-version = "1.95"`), depending only
+  on `purplepie = { path = "../..", features = ["egui"] }`; `Cargo.lock` gains just its own entry. A library
+  (`Options` with `from_args`, `asset_folder_of`, `run`) and the `purplepie-editor` binary
+  (`[--assets <folder>] <scene.ron>`; `PURPLEPIE_EDITOR_EXIT_AFTER_FRAMES` for automated runs). No engine change was
+  needed: everything goes through `Context` and `Game::egui`.
+- **Asset folder:** `--assets`, else the nearest ancestor folder named `assets` holding the scene, else the engine's
+  usual lookup; paths are made absolute, so the scene file is opened and saved where it is.
+- **Layout:** a left `egui::Panel` (file name, Save, Fit view, the entity list with `show_rows`), a bottom status
+  line, and a frameless `CentralPanel` over the free area whose interaction area reads pan (middle or right drag),
+  wheel zoom around the cursor (`MouseWheel` events by unit) and F; Ctrl+S via `consume_key`. The camera fit uses the
+  `CentralPanel`'s rectangle, so the scene is centred beside the panels (`view::fit`, unit-tested with the other view
+  maths). Escape does not quit (`with_exit_on_escape(false)`), so a stray key cannot lose work.
+- **Errors:** opening or saving problems are shown in the status line with their causes and printed, never fatal. A
+  file that does not exist opens as an empty scene and Save creates it; a file that exists but could not be opened
+  (broken, another version) is never overwritten: Save refuses with a message (checked under Xvfb: the broken file was
+  left byte-identical).
+- **Workspace effect:** Cargo unifies features across one build, so `cargo test --workspace` now builds the engine
+  with `egui`; the CI `msrv` job excludes the editor (`--exclude purplepie-editor`), which also keeps the engine
+  without features there (DEVELOPMENT.md explains the commands).
+- **Verified under Xvfb:** a copy of `demo.ron` opened with 19 entities listed (three "+1 game component"), fitted
+  beside the panel; right-drag panned, wheel zoomed around the cursor, F refitted, Ctrl+S saved a file identical byte
+  for byte to the original; a missing file showed "No such file or directory" in red and saved a new empty scene; a
+  broken file was refused. 7 unit tests (arguments, asset folder, bounds, fit, pan and zoom, summaries, error text).
+- **Seen, not handled yet:** screen-space entities (HUD) are drawn relative to the whole window, so the panel can
+  cover them (the demo's "SCENE DEMO" label at the top left); selecting and editing them is for later tasks.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

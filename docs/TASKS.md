@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038f: Editor crate, slice part 1: `crates/purplepie-editor` (library + binary; Rust 1.95; CI `msrv` excludes it) opens a scene given on the command line, lists its entities, pans and zooms beside its panels, saves (Ctrl+S, unsaved-changes marker), reports errors in a status line** · P1 · TODO ← **next task**
+- [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038f: Editor crate, first slice part 1: `crates/purplepie-editor` opens a scene (lenient), lists its entities, pans/zooms/fits beside its panel, saves (Ctrl+S), reports errors in a status line (phase P5, item 6)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038e: Lenient scene loading: `Context::load_scene_keeping_unknown`, public `scene::UnknownComponents` (unregistered game components kept as RON text, saved back unchanged) (phase P5, item 5)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038d: Picking: `Context::entities_at(point)`, topmost first in draw order, hidden and screen-space entities excluded, rotation/scale and text bounds (phase P5, item 4)** · DONE (2026-10-13; verified on Linux)
 - [x] **PP-038c: Public egui hook: `egui` feature (`debug-overlay` builds on it), `purplepie::egui`, `Game::egui(ctx, ui)`, `EngineConfig::with_egui`; egui frame laid out by the runner (game UI, then overlay windows) and painted by the renderer; keys withheld only while an egui text field has the focus; `egui_panel` example (phase P5, item 3)** · DONE (2026-10-13; verified on Linux)
@@ -87,7 +88,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice:
 
-- [ ] **PP-038g: Editor slice part 2: select by click (PP-038d) and in the list, outline drawn with egui's painter, move by dragging and arrow keys, read-only inspector, undo/redo of moves as commands** · P2 · TODO
 - [ ] **PP-038h: Editor inspector editing: transform, layer, hidden, quad, sprite and text fields, game components as RON text checked on entry, each change undoable** · P2 · TODO
 - [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene** · P2 · TODO
 - [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
@@ -476,14 +476,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038f: Editor crate, first slice part 1 ← NEXT
+### PP-038g: Editor slice part 2: select, move, undo ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 6 · Priority P1 · TODO |
+| Stage | Phase P5, item 7 · Priority P1 · TODO |
+| Dependencies | PP-038f (DONE); PP-038d (picking); ADR-044 |
+| Why now | Completes the first vertical slice ADR-044 defined: open, select, move, undo, save. |
+| Scope | In `crates/purplepie-editor`: select by clicking in the viewport (`Context::entities_at` at the press origin, topmost first; clicking again on the same spot may cycle through the stack) and by clicking a row in the list (selectable rows; the selected row scrolls into view); outline the selection with egui's painter (its drawn rectangle through the camera, rotated corners), never as an entity; move it by dragging with the left button (world delta = screen delta / zoom, Y flipped) and with the arrow keys (1 unit, Shift 10) when no text field has focus; a read-only inspector under the list (position, rotation, scale, layer, drawable, kept game components); an undo stack of move commands (`Edit::Move { entity, from, to }`; one command per drag or key burst) with Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y), buttons, and an unsaved-changes marker (`*` in the title and the status line) that saving clears. Screen-space entities: listed and inspected, not picked in the viewport (PP-038d), not moved in this task. Pure logic (command stack, merge rules, outline corners, key steps) unit-tested; Xvfb: select by click and by list, drag, arrows, undo/redo, save, and the saved file differs from the original only in the moved entity's position. |
+| Acceptance criteria | Selecting, moving, undoing and redoing work as above (Xvfb evidence); a move then undo saves a file identical to the original; no engine change unless needed (then recorded). |
+
+### PP-038f: Editor crate, first slice part 1
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 6 · Priority P1 · **DONE** (2026-10-14; verified on Linux) |
 | Dependencies | PP-038c, PP-038d, PP-038e (DONE); ADR-038, ADR-044 |
-| Why now | The engine side the editor needs is in place (egui hook, picking, lenient loading); the editor itself is the rest of P5. Part 1 opens, shows and saves a scene; part 2 (PP-038g) selects, moves and undoes. |
-| Scope | New workspace member `crates/purplepie-editor` (ADR-038's place for crates): `Cargo.toml` (`purplepie = { path = "../..", features = ["egui"] }`, Rust 1.95, no other dependency unless measured), a library with a small public entry (e.g. `purplepie_editor::run(options)`) and a `purplepie-editor` binary. It is a `Game` (ADR-044): opens the scene given on the command line with `load_scene_keeping_unknown`, using the asset folder it lives in (the nearest `assets` ancestor, or an `--assets` option); a left egui panel lists the entities (id and a one-line summary, like the overlay's); the camera fits the scene beside the panel; pan (middle or right drag) and zoom (wheel) through egui's input over the free area; Ctrl+S (or a button) saves to the same file; a status line shows the file, entity count and errors (unreadable file, failed save) instead of exiting. CI: the `msrv` job excludes the crate (`--exclude purplepie-editor`); the other jobs build/lint/test it with `--workspace`. Unit tests for what is testable without a window (argument parsing, asset folder lookup, fitting the camera, summaries); Xvfb run: open `assets/scenes/demo.ron`, pan, zoom, save, and the saved file equals the original byte for byte. README/GUIDE note, CHANGELOG. |
-| Acceptance criteria | `cargo run -p purplepie-editor -- assets/scenes/demo.ron` opens the demo scene (all 19 entities listed), pans and zooms, saves it back unchanged; errors are shown, not panics; CI jobs and MSRV handled; no engine API change unless the editor proves it needs one (then recorded). |
+| Acceptance criteria | ✅ `crates/purplepie-editor` (workspace member, Rust 1.95, only `purplepie` with `egui`; `Cargo.lock` +1 entry, its own): library (`Options::from_args`, `asset_folder_of`, `run`) and `purplepie-editor [--assets <folder>] <scene.ron>` binary (`--help`; bad arguments → usage and exit code 2). ✅ Opens with `load_scene_keeping_unknown`; left panel lists the entities (summaries, "+1 game component" for kept text); bottom status line; pan (middle/right drag), wheel zoom around the cursor, fit beside the panels (F / button); Ctrl+S saves; Escape does not quit. ✅ Under Xvfb on a copy of `demo.ron`: 19 entities, pan, zoom, fit, save → byte-identical file; a missing file shows the cause in red and Ctrl+S creates an empty scene; a broken file is refused on save and left untouched. ✅ 7 unit tests. ✅ CI `msrv` excludes the editor; `--workspace` builds now enable `egui` on the engine (documented in DEVELOPMENT.md). README, CHANGELOG, CHECKLIST step 9, ADR-038 status, ADR-044 notes. No engine change. |
 
 ### PP-038e: Lenient scene loading
 | Field | Value |

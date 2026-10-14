@@ -160,6 +160,10 @@ fn main() -> purplepie::Result<()> {
 }
 ```
 
+The scene editor (`crates/purplepie-editor`, in progress, ADR-044) opens a scene file, lists its entities, pans (middle
+or right drag) and zooms (wheel) beside its panel, fits the view (F) and saves (Ctrl+S); game components it does not
+know are kept and written back unchanged. Selecting and moving entities come next.
+
 The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
 square at the cursor (the top-right "Reset camera" button resets the view), Escape quits; a text label at the bottom left lists these controls.
 
@@ -178,6 +182,7 @@ cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_E
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
 cargo run --features debug-overlay   # the sandbox with the debug overlay (F12 toggles; needs Rust 1.95)
 cargo run --example egui_panel --features egui   # a game's own egui panel (Game::egui; needs Rust 1.95)
+cargo run -p purplepie-editor -- assets/scenes/demo.ron   # the scene editor (needs Rust 1.95; see below)
 cargo test -- --ignored   # GPU-dependent tests (need a GPU or software Vulkan)
 cargo test
 cargo fmt --check && cargo clippy --all-targets

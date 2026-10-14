@@ -126,10 +126,12 @@ cargo check --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo test --workspace --all-features   # also the debug overlay (needs Rust 1.95; CI does this)
+cargo test --workspace --exclude purplepie-editor   # the engine and games without any feature (see below)
 cargo build
 cargo run            # sandbox
 cargo run --features debug-overlay      # sandbox with the debug overlay (F12)
 (cd games/purple-swarm && cargo run)   # example game, from its own folder (ADR-042)
+cargo run -p purplepie-editor -- assets/scenes/demo.ron   # the scene editor (ADR-044; Rust 1.95)
 ```
 
 `--workspace` includes the example games under `games/` (ADR-042), as CI does. Plain root commands build only the
@@ -138,9 +140,12 @@ simulated seconds it prints `swarm: autoplay finished: …` and exits, so two ru
 `PURPLE_SWARM_AUTOPLAY=survive` plays until the bot dies, to measure difficulty). Purple Swarm keeps its best score
 in `target/debug/purple-swarm-best.txt` when run with `cargo run`; delete it to start from 0.
 
-The repository root is also a Cargo workspace root (ADR-038), with the engine as its only member, so these commands
-are unchanged. Once a crate exists under `crates/`, run the gates with `--workspace` (and update CI the same way); tests
-in such crates must build asset paths from the workspace root, not their own `CARGO_MANIFEST_DIR`.
+The repository root is also a Cargo workspace root (ADR-038). Since PP-038f `crates/purplepie-editor` is a member
+too (ADR-044). It depends on the engine with the `egui` feature, and Cargo unifies features across the packages of
+one build, so **`cargo test --workspace` builds the engine with `egui`** (the same unit tests as `--features egui`).
+Plain `cargo test` at the root (the engine alone, its default member) or `--workspace --exclude purplepie-editor`
+checks the engine without features; the CI `msrv` job uses the latter. Tests in `crates/` must build asset paths
+from the workspace root, not their own `CARGO_MANIFEST_DIR`.
 
 Cowork has clippy 1.95, but the owner and CI use the latest stable, whose `clippy::chunks_exact_to_as_chunks` rejects
 `chunks_exact(4)`-style calls with a constant size (R-19). Before delivering, this must print nothing; use
