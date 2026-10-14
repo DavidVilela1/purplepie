@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-13 (PP-038c: egui is public with the `egui` feature, R-30; PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
+Last reviewed: 2026-10-14 (PP-038j2, end of P5: no new risk; R-29 and R-30 notes for the scene editor below; PP-038c: egui is public with the `egui` feature, R-30; PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -258,6 +258,11 @@ Likelihood and impact are qualitative: Low, Medium or High.
   `load_scene_keeping_unknown` keeps them as text for tools), and serde 1.x is now part of
   the public API through `register_scene_component`'s bound.
 - **Fallback:** bump `version` with a reader for the old one; log or reject unsaved components once a registry exists.
+- **Scene editor (P5, 2026-10-14):** the editor opens files leniently and keeps every game component as its RON text,
+  saved back exactly (byte for byte when nothing changed; every editor task verified that by diff), and it never
+  overwrites a file it could not open. It cannot detect a component a game forgot to register: such a file still
+  fails `load_scene` in the game, as before. A game's own editor (PP-038j1) checks values against its types, so a
+  value the game cannot read is caught while editing.
 - **Occurred (2026-10-07, after PP-026a):** the byte-for-byte test failed on Windows because `ron`'s pretty printer
   defaults to `\r\n` there. Fixed by writing `\n` explicitly and asserting it in a test. Lesson: dependency defaults can
   differ per OS, and Cowork only runs Linux, so new file output needs an explicit line-ending (and path-separator) choice.
@@ -277,6 +282,9 @@ Likelihood and impact are qualitative: Low, Medium or High.
   the public API (RELEASING §2 lists it): an egui release that changes its API becomes a PurplePie minor release (RELEASING §2), and egui's
   release pace (several breaking releases a year) sets how often that happens. Games without the feature are
   unaffected. Fallback if the churn is too costly: wrap the few egui parts the editor needs behind engine types.
+- **P5 complete (2026-10-14):** a game that adds `purplepie-editor` as a second binary in its own crate gets egui (and
+  Rust 1.95) in the game binary too, because a crate's binaries share dependency features; GUIDE §15 says so and
+  suggests a separate editor crate to avoid it.
 
 ### R-31: Scene parsing is quadratic in the number count (ron 0.12.2)
 - **Found (2026-10-13, PP-038a spike):** loading a scene of 1 000 quads took 1.39 s in a release build (250 entities:

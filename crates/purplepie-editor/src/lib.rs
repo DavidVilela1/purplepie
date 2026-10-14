@@ -19,7 +19,8 @@
 //! Add row places a quad, a sprite or a text at the centre of the view
 //! (PP-038i2); a file that does not exist yet opens as a new scene. A game's
 //! own editor gives its component types ([`GameComponents`], [`main_with`]),
-//! and their values are checked against them (PP-038j1).
+//! and their values are checked against them (PP-038j1). The guide's section
+//! 15 ("The scene editor", `docs/GUIDE.md`) explains both.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;

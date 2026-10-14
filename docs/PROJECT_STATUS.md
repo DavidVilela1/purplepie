@@ -6,21 +6,24 @@ commands, and the evidence is listed below.
 
 ## Current Milestone
 
-**Phase P4 (debug overlay): complete (2026-10-13, verified on Linux).** The optional `debug-overlay` feature
-(ADR-043) shows a stats window and an entity inspector (engine components and registered game components) over a
-running game, toggled with F12. Before it, phase P3.5 (2026-10-12) delivered release 0.1.0 (tag `v0.1.0` on GitHub)
+**Phase P5 (scene editor): complete (2026-10-14, verified on Linux).** `crates/purplepie-editor` (ADR-044) opens a
+scene file, shows it, edits every saved value, adds, duplicates and deletes entities, undoes every change and saves
+the file back in the same format; a game builds its own editor that checks its component types in three lines, and
+GUIDE §15 explains both. Before it, phase P4 (2026-10-13) added the optional debug overlay (ADR-043). Before that, phase P3.5 (2026-10-12) delivered release 0.1.0 (tag `v0.1.0` on GitHub)
 and a second game, Purple Swarm, built on the public API; M10 (Engine API Stabilization), the portfolio scope,
 runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. Windows: the owner's checklist passed
-(PP-033b; the overlay's step 9 is not run yet). macOS is built and tested in CI but has not been seen running.
-**Phase P5 (scene editor): in progress** since PP-038a (ADR-044, 2026-10-13): the editor will be a separate crate
-written as a `Game` on a public egui hook. Done so far: the design, a fix it needed first (scene loading was
+(PP-033b; step 9, the overlay and the editor, is not run yet). macOS is built and tested in CI but has not been seen
+running.
+**Phase P5 (scene editor): complete** (PP-038a–PP-038j2, ADR-044, 2026-10-13 to 2026-10-14): the editor is a
+separate crate written as a `Game` on a public egui hook. It took: the design, a fix it needed first (scene loading was
 quadratic, PP-038b), the public egui hook (`egui` feature, `Game::egui`, PP-038c) and picking
 (`Context::entities_at`, PP-038d), lenient scene loading (`load_scene_keeping_unknown`, PP-038e) and the editor
 crate's first slice (`crates/purplepie-editor`: open, list, pan/zoom, save, PP-038f; select, move, undo/redo,
 PP-038g) and an inspector that edits every saved value: transform, layer and hidden (PP-038h1), quads, sprites,
 texts and game components kept as RON text (PP-038h2), deleting and duplicating entities with undo (PP-038i1) and
-adding quads, sprites and texts (PP-038i2), and a game's own editor that checks its component types (PP-038j1).
-The guide section and phase close-out (PP-038j2) are the last P5 task.
+adding quads, sprites and texts (PP-038i2), a game's own editor that checks its component types (PP-038j1), and the
+guide section with the checklist step (PP-038j2). Next: release 0.2.0, so games and the guide can use the editor from
+a tag, then phase P6.
 
 ## Current Stage
 
@@ -50,7 +53,7 @@ egui inside the engine behind an off-by-default `debug-overlay` feature (ADR-043
 routed the mouse to it (clicks and the wheel on the overlay's window stay with it); PP-037c replaced the placeholder
 with a stats window (frame time and FPS, fixed steps, entities, draws, camera, window, cursor); PP-037d1 added an
 "Entities" window (list, engine components of the selected entity) and PP-037d2 its registered game components as
-RON, which completes **phase P4**. **Phase P5 (scene editor): in progress.** PP-038a decided its shape after a
+RON, which completes **phase P4**. **Phase P5 (scene editor): complete** (2026-10-14). PP-038a decided its shape after a
 throwaway spike (ADR-044): a separate `crates/purplepie-editor` crate written as a `Game` on a public `Game::egui`
 hook behind a new `egui` feature, with undo as editor commands. The spike also found that scene loading was quadratic
 (ron 0.12.2 scans the rest of the file for every number it reads without a known type: 1 000 quads took 1.5 s to
@@ -72,7 +75,9 @@ undoing a delete brings back the same entity with everything it had. PP-038i2 ad
 chosen from the asset folder's images, a text in one of its fonts) and a plain "new scene" message for a file that
 does not exist yet. PP-038j1 lets a game build its own editor in three lines (`purplepie_editor::main_with` with
 `GameComponents`): values of its components are checked against its types when the scene opens and when edited
-(engine: `scene::check_component`). Next: **PP-038j2**, the guide section, the checklist step and P5's close-out.
+(engine: `scene::check_component`). PP-038j2 added GUIDE §15 (using the editor, and a game's own editor binary whose
+code is a compiled example kept identical to the guide by a test), the checklist step for the example editor, and
+closed **phase P5**. Next: **PP-039**, release 0.2.0.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -154,6 +159,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038j2: GUIDE §15 "The scene editor" (controls; a game's own editor binary, its files compiled as the editor crate's `guide_editor` example and kept identical to the guide by a test; checked as an outside crate depending on GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed. Phase P5 complete.
 - PP-038j1: a game's own editor: `purplepie_editor::GameComponents`, `run_with`, `main_with`; kept game component values checked against the game's types on open and on edit (still saved as text); engine `scene::check_component::<T>`; example `scene_demo_editor`.
 - PP-038i2: editor adds quads, sprites (image from the asset folder) and texts (font from the asset folder) at the view's centre, each one undo step; a missing scene file opens as a new scene with a plain message.
 - PP-038i1: editor deletes (Delete) and duplicates (Ctrl+D) the selection, each one undo step; undoing a delete brings back the same entity (`World::spawn_at`) with all its components; entities with components the editor does not know are refused.
@@ -200,7 +206,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038j2: A game's own editor, part 2** (phase P5, item 13, last; ADR-044): GUIDE section on the editor and a game's own editor binary, CHECKLIST step 9 with the example editor, P5 complete. See [TASKS.md](TASKS.md#pp-038j2-a-games-own-editor-part-2--next).
+- **PP-039: Release 0.2.0** (before phase P6): CHANGELOG `[0.2.0]` from `[Unreleased]` (P4 overlay, P5 editor, `Rng`/`Rect`, scene APIs), version bump, RELEASING checks (MSRV, latest-deps, outside crate by git tag), GUIDE §1/§15 and README switched from `main` to the new tag once it exists; the owner runs CHECKLIST step 9 on Windows and tags. See [TASKS.md](TASKS.md#pp-039-release-020--next).
 
 ## Blocked
 
@@ -242,6 +248,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-14: PP-038j2 Scene editor in the guide; phase P5 complete.**
+  - GUIDE §15 "The scene editor": how to open a level, the controls, and a game's own editor (a second binary calling `purplepie_editor::main_with`). The two files it shows are compiled as the editor crate's `guide_editor` example, and a test fails if the guide's text differs from them. Followed word for word as a fresh outside crate with both dependencies from GitHub `main`: it built, saved a level with a `my_game::Door`, and its editor checked that value against the type.
+  - CHECKLIST step 9 runs the example editor; RISKS reviewed (R-29, R-30 notes). No engine or editor behaviour change.
 
 - **2026-10-14: PP-038j1 A game's own scene editor.**
   - A game builds its own editor with `purplepie_editor::main_with(GameComponents::new().with::<Spin>("my_game::Spin"))`: values of its components are checked against its types when a scene opens (those that do not fit are shown in red) and when edited (refused). The values stay text, so they are saved exactly as written.
@@ -597,15 +607,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038j1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038j2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 57 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--workspace --all-features` 261 + 58, 13 ignored; editor 21 + 3 doctests; Purple Swarm 10 |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 58 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 261 + 59, 13 ignored; editor 22 + 3 doctests; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Guide section and P5 close-out (PP-038j2) | ✅ GitHub `main` (`4f0dc83`) identical to this tree before the task. Guide doctests 14 passed, 1 ignored (the editor program, compiled as an example); the guide-files test fails when the example differs from the guide (mutation). Outside crate built from section 15 word for word with both dependencies from GitHub `main` (see PP-038j2 in TASKS for the run). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). CHECKLIST step 9's new example-editor check run under Xvfb |
 | A game's own editor (PP-038j1) | ✅ GitHub `main` (`f31060d`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with the `scene_demo_editor` example: a string speed refused, a valid value accepted, the entity duplicated, saved; that file loaded strictly by the engine's `scene` example (20 entities, 3 spinning sprites); `count: -1` → red status and label; plain editor unchanged, `--help` exit 0, bad option exit 2 |
 | Editor adding (PP-038i2) | ✅ GitHub `main` (`80e08de`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb on a copy of `demo.ron`: Quad, Sprite (`textures/breakout/ball.png`), Text added → saved diff exactly three new entities with relative asset paths; three undos → identical file; missing `fresh.ron` → "new scene" message, quad + text saved, file reopens with 2 entities |
 | Editor delete and duplicate (PP-038i1) | ✅ GitHub `main` (`b7f7c5c`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). Xvfb on a copy of `demo.ron`: duplicate + two deletes → saved diff shows exactly those; undo ×3 → identical file, redo ×3 → identical to the first save, undo ×3 → identical; delete + undo of the kept-component-only `#10` → identical |
@@ -659,4 +670,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-14. PP-038j1 done (a game's own editor checks its component types). PP-038j2 (guide, checklist, P5 close-out) is next.
+2026-10-14. PP-038j2 done: phase P5 (scene editor) complete. PP-039 (release 0.2.0) is next.

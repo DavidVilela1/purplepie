@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`); PP-038j2 to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | Yes (P5 complete): PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`), PP-038j2 (GUIDE §15; phase P5 complete 2026-10-14) |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2907,6 +2907,22 @@ small and enough for the core interactions.
   it; the saved file, put in a copy of the asset folder, loaded strictly in the engine's `scene` example ("loaded
   20 entities", "3 spinning sprites"). A file with `count: -1` opened with a red status ("Integer is out of
   bounds") and a red label. The plain `purplepie-editor` opened `demo.ron` as before.
+
+## Implementation notes (PP-038j2; phase P5 complete)
+- **Guide:** GUIDE §15 "The scene editor". The guide's rule is that every Rust block compiles; the game's own editor
+  program needs the editor crate, which the `purplepie` doctests cannot use. So that block is marked `ignore`, and its
+  exact text is the editor crate's `guide_editor` example (`crates/purplepie-editor/examples/guide/src/bin/editor.rs`
+  with `../components.rs`, laid out like a game crate); a unit test fails if the guide shows anything else. The
+  `components.rs` block is also a normal `purplepie` doctest.
+- **Dependency lines:** the editor is not in a release yet, so §15 tells games to take both `purplepie` and
+  `purplepie-editor` from `branch = "main"` (one source, so one copy of the engine). PP-039 (release 0.2.0) moves
+  them to a tag.
+- **Consequence written down:** a crate's binaries share dependency features, so a game whose editor is a second
+  binary builds its game with egui too (and needs Rust 1.95); §15 suggests a separate editor crate to avoid that.
+- **P5 outcome against the ADR:** every planned piece was built (egui hook, picking, lenient loading, editor crate,
+  select/move/undo, inspector, placing, a game's own editor). Changes from the plan, all recorded above: undo
+  restores deleted entities by snapshot of their saveable components (PP-038i1); a game gives its types for checking
+  instead of registering them (PP-038j1); there is no "New"/"Open"/"Save as" (one file per run, PP-038i2).
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

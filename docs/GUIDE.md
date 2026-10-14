@@ -1,8 +1,9 @@
 # PurplePie guide
 
-From an empty folder to a shipped 2D game. Each section is short; the last one puts everything together in one
-complete game. Every Rust block in this guide is compiled by `cargo test` (as a doctest of the `purplepie` crate),
-so the code matches the engine you have.
+From an empty folder to a shipped 2D game. Each section is short; section 14 puts everything together in one
+complete game, and section 15 shows the scene editor. Every Rust block in this guide is compiled by `cargo test` (as
+a doctest of the `purplepie` crate; section 15's editor program, which needs the editor crate, is one of that
+crate's examples, and a test keeps this text identical to it), so the code matches the engine you have.
 
 The API reference is one command away: `cargo doc -p purplepie --no-deps --open`. Start at `Context`.
 
@@ -20,6 +21,7 @@ The API reference is one command away: `cargo doc -p purplepie --no-deps --open`
 12. [Hot reload, errors and logs](#12-hot-reload-errors-and-logs)
 13. [Shipping](#13-shipping)
 14. [Putting it together](#14-putting-it-together)
+15. [The scene editor](#15-the-scene-editor)
 
 ## 1. Set up a game crate
 
@@ -673,3 +675,71 @@ fn main() -> purplepie::Result<()> {
 Where to go next: `examples/breakout.rs` in the PurplePie folder is a full game with levels, lives, a HUD and
 sound; `examples/scene.rs` shows scene files with game components. The API reference
 (`cargo doc -p purplepie --no-deps --open`) documents every type and method.
+
+## 15. The scene editor
+
+The scene editor (`crates/purplepie-editor` in the PurplePie repository) opens a scene file like the ones in
+section 11, shows it, lets you change it and saves it back in the same format. It needs Rust 1.95 (it draws its
+panels with egui). From a PurplePie checkout, point it at your game's level and asset folder:
+
+```text
+cargo run -p purplepie-editor -- --assets ../my_game/assets ../my_game/assets/levels/one.ron
+```
+
+A file that does not exist yet opens as an empty scene; Ctrl+S creates it. In the editor:
+
+- **View:** drag with the right or middle button to pan, turn the wheel to zoom, press F to fit the scene.
+- **Select:** click an entity (click again on the same spot for the one below it) or its row in the list.
+- **Change:** drag the selection or use the arrow keys (Shift: 10 units); the inspector under the list edits its
+  position, rotation, scale, layer, hidden, and its quad, sprite or text. Add a quad, a sprite (an image from the
+  asset folder) or a text with the "Add" row; Ctrl+D duplicates the selection, Delete removes it.
+- **Undo and save:** Ctrl+Z undoes every change, Ctrl+Shift+Z or Ctrl+Y redoes it, Ctrl+S saves; `*` in the title
+  means unsaved changes. Close the window to quit (Escape only deselects).
+
+Your own components (section 11) appear as one text field each, holding their value as RON, for example
+`(leads_to: "levels/two.ron")`. The editor above does not know your types, so it only checks that the text is RON.
+To have values checked against your types, give your game its own editor: a second binary in the same crate, whose
+components live in a module both binaries use.
+
+```toml
+# my_game/Cargo.toml: the editor is not in a release yet, so take both from `main` (or both by path)
+[dependencies]
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }
+purplepie-editor = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }
+serde = { version = "1", features = ["derive"] }
+```
+
+```rust
+// src/components.rs: the game's own scene components, used by both binaries.
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct Door {
+    pub leads_to: String,
+}
+```
+
+In `src/main.rs`, `mod components;` and `ctx.register_scene_component::<components::Door>("my_game::Door")?` as in
+section 11. The editor binary is three lines of work:
+
+```rust ignore
+// src/bin/editor.rs: `cargo run --bin editor -- assets/levels/one.ron`
+use std::process::ExitCode;
+
+use purplepie_editor::GameComponents;
+
+#[path = "../components.rs"]
+#[allow(dead_code)] // the editor only checks values; the game uses them
+mod components;
+
+fn main() -> ExitCode {
+    // The same names the game registers with `register_scene_component`.
+    purplepie_editor::main_with(GameComponents::new().with::<components::Door>("my_game::Door"))
+}
+```
+
+`cargo run --bin editor -- assets/levels/one.ron` opens the level: the status line says how many values were checked,
+a value that does not fit its type is shown in red, and an edit that does not fit is refused with the reason ("does
+not fit the type: …"). The values stay text, so they are saved exactly as you typed them. Because both binaries share
+the crate's dependencies, the game is now built with egui too (and needs Rust 1.95); to keep the game without it,
+put the editor binary in its own small crate next to the game instead.

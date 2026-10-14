@@ -32,8 +32,8 @@ git status --short
 cargo test
 ```
 
-**Expect:** `test result: ok. 245 passed; 0 failed; 12 ignored` and `test result: ok. 57 passed`. The guide's code
-blocks are part of the 53. **Report** the two `test result` lines.
+**Expect:** `test result: ok. 245 passed; 0 failed; 12 ignored` and `test result: ok. 58 passed; 0 failed; 1 ignored` (the ignored one is the guide's editor program, compiled as an example of the editor crate). The guide's code
+blocks are part of the 58. **Report** the two `test result` lines.
 
 ## 2. GPU tests on your real graphics card
 
@@ -264,6 +264,16 @@ and press Delete: it disappears. Ctrl+Z three times: the square comes back, then
 Sprite, pick `textures/breakout/ball.png`: a ball appears there too. Ctrl+Z twice removes both.
 Ctrl+S prints "saved …". Close the window, then
 `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
+
+```powershell
+cargo run -p purplepie-editor --example scene_demo_editor -- --assets assets $env:TEMP\demo-copy.ron
+```
+
+**Expect:** the same editor, built for the `scene` example's own component types: the bottom line ends with "3 game
+component value(s) checked against the game's types". Click the "#8 sprite … +1 game component" row, click its
+`scene_demo::Spin` field, replace `0.8` with `fast` and press Enter: a red "… not changed: does not fit the type: …"
+message, and the field shows `0.8` again (the plain editor above accepts it: `fast` is valid RON, just not a number).
+Close the window without saving.
 
 ## macOS or Linux
 

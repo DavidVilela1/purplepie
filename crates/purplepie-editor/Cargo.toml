@@ -25,3 +25,9 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 unwrap_used = "warn"
+
+# The guide's "a game's own editor" files (docs/GUIDE.md section 15), laid out
+# like a game crate; a test keeps the guide's text identical to them.
+[[example]]
+name = "guide_editor"
+path = "examples/guide/src/bin/editor.rs"

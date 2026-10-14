@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038j2: A game's own editor, part 2: GUIDE section (running the editor, a game's own editor binary with `main_with`), CHECKLIST step 9 with the example editor (owner runs it on Windows), ROADMAP/STATUS: phase P5 complete** · P1 · TODO ← **next task**
+- [ ] **PP-039: Release 0.2.0: the P4 overlay and the P5 editor in a tagged version, so games (and GUIDE §15) depend on a tag instead of `main`; needs the owner's CHECKLIST run (step 9 on Windows) and green CI first** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038j2: A game's own editor, part 2: GUIDE §15 "The scene editor" (controls, a game's own editor binary; its files are the compiled `guide_editor` example of the editor crate, kept identical to the guide by a test; checked as an outside crate against GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed; phase P5 complete** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038j1: A game's own editor, part 1: `purplepie_editor::GameComponents` (`with::<T>(name)`), `run_with`, `main_with` (the whole editor program for a game's `main`); kept game component values checked against the game's types when the scene opens (red in the inspector, listed in the status line) and when edited (refused if they do not fit); values stay RON text, so copying, undo and saving are unchanged; engine: `scene::check_component::<T>(ron)`; example `scene_demo_editor` (phase P5, item 12; PP-038j split into j1 and j2)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038i2: Editor placing, part 2: "Add" row: a quad, a sprite (image chosen from the asset folder) or a text (font chosen from the asset folder) at the centre of the view, selected, each one undoable step; a missing scene file opens as a new scene with a plain message (no separate "New" command) (phase P5, item 11)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038i1: Editor placing, part 1: delete and duplicate the selection (Delete / Ctrl+D, buttons), each one undoable step; undoing a delete brings back the same `Entity` (`World::spawn_at`) with all its components (editor `Snapshot`); entities with components the editor does not know are refused (phase P5, item 10; PP-038i split into i1 and i2)** · DONE (2026-10-14; verified on Linux)
@@ -92,7 +93,9 @@ _None._
 
 ## Future
 
-P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice (complete 2026-10-14); PP-038h was split into h1 and h2 before it started:
+P5 Scene editor (ADR-044) is complete (2026-10-14). P6 Proof (ROADMAP: a bigger example game made with the editor) is defined after the 0.2.0 release (PP-039):
+
+- [ ] **PP-040: P6 plan: specify the bigger example game built with the editor (like GAME2.md), list the engine/editor gaps it needs, split P6 into tasks** · P2 · TODO
 
 
 ---
@@ -479,14 +482,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038j2: A game's own editor, part 2 ← NEXT
+### PP-039: Release 0.2.0 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 13 (last) · Priority P1 · TODO |
+| Stage | Between P5 and P6 · Priority P1 · TODO |
+| Dependencies | PP-038j2 (DONE); RELEASING §3 preconditions: green CI (incl. `msrv`, latest-deps) and the owner's CHECKLIST run, including step 9 (overlay, `egui_panel`, editor, example editor) on Windows, with no unexplained failure |
+| Why now | P4 and P5 added the debug overlay, the egui hook, picking, lenient scene loading, `Rng`/`Rect`, Purple Swarm and the scene editor, all only on `main`; GUIDE §15 has to tell games to depend on `main`. A tag gives P6 and outside games a fixed version, as 0.1.0 did for Purple Swarm. |
+| Scope | RELEASING §3: `version = "0.2.0"` (engine; decide whether the editor crate follows), `Cargo.lock` refresh; CHANGELOG `[0.2.0] - date` from `[Unreleased]` (check it lists every public change since 0.1.0, incl. breaking ones such as `InvalidRon`'s text); README, GUIDE §1 and §15 dependency lines to `tag = "v0.2.0"`; RELEASING's compatibility table reviewed for the editor and the `egui` feature; full validation plus an outside crate by the new tag after the owner tags (as in PP-035b, possibly split into a/b). |
+| Acceptance criteria | Owner's checklist report recorded; tag `v0.2.0` on GitHub; an outside crate following GUIDE §1 and §15 builds against the tag. |
+
+### PP-038j2: A game's own editor, part 2
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 13 (last) · Priority P1 · **DONE** (2026-10-14; verified on Linux; phase P5 complete) |
 | Dependencies | PP-038j1 (DONE); ADR-044 |
 | Why now | The editor is feature-complete for P5; a game author needs to learn how to use it and how to build their own editor binary, and the Windows check is still open. |
 | Scope | GUIDE: a section on the scene editor (opening a scene, the controls, the asset folder, a game's own editor binary with `GameComponents` + `main_with`, a compiled doctest where possible). CHECKLIST step 9: the example editor (`cargo run -p purplepie-editor --example scene_demo_editor -- …`), a value that does not fit refused. README editor paragraph tidied; ROADMAP: P5 complete, PROJECT_STATUS current stage; RISKS reviewed (R-29/R-30 editor-related). No new features. |
-| Acceptance criteria | The guide's new blocks pass as doctests; the checklist steps were run on Linux; documents agree on P5 being complete; owner runs step 9 on Windows (reported separately). |
+| Acceptance criteria | ✅ GUIDE §15 "The scene editor": running it on a game's level, the controls, game components as RON text, a game's own editor (Cargo.toml lines, `src/components.rs`, `src/bin/editor.rs`), and the egui/Rust 1.95 consequence for the game binary. ✅ The guide's Rust blocks stay compiled: `components.rs` is a `purplepie` doctest (14 passed), `editor.rs` (needs the editor crate) is marked `ignore` and is the editor crate's `guide_editor` example (`examples/guide/src/…`, laid out like a game crate); `the_guide_shows_the_compiled_game_editor_files` fails if the guide's text differs (checked by mutation). ✅ Outside crate made from section 15 word for word (Cargo.toml with both dependencies from GitHub `main`, the two files, a `main.rs` saving a level with a `Door`): built; the game saved `levels/one.ron`; its editor opened it with "1 game component value(s) checked against the game's types", refused `(leads_to: 3)` ("does not fit the type: 1:11-1:12: Expected string") and saved `(leads_to: "levels/three.ron")` as a one-line diff; 0 warnings, one copy of the engine in the lock file. ✅ CHECKLIST step 9: the example editor, `fast` refused as "does not fit the type" (run under Xvfb). ✅ RISKS R-29/R-30 notes; ROADMAP/PROJECT_STATUS/DECISIONS: P5 complete; README, CHANGELOG. Owner: step 9 on Windows (requested; it is a precondition of PP-039). No engine change. |
 
 ### PP-038j1: A game's own editor, part 1
 | Field | Value |

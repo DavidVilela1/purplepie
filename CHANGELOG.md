@@ -51,7 +51,7 @@ break compatibility and a patch version (0.x.**y**) may not.
   (left drag, arrow keys, Shift for 10 units), undo/redo of every change (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an
   unsaved-changes marker. A game's own editor: `purplepie_editor::main_with(GameComponents::new().with::<T>(name))`
   checks the values of the game's components against its types when a scene opens and when they are edited
-  (`run_with` for more control; example `scene_demo_editor`). A `Game` on the public API with the `egui`
+  (`run_with` for more control; example `scene_demo_editor`). GUIDE §15 "The scene editor" explains it. A `Game` on the public API with the `egui`
   feature; Rust 1.95.
 - `games/purple-swarm/`: a second example game (a top-down arena shooter, docs/GAME2.md), kept in the workspace and
   built by CI (ADR-042). Part 1: arena, player, camera and shooting. Part 2: two enemy types, waves, collisions,

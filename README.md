@@ -170,7 +170,8 @@ it to type — and the game's own components as RON text, checked when you leave
 selection and Ctrl+D duplicates it; the Add row places a quad, a sprite (an image from the asset folder) or a text at
 the centre of the view (all undoable). Opening a file that does not exist starts a new scene. A game can build its own editor that checks its component
 values against its types: `fn main() -> ExitCode { purplepie_editor::main_with(GameComponents::new().with::<Spin>("my_game::Spin")) }`
-(example: `cargo run -p purplepie-editor --example scene_demo_editor -- assets/scenes/demo.ron`).
+(example: `cargo run -p purplepie-editor --example scene_demo_editor -- assets/scenes/demo.ron`). The
+[guide](docs/GUIDE.md#15-the-scene-editor) (section 15) explains the editor and how to give your game its own.
 
 The sandbox (`cargo run`) is the engine's test bed: arrow keys pan, `=` / `-` or the wheel zoom, a left click stamps a
 square at the cursor (the top-right "Reset camera" button resets the view), Escape quits; a text label at the bottom left lists these controls.

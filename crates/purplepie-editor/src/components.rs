@@ -102,4 +102,24 @@ mod tests {
         assert!(GameComponents::new().is_empty());
         assert_eq!(format!("{components:?}"), r#"["demo::Spin"]"#);
     }
+
+    #[test]
+    fn the_guide_shows_the_compiled_game_editor_files() {
+        let guide = include_str!("../../../docs/GUIDE.md");
+        for (file, text) in [
+            (
+                "examples/guide/src/components.rs",
+                include_str!("../examples/guide/src/components.rs"),
+            ),
+            (
+                "examples/guide/src/bin/editor.rs",
+                include_str!("../examples/guide/src/bin/editor.rs"),
+            ),
+        ] {
+            assert!(
+                guide.contains(text),
+                "docs/GUIDE.md section 15 must show {file} exactly"
+            );
+        }
+    }
 }
