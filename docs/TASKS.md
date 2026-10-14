@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038h2: Editor inspector editing, part 2: quad size and colour, sprite size, tint and region, text content, size, colour and anchor, and kept game components as RON text checked on entry (needs a setter on `scene::UnknownComponents`), each undoable** · P1 · TODO ← **next task**
+- [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene; split at its start if it does not fit one session** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038h2: Editor inspector editing, part 2: quad size and colour, sprite size, tint and region, text content, size, colour and anchor, kept game components as RON text checked when the field is left (engine: `UnknownComponents::set`, `scene::InvalidRon`); one undo step per field (phase P5, item 9)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038h1: Editor inspector editing, part 1: position, rotation, scale, layer and hidden editable; edits generalized to before/after component values; one undo step per field change (phase P5, item 8)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038g: Editor first slice part 2: select (click, cycling, list), outline, read-only inspector, move (drag, arrow keys), undo/redo, unsaved-changes marker; first vertical slice complete (phase P5, item 7)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038f: Editor crate, first slice part 1: `crates/purplepie-editor` opens a scene (lenient), lists its entities, pans/zooms/fits beside its panel, saves (Ctrl+S), reports errors in a status line (phase P5, item 6)** · DONE (2026-10-14; verified on Linux)
@@ -90,7 +91,6 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice (complete 2026-10-14); PP-038h was split into h1 and h2 before it started:
 
-- [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene** · P2 · TODO
 - [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
 
 ---
@@ -477,14 +477,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038h2: Editor inspector editing, part 2 ← NEXT
+### PP-038i: Editor placing ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 9 · Priority P1 · TODO |
+| Stage | Phase P5, item 10 · Priority P1 · TODO |
+| Dependencies | PP-038h2 (DONE); ADR-044 |
+| Why now | The editor changes existing entities; building a level also needs adding, duplicating and removing them. |
+| Scope | Editor: add a quad, a sprite (texture chosen from the asset folder's images) and a text at the view's centre; duplicate and delete the selection (Delete key, buttons); each one undoable step: deleting keeps every component (engine, kept game components) so undo brings back the same `Entity` (`World::spawn_at`); a new empty scene. Decide first how an entity's components are copied without knowing game types (engine components by type, `UnknownComponents` as text; registered game components arrive with PP-038j). Split into PP-038i1 (delete and duplicate) and PP-038i2 (adding, new scene) at the start if it does not fit one session. |
+| Acceptance criteria | Added, duplicated and deleted entities save as expected and every action undoes in one step, restoring identical files; Xvfb run with diffs. |
+
+### PP-038h2: Editor inspector editing, part 2
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 9 · Priority P1 · **DONE** (2026-10-14; verified on Linux) |
 | Dependencies | PP-038h1 (DONE); ADR-044 |
 | Why now | The inspector edits the shared components; a level designer also needs to change what entities draw and the game's own values. |
 | Scope | Editor: new `Edit` kinds (or one per component) for `Quad` (size, colour), `Sprite` (size, tint, region; the texture stays), `Text` (content as a multi-line text field, size, colour, anchor) and kept game components, each through the pending-edit mechanism (one undo step per field change). Colours with egui's colour button (sRGB, alpha). Kept game components (`scene::UnknownComponents`) as one RON text field each: the value is checked when the field is left and rejected with a message if it is not valid RON; this needs a small engine API, e.g. `UnknownComponents::set(name, ron) -> Result<(), …>` that checks RON syntax (decide the error type; record it in ADR-044's notes and the CHANGELOG). Tests: editor edit kinds applied/reverted; engine setter accepts valid and rejects invalid RON and saves the new text verbatim; Xvfb: change a quad colour, a text, a sprite region and a kept component, undo, save and diff. |
-| Acceptance criteria | Every listed field edits the scene and undoes in one step; an invalid RON value is refused with a message and leaves the old value; the saved file shows exactly the edited values. |
+| Acceptance criteria | ✅ Every listed field edits the scene and undoes in one step (`Edit::Quad`, `Sprite`, `Text`, `Kept`; pending edits remember their field; pickers and lists count as in use while open). ✅ `scene::UnknownComponents::set(name, ron) -> Result<Option<String>, scene::InvalidRon>` (doc example): one valid RON value required, surrounding whitespace/comments trimmed, saved verbatim; error type recorded in ADR-044's notes and the CHANGELOG. ✅ An invalid RON value is refused with a red message and the old value stays. ✅ Xvfb: quad colour (picker drag), sprite region, kept component (valid, then invalid), text content; undo/redo; saved file differs in exactly those four lines; four undos → identical file; anchor change + undo → identical file. ✅ Engine test (valid, invalid ×4, verbatim save and reload); 16 editor unit tests. |
 
 ### PP-038h1: Editor inspector editing, part 1
 | Field | Value |

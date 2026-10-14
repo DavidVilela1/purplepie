@@ -9,7 +9,11 @@ use std::path::PathBuf;
 use purplepie::ecs::Entity;
 use purplepie::egui;
 use purplepie::math::{Transform2D, Vec2};
-use purplepie::render::{Hidden, Layer, ScreenSpace, Text};
+use purplepie::render::{
+    Color, Hidden, HorizontalAnchor, Layer, Quad, ScreenSpace, Sprite, Text, TextureRegion,
+    VerticalAnchor,
+};
+use purplepie::scene::UnknownComponents;
 use purplepie::{Context, Game};
 
 use crate::history::{Edit, History};
@@ -30,6 +34,44 @@ struct Drag {
     /// The entity's transform when the drag started.
     from: Transform2D,
     origin: egui::Pos2,
+}
+
+/// An inspector edit in progress: the component's value before it, and the
+/// field being changed (another field, even of the same component, is another
+/// undo step).
+#[derive(Debug, Clone)]
+struct Pending {
+    edit: Edit,
+    field: &'static str,
+}
+
+/// A game component's RON text being typed in the inspector; checked and
+/// applied when the field is left.
+#[derive(Debug, Clone)]
+struct KeptDraft {
+    entity: Entity,
+    name: String,
+    text: String,
+}
+
+/// What the inspector's widgets did this frame.
+#[derive(Debug, Default)]
+struct Fields {
+    /// A field is being dragged or typed into, or a picker is open.
+    active: bool,
+    /// The field whose value changed.
+    changed: Option<&'static str>,
+}
+
+impl Fields {
+    /// Notes `response` of the widget for `field`; `true` if it changed.
+    fn track(&mut self, field: &'static str, response: &egui::Response) -> bool {
+        self.active |= response.dragged() || response.has_focus();
+        if response.changed() {
+            self.changed = Some(field);
+        }
+        response.changed()
+    }
 }
 
 /// Arrow-key steps on the same entity within this many seconds are undone
@@ -60,7 +102,9 @@ pub(crate) struct Editor {
     last_nudge: Option<(Entity, f64)>,
     /// An inspector edit in progress (a field being dragged or typed into):
     /// its value before the edit; recorded as one step when the field is let go.
-    pending: Option<Edit>,
+    pending: Option<Pending>,
+    /// A game component's text being typed, applied when the field is left.
+    kept_draft: Option<KeptDraft>,
     /// Whether the window title shows the unsaved-changes marker.
     title_dirty: Option<bool>,
     /// Frames to run before exiting, for automated checks.
@@ -84,6 +128,7 @@ impl Editor {
             drag: None,
             last_nudge: None,
             pending: None,
+            kept_draft: None,
             title_dirty: None,
             exit_after,
             frames: 0,
@@ -108,7 +153,7 @@ impl Editor {
     }
 
     fn save(&mut self, ctx: &mut Context<'_>) {
-        self.commit_pending(ctx);
+        self.finish_edits(ctx);
         if self.keep_file {
             let text = format!(
                 "not saved: {} could not be opened, and saving would replace it",
@@ -128,9 +173,9 @@ impl Editor {
     }
 
     /// Selects `entity` (or nothing) and says so in the status line.
-    fn select(&mut self, ctx: &Context<'_>, entity: Option<Entity>, reveal: bool) {
+    fn select(&mut self, ctx: &mut Context<'_>, entity: Option<Entity>, reveal: bool) {
         if self.selected != entity {
-            self.commit_pending(ctx);
+            self.finish_edits(ctx);
             self.selected = entity;
             self.reveal_selection = reveal && entity.is_some();
             match entity {
@@ -145,7 +190,7 @@ impl Editor {
     /// Reverts the last edit (`undo`) or applies the last reverted one again.
     fn step_history(&mut self, ctx: &mut Context<'_>, undo: bool) {
         // An inspector edit still in progress becomes the last step first.
-        self.commit_pending(ctx);
+        self.finish_edits(ctx);
         let edit = if undo {
             self.history.undo()
         } else {
@@ -165,30 +210,76 @@ impl Editor {
         }
     }
 
-    /// Starts an inspector edit of the component `before` describes (its
-    /// value now), unless one of the same kind on the same entity is already
-    /// in progress; a different one in progress is recorded first.
-    fn begin_edit(&mut self, ctx: &Context<'_>, before: Edit) {
-        if let Some(pending) = self.pending {
-            if std::mem::discriminant(&pending) == std::mem::discriminant(&before)
-                && pending.entity() == before.entity()
-            {
+    /// Starts an inspector edit of `field`, in the component `before`
+    /// describes (its value now), unless that field's edit is already in
+    /// progress; a different one in progress is recorded first.
+    fn begin_edit(&mut self, ctx: &Context<'_>, before: Edit, field: &'static str) {
+        if let Some(pending) = &self.pending {
+            if pending.field == field && pending.edit.same_target(&before) {
                 return;
             }
             self.commit_pending(ctx);
         }
-        self.pending = Some(before);
+        self.pending = Some(Pending {
+            edit: before,
+            field,
+        });
         self.last_nudge = None;
     }
 
     /// Records the inspector edit in progress, if any, as one step.
     fn commit_pending(&mut self, ctx: &Context<'_>) {
         if let Some(pending) = self.pending.take() {
-            let edit = pending.ending_now(ctx.world());
+            let edit = pending.edit.ending_now(ctx.world());
             if !edit.changes_nothing() {
                 self.history.record(edit, false);
             }
         }
+    }
+
+    /// Applies the game component text being typed, if it changed: one step
+    /// when it is valid RON, else refused with a message (the old text stays).
+    fn commit_kept_draft(&mut self, ctx: &mut Context<'_>) {
+        let Some(KeptDraft { entity, name, text }) = self.kept_draft.take() else {
+            return;
+        };
+        let Ok(mut kept) = ctx.world_mut().get::<&mut UnknownComponents>(entity) else {
+            return;
+        };
+        let Some(before) = kept.get(&name).map(str::to_owned) else {
+            return;
+        };
+        if before == text {
+            return;
+        }
+        let result = kept.set(&name, &text);
+        let after = kept.get(&name).map(str::to_owned).unwrap_or_default();
+        drop(kept);
+        match result {
+            Ok(_) if after == before => {}
+            Ok(_) => {
+                let edit = Edit::Kept {
+                    entity,
+                    name,
+                    before,
+                    after,
+                };
+                self.report(format!("changed {}", edit.describe()), false);
+                self.history.record(edit, false);
+                self.last_nudge = None;
+            }
+            Err(error) => self.report(
+                format!("{name} of #{} not changed: {error}", entity.id()),
+                true,
+            ),
+        }
+    }
+
+    /// Ends every inspector edit in progress (before saving, undoing,
+    /// selecting another entity or moving).
+    fn finish_edits(&mut self, ctx: &mut Context<'_>) {
+        self.commit_pending(ctx);
+        self.commit_kept_draft(ctx);
     }
 
     /// Whether the scene differs from the file (including an edit in progress).
@@ -196,7 +287,8 @@ impl Editor {
         self.history.is_dirty()
             || self
                 .pending
-                .is_some_and(|p| !p.ending_now(ctx.world()).changes_nothing())
+                .as_ref()
+                .is_some_and(|p| !p.edit.clone().ending_now(ctx.world()).changes_nothing())
     }
 
     /// The selection's transform, if it can be moved in the view (it has a
@@ -345,9 +437,10 @@ impl Editor {
             });
     }
 
-    /// The selection's components: transform, layer and hidden editable
-    /// (each change one undoable step when its field is let go), the rest
-    /// read-only.
+    /// The selection's components, each change one undoable step when its
+    /// field is let go: transform, layer, hidden, quad, sprite (not its
+    /// texture), text (not its font) and game components kept as text (RON,
+    /// checked when the field is left). The rest is read-only.
     fn inspector(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
         let Some(entity) = self.selected else {
             ui.label("Click an entity in the view or the list to select it.");
@@ -358,149 +451,201 @@ impl Editor {
             return;
         }
         ui.strong(format!("#{}", entity.id()));
-        let mut active = false;
-        let mut track = |response: &egui::Response| {
-            active |= response.dragged() || response.has_focus();
-            response.changed()
-        };
-        let transform = ctx.world().get::<&Transform2D>(entity).ok().map(|t| *t);
-        let layer = ctx.world().get::<&Layer>(entity).ok().map(|l| *l);
-        let hidden = ctx.world().get::<&Hidden>(entity).is_ok();
-        let mut new_transform = transform;
-        let mut new_layer = layer;
-        let mut new_hidden = hidden;
-        egui::Grid::new("purplepie editor fields")
-            .num_columns(2)
-            .show(ui, |ui| {
-                if let Some(t) = &mut new_transform {
-                    ui.label("Position");
-                    ui.horizontal(|ui| {
-                        track(
-                            &ui.add(
-                                egui::DragValue::new(&mut t.position.x)
-                                    .speed(1.0)
-                                    .prefix("x "),
-                            ),
-                        );
-                        track(
-                            &ui.add(
-                                egui::DragValue::new(&mut t.position.y)
-                                    .speed(1.0)
-                                    .prefix("y "),
-                            ),
-                        );
-                    });
-                    ui.end_row();
-                    ui.label("Rotation");
-                    let mut degrees = t.rotation.to_degrees();
-                    if track(&ui.add(egui::DragValue::new(&mut degrees).speed(1.0).suffix("°"))) {
-                        t.rotation = degrees.to_radians();
-                    }
-                    ui.end_row();
-                    ui.label("Scale");
-                    ui.horizontal(|ui| {
-                        track(
-                            &ui.add(
-                                egui::DragValue::new(&mut t.scale.x)
-                                    .speed(0.01)
-                                    .prefix("x "),
-                            ),
-                        );
-                        track(
-                            &ui.add(
-                                egui::DragValue::new(&mut t.scale.y)
-                                    .speed(0.01)
-                                    .prefix("y "),
-                            ),
-                        );
-                    });
-                    ui.end_row();
-                }
-                ui.label("Layer");
-                ui.horizontal(|ui| {
-                    let mut has_layer = new_layer.is_some();
-                    let mut value = new_layer.map_or(0, |l| l.0);
-                    track(&ui.checkbox(&mut has_layer, ""));
-                    track(&ui.add_enabled(has_layer, egui::DragValue::new(&mut value)));
-                    new_layer = has_layer.then_some(Layer(value));
-                });
-                ui.end_row();
-                ui.label("Hidden");
-                track(&ui.checkbox(&mut new_hidden, ""));
-                ui.end_row();
-            });
-        if let (Some(before), Some(after)) = (transform, new_transform)
-            && before != after
-        {
-            self.begin_edit(
-                ctx,
-                Edit::Transform {
-                    entity,
-                    before,
-                    after: before,
-                },
-            );
-            if let Ok(mut t) = ctx.world_mut().get::<&mut Transform2D>(entity) {
-                *t = after;
-            }
-        }
-        if new_layer != layer {
-            self.begin_edit(
-                ctx,
-                Edit::Layer {
-                    entity,
-                    before: layer,
-                    after: layer,
-                },
-            );
-            Edit::Layer {
-                entity,
-                before: layer,
-                after: new_layer,
-            }
-            .apply(ctx.world_mut(), true);
-        }
-        if new_hidden != hidden {
-            self.begin_edit(
-                ctx,
-                Edit::Hidden {
-                    entity,
-                    before: hidden,
-                    after: hidden,
-                },
-            );
-            Edit::Hidden {
-                entity,
-                before: hidden,
-                after: new_hidden,
-            }
-            .apply(ctx.world_mut(), true);
-        }
-        if !active {
-            self.commit_pending(ctx);
-        }
-
-        ui.separator();
-        let editable = ["Position", "Rotation", "Scale", "Layer", "Hidden"];
-        let rows: Vec<(String, String)> = details(ctx.world(), entity)
+        let world = ctx.world();
+        let transform = world.get::<&Transform2D>(entity).ok().map(|t| *t);
+        let layer = world.get::<&Layer>(entity).ok().map(|l| *l);
+        let hidden = world.get::<&Hidden>(entity).is_ok();
+        let quad = world.get::<&Quad>(entity).ok().map(|q| *q);
+        let sprite = world.get::<&Sprite>(entity).ok().map(|s| *s);
+        let text = world.get::<&Text>(entity).ok().map(|t| (*t).clone());
+        let kept: Vec<(String, String)> = world
+            .get::<&UnknownComponents>(entity)
+            .map(|k| {
+                k.iter()
+                    .map(|(n, v)| (n.to_owned(), v.to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let texture_size = sprite.and_then(|s| ctx.texture_size(s.texture));
+        let editable = [
+            "Position", "Rotation", "Scale", "Layer", "Hidden", "Quad", "Sprite", "Text",
+        ];
+        let read_only: Vec<(String, String)> = details(ctx.world(), entity)
             .into_iter()
-            .filter(|(label, _)| !editable.contains(&label.as_str()))
+            .filter(|(label, _)| {
+                !editable.contains(&label.as_str()) && !kept.iter().any(|(n, _)| n == label)
+            })
             .collect();
+        let (mut new_transform, mut new_layer, mut new_hidden) = (transform, layer, hidden);
+        let (mut new_quad, mut new_sprite, mut new_text) = (quad, sprite, text.clone());
+        let mut fields = Fields::default();
+        let mut kept_focused = false;
         egui::ScrollArea::vertical()
             .id_salt("purplepie editor inspector")
             .auto_shrink([false, true])
             .show(ui, |ui| {
+                egui::Grid::new("purplepie editor fields")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        if let Some(t) = &mut new_transform {
+                            transform_fields(ui, &mut fields, t);
+                        }
+                        ui.label("Layer");
+                        ui.horizontal(|ui| {
+                            let mut has_layer = new_layer.is_some();
+                            let mut value = new_layer.map_or(0, |l| l.0);
+                            fields.track("layer", &ui.checkbox(&mut has_layer, ""));
+                            let number = egui::DragValue::new(&mut value);
+                            fields.track("layer", &ui.add_enabled(has_layer, number));
+                            new_layer = has_layer.then_some(Layer(value));
+                        });
+                        ui.end_row();
+                        ui.label("Hidden");
+                        fields.track("hidden", &ui.checkbox(&mut new_hidden, ""));
+                        ui.end_row();
+                        if let Some(q) = &mut new_quad {
+                            ui.label("Quad size");
+                            size_fields(ui, &mut fields, "quad size", &mut q.size);
+                            ui.end_row();
+                            ui.label("Quad colour");
+                            color_field(ui, &mut fields, "quad colour", &mut q.color);
+                            ui.end_row();
+                        }
+                        if let Some(s) = &mut new_sprite {
+                            sprite_fields(ui, &mut fields, s, texture_size);
+                        }
+                        if let Some(t) = &mut new_text {
+                            text_fields(ui, &mut fields, t);
+                        }
+                        for (name, value) in &kept {
+                            ui.label(name);
+                            let draft = self
+                                .kept_draft
+                                .as_ref()
+                                .filter(|d| d.entity == entity && &d.name == name);
+                            let mut typed = draft.map_or_else(|| value.clone(), |d| d.text.clone());
+                            let field = egui::TextEdit::singleline(&mut typed)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(180.0);
+                            if ui.add(field).has_focus() {
+                                kept_focused = true;
+                                self.kept_draft = Some(KeptDraft {
+                                    entity,
+                                    name: name.clone(),
+                                    text: typed,
+                                });
+                            }
+                            ui.end_row();
+                        }
+                    });
+                ui.separator();
                 egui::Grid::new("purplepie editor inspector grid")
                     .num_columns(2)
                     .striped(true)
                     .show(ui, |ui| {
-                        for (label, value) in rows {
+                        for (label, value) in read_only {
                             ui.label(label);
                             ui.add(egui::Label::new(egui::RichText::new(value).monospace()).wrap());
                             ui.end_row();
                         }
                     });
             });
+        // A colour picker or a list stays open while it is used.
+        fields.active |= egui::Popup::is_any_open(ui.ctx());
+        let field = fields.changed.unwrap_or("");
+        if let (Some(before), Some(after)) = (transform, new_transform)
+            && before != after
+        {
+            self.change(
+                ctx,
+                field,
+                Edit::Transform {
+                    entity,
+                    before,
+                    after,
+                },
+            );
+        }
+        if new_layer != layer {
+            let after = new_layer;
+            self.change(
+                ctx,
+                field,
+                Edit::Layer {
+                    entity,
+                    before: layer,
+                    after,
+                },
+            );
+        }
+        if new_hidden != hidden {
+            let after = new_hidden;
+            self.change(
+                ctx,
+                field,
+                Edit::Hidden {
+                    entity,
+                    before: hidden,
+                    after,
+                },
+            );
+        }
+        if let (Some(before), Some(after)) = (quad, new_quad)
+            && before != after
+        {
+            self.change(
+                ctx,
+                field,
+                Edit::Quad {
+                    entity,
+                    before,
+                    after,
+                },
+            );
+        }
+        if let (Some(before), Some(after)) = (sprite, new_sprite)
+            && before != after
+        {
+            self.change(
+                ctx,
+                field,
+                Edit::Sprite {
+                    entity,
+                    before,
+                    after,
+                },
+            );
+        }
+        if let (Some(before), Some(after)) = (text, new_text)
+            && before != after
+        {
+            let (before, after) = (Box::new(before), Box::new(after));
+            self.change(
+                ctx,
+                field,
+                Edit::Text {
+                    entity,
+                    before,
+                    after,
+                },
+            );
+        }
+        if !fields.active {
+            self.commit_pending(ctx);
+        }
+        if !kept_focused {
+            // The field was left (Enter, a click elsewhere): check and apply.
+            self.commit_kept_draft(ctx);
+        }
+    }
+
+    /// Applies an inspector change of `field` now; it joins the edit of that
+    /// field in progress, or starts one from the change's `before`.
+    fn change(&mut self, ctx: &mut Context<'_>, field: &'static str, change: Edit) {
+        let mut start = change.clone();
+        start.revert_to_before();
+        self.begin_edit(ctx, start, field);
+        change.apply(ctx.world_mut(), true);
     }
 
     /// The bottom line: the last message (red for errors) and whether there
@@ -607,7 +752,7 @@ impl Editor {
             let picked = picked_at(ctx, origin);
             let target = select::drag_target(&picked, self.selected);
             self.select(ctx, target, true);
-            self.commit_pending(ctx);
+            self.finish_edits(ctx);
             self.drag = target.and_then(|entity| {
                 Self::movable_transform(ctx, entity).map(|from| Drag {
                     entity,
@@ -653,6 +798,157 @@ impl Editor {
             ctx.set_window_title(format!("{mark}{} - PurplePie Editor", self.file_name()));
         }
     }
+}
+
+/// Position, rotation (in degrees) and scale.
+fn transform_fields(ui: &mut egui::Ui, fields: &mut Fields, t: &mut Transform2D) {
+    ui.label("Position");
+    vec2_fields(ui, fields, "position", &mut t.position, 1.0, None);
+    ui.end_row();
+    ui.label("Rotation");
+    let mut degrees = t.rotation.to_degrees();
+    let rotation = egui::DragValue::new(&mut degrees).speed(1.0).suffix("°");
+    if fields.track("rotation", &ui.add(rotation)) {
+        t.rotation = degrees.to_radians();
+    }
+    ui.end_row();
+    ui.label("Scale");
+    vec2_fields(ui, fields, "scale", &mut t.scale, 0.01, None);
+    ui.end_row();
+}
+
+/// A width and a height, never dragged below zero.
+fn size_fields(ui: &mut egui::Ui, fields: &mut Fields, field: &'static str, size: &mut Vec2) {
+    vec2_fields(ui, fields, field, size, 1.0, Some(0.0));
+}
+
+/// An x and a y field, dragged by `speed` per point, not below `min`.
+fn vec2_fields(
+    ui: &mut egui::Ui,
+    fields: &mut Fields,
+    field: &'static str,
+    v: &mut Vec2,
+    speed: f64,
+    min: Option<f32>,
+) {
+    ui.horizontal(|ui| {
+        for (value, prefix) in [(&mut v.x, "x "), (&mut v.y, "y ")] {
+            let mut drag = egui::DragValue::new(value).speed(speed).prefix(prefix);
+            if let Some(min) = min {
+                // A smaller value from the file stays until it is edited.
+                drag = drag.range(min..=f32::MAX).clamp_existing_to_range(false);
+            }
+            fields.track(field, &ui.add(drag));
+        }
+    });
+}
+
+/// A colour button with egui's picker (sRGB, straight alpha, like [`Color`]).
+fn color_field(ui: &mut egui::Ui, fields: &mut Fields, field: &'static str, color: &mut Color) {
+    let mut bytes = color_bytes(*color);
+    let response = ui.color_edit_button_srgba_unmultiplied(&mut bytes);
+    // Only a change in the picker counts: opening it changes nothing.
+    if fields.track(field, &response) {
+        *color = Color::rgba8(bytes[0], bytes[1], bytes[2], bytes[3]);
+    }
+}
+
+/// `color` as sRGB bytes, straight alpha.
+fn color_bytes(color: Color) -> [u8; 4] {
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    [byte(color.r), byte(color.g), byte(color.b), byte(color.a)]
+}
+
+/// Size, tint and region (the whole texture when switched on).
+fn sprite_fields(
+    ui: &mut egui::Ui,
+    fields: &mut Fields,
+    sprite: &mut Sprite,
+    texture_size: Option<Vec2>,
+) {
+    ui.label("Sprite size");
+    size_fields(ui, fields, "sprite size", &mut sprite.size);
+    ui.end_row();
+    ui.label("Sprite tint");
+    color_field(ui, fields, "sprite tint", &mut sprite.tint);
+    ui.end_row();
+    ui.label("Sprite region");
+    ui.horizontal(|ui| {
+        let mut has_region = sprite.region.is_some();
+        let mut region = sprite.region.unwrap_or_else(|| whole_texture(texture_size));
+        fields.track("sprite region", &ui.checkbox(&mut has_region, ""));
+        ui.add_enabled_ui(has_region, |ui| {
+            for (value, prefix) in [
+                (&mut region.x, "x "),
+                (&mut region.y, "y "),
+                (&mut region.width, "w "),
+                (&mut region.height, "h "),
+            ] {
+                let drag = egui::DragValue::new(value).speed(0.25).prefix(prefix);
+                fields.track("sprite region", &ui.add(drag));
+            }
+        });
+        sprite.region = has_region.then_some(region);
+    });
+    ui.end_row();
+}
+
+/// The region covering a texture of `size` texels (1×1 when unknown).
+fn whole_texture(size: Option<Vec2>) -> TextureRegion {
+    let size = size.unwrap_or(Vec2::ONE);
+    TextureRegion::new(0, 0, size.x as u32, size.y as u32)
+}
+
+/// Content (several lines), size, colour and anchor.
+fn text_fields(ui: &mut egui::Ui, fields: &mut Fields, text: &mut Text) {
+    ui.label("Text");
+    let content = egui::TextEdit::multiline(&mut text.content)
+        .desired_rows(2)
+        .desired_width(180.0);
+    fields.track("text content", &ui.add(content));
+    ui.end_row();
+    ui.label("Text size");
+    let size = egui::DragValue::new(&mut text.size)
+        .speed(0.5)
+        .range(0.0..=f32::MAX)
+        .clamp_existing_to_range(false);
+    fields.track("text size", &ui.add(size));
+    ui.end_row();
+    ui.label("Text colour");
+    color_field(ui, fields, "text colour", &mut text.color);
+    ui.end_row();
+    ui.label("Text anchor");
+    ui.horizontal(|ui| {
+        let anchor = &mut text.anchor;
+        egui::ComboBox::from_id_salt("purplepie editor text horizontal")
+            .selected_text(format!("{:?}", anchor.horizontal))
+            .width(70.0)
+            .show_ui(ui, |ui| {
+                for h in [
+                    HorizontalAnchor::Left,
+                    HorizontalAnchor::Center,
+                    HorizontalAnchor::Right,
+                ] {
+                    let item = ui.selectable_value(&mut anchor.horizontal, h, format!("{h:?}"));
+                    fields.track("text anchor", &item);
+                }
+            });
+        egui::ComboBox::from_id_salt("purplepie editor text vertical")
+            .selected_text(format!("{:?}", anchor.vertical))
+            .width(80.0)
+            .show_ui(ui, |ui| {
+                for v in [
+                    VerticalAnchor::Baseline,
+                    VerticalAnchor::Top,
+                    VerticalAnchor::Middle,
+                    VerticalAnchor::Bottom,
+                ] {
+                    let item = ui.selectable_value(&mut anchor.vertical, v, format!("{v:?}"));
+                    fields.track("text anchor", &item);
+                }
+            });
+    });
+    ui.end_row();
 }
 
 /// A text's local rectangle, measured with the loaded fonts.
@@ -747,5 +1043,23 @@ mod tests {
             text.contains("scenes/x.ron") && text.ends_with(": not there"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn colours_become_srgb_bytes_and_regions_cover_the_texture() {
+        assert_eq!(
+            color_bytes(Color::rgba8(12, 200, 255, 128)),
+            [12, 200, 255, 128]
+        );
+        assert_eq!(
+            color_bytes(Color::rgba(-1.0, 2.0, 0.5, 1.0)),
+            [0, 255, 128, 255],
+            "clamped"
+        );
+        assert_eq!(
+            whole_texture(Some(Vec2::new(64.0, 32.0))),
+            TextureRegion::new(0, 0, 64, 32)
+        );
+        assert_eq!(whole_texture(None), TextureRegion::new(0, 0, 1, 1));
     }
 }

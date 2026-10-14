@@ -36,11 +36,16 @@ break compatibility and a patch version (0.x.**y**) may not.
   registered type reads as their RON text in the new `scene::UnknownComponents` component (`get`, `iter`, `len`,
   `is_empty`, `remove`) instead of failing; `save_scene` writes them back unchanged, so a file round-trips byte for
   byte. For tools that open other games' scenes (ADR-044). New public module `scene`, holding only that type.
+  `UnknownComponents::set(name, ron)` replaces or adds a kept component's text after checking that it is exactly one
+  valid RON value (its syntax, not the game's type); invalid text is refused with the new `scene::InvalidRon` error
+  ("not valid RON: 1:8-1:9: Unexpected end of RON") and changes nothing.
 - `crates/purplepie-editor/`: the scene editor, first part (ADR-044): `cargo run -p purplepie-editor -- <scene.ron>`
   opens a scene with `load_scene_keeping_unknown`, lists its entities, pans and zooms beside its panel, fits the view
   (F) and saves (Ctrl+S), byte for byte when nothing changed; errors appear in a status line, and a file that exists
   but could not be opened is never overwritten. Selecting (click in the view, again for the entity below, or in the
-  list; outlined), an inspector that edits position, rotation, scale, layer and hidden (the rest read-only), moving
+  list; outlined), an inspector that edits position, rotation, scale, layer, hidden, quads (size, colour), sprites
+  (size, tint, region), texts (content, size, colour, anchor) and the game's components as RON text checked when the
+  field is left (velocity, animation and buttons read-only), moving
   (left drag, arrow keys, Shift for 10 units), undo/redo of every change (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an
   unsaved-changes marker. A `Game` on the public API with the `egui`
   feature; Rust 1.95.

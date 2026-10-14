@@ -448,7 +448,8 @@ entities first to replace a level.
 
 `load_scene` fails on a component name nobody registered. Tools that open other games' scenes (a level editor) use
 `ctx.load_scene_keeping_unknown(path)` instead: such components stay on their entities as text
-(`purplepie::scene::UnknownComponents`) and `save_scene` writes them back unchanged.
+(`purplepie::scene::UnknownComponents`) and `save_scene` writes them back unchanged. A tool can change that text
+with `UnknownComponents::set(name, ron)`, which refuses anything that is not exactly one valid RON value.
 
 ## 12. Hot reload, errors and logs
 

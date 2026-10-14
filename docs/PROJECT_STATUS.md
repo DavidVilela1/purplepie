@@ -17,8 +17,8 @@ written as a `Game` on a public egui hook. Done so far: the design, a fix it nee
 quadratic, PP-038b), the public egui hook (`egui` feature, `Game::egui`, PP-038c) and picking
 (`Context::entities_at`, PP-038d), lenient scene loading (`load_scene_keeping_unknown`, PP-038e) and the editor
 crate's first slice (`crates/purplepie-editor`: open, list, pan/zoom, save, PP-038f; select, move, undo/redo,
-PP-038g) and an editable inspector for transform, layer and hidden (PP-038h1). Editing drawables and game
-components is next.
+PP-038g) and an inspector that edits every saved value: transform, layer and hidden (PP-038h1), quads, sprites,
+texts and game components kept as RON text (PP-038h2). Placing, duplicating and deleting entities is next.
 
 ## Current Stage
 
@@ -63,8 +63,9 @@ over its frame (`purplepie::egui`), and the debug overlay now builds on the same
 and zooms beside its panel and saves it back. PP-038g completed the first vertical slice ADR-044 set: entities are
 selected by click or in the list, outlined, inspected, moved by dragging or with the arrow keys, and moves are undone
 and redone, with an unsaved-changes marker. PP-038h1 made the inspector edit position, rotation, scale, layer and
-hidden, each change one undo step. Next: **PP-038h2**, editing quads, sprites, texts and kept game components, then
-PP-038i–PP-038j.
+hidden, each change one undo step. PP-038h2 added quads (size, colour), sprites (size, tint, region), texts
+(content, size, colour, anchor) and the game's own components, edited as RON text that is checked when the field is
+left (`UnknownComponents::set`). Next: **PP-038i**, placing, duplicating and deleting entities, then PP-038j.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -146,6 +147,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-038h2: editor inspector edits quads (size, colour), sprites (size, tint, region), texts (content, size, colour, anchor) and kept game components as RON text checked on leaving the field (engine: `scene::UnknownComponents::set`, `scene::InvalidRon`); one undo step per field.
 - PP-038h1: editor inspector edits position, rotation, scale, layer and hidden; undo history generalized to before/after component values; one step per field change.
 - PP-038g: scene editor first slice complete: select (click, cycling, list), outline, read-only inspector, move (drag, arrow keys), undo/redo, unsaved-changes marker.
 - PP-038f: scene editor crate, part 1: `crates/purplepie-editor` opens a scene (lenient), lists its entities, pans/zooms/fits beside its panel, saves with Ctrl+S, shows errors in a status line, never overwrites a file it could not open.
@@ -188,7 +190,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-038h2: Editor inspector editing, part 2** (phase P5, item 9; ADR-044): quad, sprite and text values and kept game components (RON text checked on entry, needs a small engine setter), each undoable. See [TASKS.md](TASKS.md#pp-038h2-editor-inspector-editing-part-2--next).
+- **PP-038i: Editor placing** (phase P5, item 10; ADR-044): add quads, sprites and texts, duplicate, delete with undo, new empty scene; split at its start if it does not fit one session. See [TASKS.md](TASKS.md#pp-038i-editor-placing--next).
 
 ## Blocked
 
@@ -226,10 +228,14 @@ executable, else `assets/` in the working directory (ADR-025).
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
 - Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys reach the game except while an egui text field has the focus; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - `egui` hook (optional feature, PP-038c): an egui pass runs every frame while `with_egui` is on (cost not measured separately; the visible overlay costs about a quarter of the frame rate in debug builds on a software GPU); the game's UI covers the scene drawn under it (no separate viewport); the egui context is recreated when the platform suspends the app, so panel sizes and positions reset then. Seen only on Linux/lavapipe.
-- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer and hidden (PP-038h1), undoes and saves; drawables and game components are not editable yet, nothing can be added or deleted; screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
+- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are checked only as RON syntax, not against the game's types (PP-038j); velocity, animation, buttons and screen-space anchors are read-only; nothing can be added or deleted; screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-14: PP-038h2 Editor inspector edits drawables and game components.**
+  - The inspector now edits quads (size, colour), sprites (size, tint, region), texts (content, size, colour, anchor) and the game's own components, each as a RON text field checked when it is left: invalid text is refused with a message and the old value stays. Every field change is one undo step.
+  - Engine: `scene::UnknownComponents::set(name, ron)` with the new `scene::InvalidRon` error. 1 engine test, 16 unit tests in the editor crate.
 
 - **2026-10-14: PP-038h1 Editor inspector edits transform, layer and hidden.**
   - The inspector now has number fields for position, rotation (degrees) and scale, a layer checkbox and number, and a hidden checkbox; drag a number or click it to type. A change shows at once and is one undo step when the field is let go.
@@ -569,15 +575,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038h1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-038h2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 243 unit tests + 55 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--workspace` (the editor turns on `egui`) or `--all-features` 259 + 56, 13 ignored; editor 14 + 1 doctest; Purple Swarm 10 |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 244 unit tests + 56 doctests (13 of them the guide's blocks), 12 ignored (GPU); with `--workspace --all-features` 260 + 57, 13 ignored; editor 16 + 1 doctest; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Editor inspector editing, part 2 (PP-038h2) | ✅ GitHub `main` (`8f70598`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb on a copy of `demo.ron`: quad colour, sprite region, kept component (an invalid value refused in red), text content → saved file differs in exactly those four lines; four undos → identical file; anchor change + undo → identical file |
 | Editor inspector editing, part 1 (PP-038h1) | ✅ GitHub `main` (`8b3796d`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (0 warnings). Xvfb on a copy of `demo.ron`: field edits saved as exactly those values; five undos → file identical, title clean; arrows in a field moved nothing |
 | Scene editor: select, move, undo (PP-038g) | ✅ GitHub `main` (`9e02674`) identical to this tree before the task (engine untouched: only `crates/purplepie-editor` and docs changed). clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (0 warnings). Xvfb on a copy of `demo.ron`: click select, drag, merged arrow steps, undo/redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y), title `* demo.ron - …` then clean, click cycling, list selection, screen-space move refused, save identical after undoing; drag-and-save diff: one line (`#7` position) |
 | Scene editor, part 1 (PP-038f) | ✅ GitHub `main` (`c84a821`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (0 warnings); GPU tests 13/13. Xvfb with the editor binary on a copy of `demo.ron`: 19 entities, pan, zoom, fit, Ctrl+S → `cmp` identical; missing file → red cause, Ctrl+S creates an empty scene; broken file → save refused, file untouched; `--help` exit 0, bad arguments exit 2 |
@@ -627,4 +634,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-14. PP-038h1 done (inspector edits transform, layer, hidden). PP-038h2 (inspector editing, part 2) is next.
+2026-10-14. PP-038h2 done (inspector edits quads, sprites, texts and kept game components). PP-038i (placing) is next.

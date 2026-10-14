@@ -4,7 +4,8 @@
 //! [`Context::load_scene`](crate::Context::load_scene); this module only adds
 //! [`UnknownComponents`], what
 //! [`Context::load_scene_keeping_unknown`](crate::Context::load_scene_keeping_unknown)
-//! keeps of game components it cannot read (ADR-044).
+//! keeps of game components it cannot read, and [`InvalidRon`], the error of
+//! its setter (ADR-044).
 //!
 //! # Engine notes
 //!
@@ -85,7 +86,35 @@ impl UnknownComponents {
     pub fn remove(&mut self, name: &str) -> Option<String> {
         self.values.remove(name)
     }
+
+    /// Keeps `ron` under `name` (replacing or adding it) and returns the text
+    /// it replaces, if any. `ron` must be exactly one valid RON value: the
+    /// syntax is checked, not the game's type, which the editor does not know
+    /// (ADR-044). Whitespace and comments around the value are dropped; the
+    /// rest is saved exactly as given. Invalid text changes nothing.
+    ///
+    /// ```
+    /// use purplepie::scene::UnknownComponents;
+    ///
+    /// let mut kept = UnknownComponents::default();
+    /// assert_eq!(kept.set("game::Speed", " (value: 2.5) "), Ok(None));
+    /// assert_eq!(kept.get("game::Speed"), Some("(value: 2.5)"));
+    /// assert!(kept.set("game::Speed", "(value: 2.5").is_err());
+    /// assert_eq!(kept.get("game::Speed"), Some("(value: 2.5)"), "unchanged");
+    /// ```
+    pub fn set(&mut self, name: &str, ron: &str) -> Result<Option<String>, InvalidRon> {
+        let raw = RawValue::from_ron(ron).map_err(|err| InvalidRon(err.to_string()))?;
+        let text = raw.trim().get_ron().to_owned();
+        Ok(self.values.insert(name.to_owned(), text))
+    }
 }
+
+/// Text that is not one valid RON value, refused by
+/// [`UnknownComponents::set`]; it says where and why, like
+/// "1:8-1:9: Unexpected end of RON".
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("not valid RON: {0}")]
+pub struct InvalidRon(String);
 
 /// Building [`UnknownComponents`] in the debug overlay's tests.
 #[cfg(all(test, feature = "egui"))]
@@ -1628,5 +1657,72 @@ mod tests {
         }
         let saved = capture(&world, &textures, &fonts, None, &registry).expect("capture");
         assert!(saved.entities.is_empty());
+    }
+
+    #[test]
+    fn kept_text_can_be_replaced_with_valid_ron_and_is_saved_verbatim() {
+        let scene =
+            from_text(r#"(version: 1, entities: [(components: {"game::Speed": (value: 1.0)})])"#)
+                .expect("parse");
+        let (mut textures, mut fonts, mut world) =
+            (Textures::default(), Fonts::default(), World::new());
+        let nothing = Registry::default();
+        let entity = load_as(
+            &scene,
+            &mut textures,
+            &mut fonts,
+            &mut world,
+            &nothing,
+            Unknown::Keep,
+        )
+        .expect("load")[0];
+        {
+            let mut kept = world.get::<&mut UnknownComponents>(entity).expect("kept");
+            // Invalid text is refused and changes nothing.
+            for bad in [
+                "",
+                "(value: 2.0",
+                "(value: 2.0) extra",
+                "#![enable(implicit_some)] 1",
+            ] {
+                let err = kept.set("game::Speed", bad).expect_err(bad);
+                assert!(err.to_string().starts_with("not valid RON: "), "{err}");
+            }
+            assert_eq!(kept.get("game::Speed"), Some("(value: 1.0)"));
+            // Valid text replaces it as written, without the space around it.
+            let old = kept
+                .set("game::Speed", "  (value:2.50,  note: \"fast\") // tuned\n")
+                .expect("valid");
+            assert_eq!(old.as_deref(), Some("(value: 1.0)"));
+            assert_eq!(
+                kept.set("game::Tag", "Boss").expect("valid"),
+                None,
+                "a new name is added"
+            );
+        }
+        let text = to_text(&capture(&world, &textures, &fonts, None, &nothing).expect("capture"))
+            .expect("write");
+        assert!(
+            text.contains(r#""game::Speed": (value:2.50,  note: "fast")"#),
+            "{text}"
+        );
+        assert!(text.contains(r#""game::Tag": Boss"#), "{text}");
+        // And it loads back as the same text.
+        let mut again = World::new();
+        let reloaded = load_as(
+            &from_text(&text).expect("parse"),
+            &mut textures,
+            &mut fonts,
+            &mut again,
+            &nothing,
+            Unknown::Keep,
+        )
+        .expect("reload")[0];
+        let kept = again.get::<&UnknownComponents>(reloaded).expect("kept");
+        assert_eq!(
+            kept.get("game::Speed"),
+            Some(r#"(value:2.50,  note: "fast")"#)
+        );
+        assert_eq!(kept.get("game::Tag"), Some("Boss"));
     }
 }

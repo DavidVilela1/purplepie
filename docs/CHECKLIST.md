@@ -32,7 +32,7 @@ git status --short
 cargo test
 ```
 
-**Expect:** `test result: ok. 243 passed; 0 failed; 12 ignored` and `test result: ok. 55 passed`. The guide's code
+**Expect:** `test result: ok. 244 passed; 0 failed; 12 ignored` and `test result: ok. 56 passed`. The guide's code
 blocks are part of the 53. **Report** the two `test result` lines.
 
 ## 2. GPU tests on your real graphics card
@@ -255,7 +255,9 @@ outline, its row lights up and its components appear under the list. Drag it a l
 `*` and the bottom line says "unsaved changes"; Right arrow moves it one more unit. Ctrl+Z twice puts it back (the `*`
 goes away); Ctrl+Shift+Z brings the move back; Ctrl+Z again. Under the list, click the Rotation number, type 45
 and press Enter: the square turns; tick Hidden: it disappears (its outline stays); Ctrl+Z twice brings both back.
-Ctrl+S prints "saved …". Close the window, then
+Click the "#8 sprite … +1 game component" row: its `scene_demo::Spin` row is a text field. Change `0.8` to `2` and
+press Enter ("changed scene_demo::Spin of #8"); then type `(speed:` and press Enter: a red "not valid RON" message,
+and the field shows the previous value again. Ctrl+Z puts `0.8` back. Ctrl+S prints "saved …". Close the window, then
 `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
 
 ## macOS or Linux

@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden); PP-038h2–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`); PP-038i–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2793,6 +2793,40 @@ small and enough for the core interactions.
   undos took back exactly those five steps (title clean again), a redo and an undo, and the saved file was identical
   to the original; in a third, arrow keys typed into the Position field moved nothing. 14 unit tests in the crate
   (every edit kind applied and reverted, merging across kinds).
+
+## Implementation notes (PP-038h2)
+- **Engine API:** `scene::UnknownComponents::set(name, ron) -> Result<Option<String>, scene::InvalidRon>` replaces
+  or adds a kept component's text and returns the old one. It checks with `ron::value::RawValue::from_ron` that the
+  text is exactly one RON value (no trailing text, no `#![enable(..)]`); the game's type is unknown to the editor,
+  so a well-formed value of the wrong shape is accepted and fails only when the game loads the scene strictly.
+  Whitespace and comments around the value are trimmed (`RawValue::trim`); the rest is stored and saved verbatim.
+  **Error type:** a new small public `scene::InvalidRon` (message only, `std::error::Error`, `PartialEq`), not a
+  new `purplepie::Error` variant: the setter is a value check with nothing to do with I/O, assets or the GPU, and
+  callers want to show the message and keep going, not propagate it with `?` through `Result<()>`. No new
+  dependency (ron and thiserror were already used).
+- **Edit kinds:** `Edit::Quad`, `Edit::Sprite` and `Edit::Text` hold the whole component before and after (the
+  texture and the font are copied unchanged; `Text` is boxed), and `Edit::Kept { name, before, after }` holds one
+  kept component's text. `Edit` is `Clone` now, no longer `Copy`. `Edit::same_target` (kind, entity and, for kept
+  components, the name) drives merging and pending edits.
+- **One undo step per field:** a pending edit now remembers the field being changed (`"quad colour"`, `"text
+  anchor"`, …); a change to another field, even of the same component, records the pending one first. Colour
+  pickers and anchor lists count as being used while their popup is open, so dragging in a picker is one step.
+  Colours use egui's colour button (sRGB bytes, straight alpha: `Color::rgba8`); opening the picker changes
+  nothing. Size fields cannot be dragged below 0, but a smaller value from the file is left alone until edited
+  (`clamp_existing_to_range(false)`). A region switched on starts as the whole texture (`Context::texture_size`).
+- **Kept components:** one single-line monospace text field each. While it has the focus the typed text is a draft
+  (the world is unchanged); when the field is left (Enter, a click elsewhere, a selection change, undo, save) the
+  draft goes through `set`: valid text is one `Edit::Kept` step ("changed scene_demo::Spin of #8"), invalid text is
+  refused in red ("… not changed: not valid RON: 1:8-1:9: Unexpected end of RON") and the field shows the old value
+  again.
+- **Verified under Xvfb** on a copy of `demo.ron`: `#1`'s colour changed by dragging along the picker's hue bar,
+  `#6`'s region x typed as 16, `#8`'s `scene_demo::Spin` typed as `(speed: 2.5, direction: Clockwise)` and then
+  as the invalid `(speed: ` (refused, old value kept), `#12`'s text replaced and left with a click; undo and redo
+  of the text; the saved file differed from the original in exactly four lines (the colour, the region, the
+  component and the content); four undos (one per field, the picker drag included) and a save gave a file
+  identical to the original. A second run set `#12`'s horizontal anchor to Left (saved as the default, so the
+  `anchor` line disappeared) and one undo restored the identical file. Selecting entities changes nothing (no
+  spurious edits from the colour round trip). 16 unit tests in the crate, 1 new engine test.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.
