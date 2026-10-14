@@ -12,7 +12,8 @@ the file back in the same format; a game builds its own editor that checks its c
 GUIDE §15 explains both. Before it, phase P4 (2026-10-13) added the optional debug overlay (ADR-043). Before that, phase P3.5 (2026-10-12) delivered release 0.1.0 (tag `v0.1.0` on GitHub)
 and a second game, Purple Swarm, built on the public API; M10 (Engine API Stabilization), the portfolio scope,
 runtime essentials (P1–P2) and editor foundations (P3) were reached earlier. Windows: the owner's checklist passed
-(PP-033b; step 9, the overlay and the editor, is not run yet). macOS is built and tested in CI but has not been seen
+(PP-033b; again on 2026-10-14 with step 9, the overlay and the editor, owner-reported). Released as **0.2.0**
+(PP-039). macOS is built and tested in CI but has not been seen
 running.
 **Phase P5 (scene editor): complete** (PP-038a–PP-038j2, ADR-044, 2026-10-13 to 2026-10-14): the editor is a
 separate crate written as a `Game` on a public egui hook. It took: the design, a fix it needed first (scene loading was
@@ -22,8 +23,7 @@ crate's first slice (`crates/purplepie-editor`: open, list, pan/zoom, save, PP-0
 PP-038g) and an inspector that edits every saved value: transform, layer and hidden (PP-038h1), quads, sprites,
 texts and game components kept as RON text (PP-038h2), deleting and duplicating entities with undo (PP-038i1) and
 adding quads, sprites and texts (PP-038i2), a game's own editor that checks its component types (PP-038j1), and the
-guide section with the checklist step (PP-038j2). Next: release 0.2.0, so games and the guide can use the editor from
-a tag, then phase P6.
+guide section with the checklist step (PP-038j2). It was released in **0.2.0** (PP-039, 2026-10-14). Next: phase P6.
 
 ## Current Stage
 
@@ -77,7 +77,8 @@ does not exist yet. PP-038j1 lets a game build its own editor in three lines (`p
 `GameComponents`): values of its components are checked against its types when the scene opens and when edited
 (engine: `scene::check_component`). PP-038j2 added GUIDE §15 (using the editor, and a game's own editor binary whose
 code is a compiled example kept identical to the guide by a test), the checklist step for the example editor, and
-closed **phase P5**. Next: **PP-039**, release 0.2.0.
+closed **phase P5**. PP-039 released it as **version 0.2.0** (the owner tags `v0.2.0`). Next: **PP-040**, which checks
+the tag and plans phase P6.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -159,6 +160,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-039: release 0.2.0: version, CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines on `tag = "v0.2.0"` (README, GUIDE §1/§15, RELEASING), RELEASING covers the editor's library; preconditions owner-reported green.
 - PP-038j2: GUIDE §15 "The scene editor" (controls; a game's own editor binary, its files compiled as the editor crate's `guide_editor` example and kept identical to the guide by a test; checked as an outside crate depending on GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed. Phase P5 complete.
 - PP-038j1: a game's own editor: `purplepie_editor::GameComponents`, `run_with`, `main_with`; kept game component values checked against the game's types on open and on edit (still saved as text); engine `scene::check_component::<T>`; example `scene_demo_editor`.
 - PP-038i2: editor adds quads, sprites (image from the asset folder) and texts (font from the asset folder) at the view's centre, each one undo step; a missing scene file opens as a new scene with a plain message.
@@ -206,7 +208,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-039: Release 0.2.0** (before phase P6): CHANGELOG `[0.2.0]` from `[Unreleased]` (P4 overlay, P5 editor, `Rng`/`Rect`, scene APIs), version bump, RELEASING checks (MSRV, latest-deps, outside crate by git tag), GUIDE §1/§15 and README switched from `main` to the new tag once it exists; the owner runs CHECKLIST step 9 on Windows and tags. See [TASKS.md](TASKS.md#pp-039-release-020--next).
+- **PP-040: P6 plan** (phase P6, item 1): confirm the `v0.2.0` tag (identical tree; outside crate by the tag), then specify the bigger example game built with the editor (`docs/GAME3.md`), list the gaps it needs and split P6 into tasks. See [TASKS.md](TASKS.md#pp-040-p6-plan--next).
 
 ## Blocked
 
@@ -248,6 +250,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-14: PP-039 Release 0.2.0.**
+  - Version 0.2.0 for the engine and the editor crate; CHANGELOG `[0.2.0] - 2026-10-14`; README, GUIDE and RELEASING now point to `tag = "v0.2.0"`. The owner tags it after pushing.
+  - Owner-reported before the release: every checklist step green (including step 9 on Windows), all tests and all CI jobs green. New owner rule in DEVELOPMENT §3: owner-run checks are assumed green unless the owner reports otherwise.
 
 - **2026-10-14: PP-038j2 Scene editor in the guide; phase P5 complete.**
   - GUIDE §15 "The scene editor": how to open a level, the controls, and a game's own editor (a second binary calling `purplepie_editor::main_with`). The two files it shows are compiled as the editor crate's `guide_editor` example, and a test fails if the guide's text differs from them. Followed word for word as a fresh outside crate with both dependencies from GitHub `main`: it built, saved a level with a `my_game::Door`, and its editor checked that value against the type.
@@ -607,7 +613,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-038j2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-039 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -616,6 +622,7 @@ after the final PP-038j2 change (CI additionally runs the latest stable clippy a
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 58 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 261 + 59, 13 ignored; editor 22 + 3 doctests; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Release 0.2.0 (PP-039) | ✅ GitHub `main` (`290d87f`) identical to this tree before the task. Public items compared with a clone of the `v0.1.0` tag. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`); `cargo build`; sandbox under Xvfb prints `PurplePie sandbox v0.2.0`; R-19 `chunks_exact` grep empty; outside crate (GUIDE §15 files) by path builds against 0.2.0 |
 | Guide section and P5 close-out (PP-038j2) | ✅ GitHub `main` (`4f0dc83`) identical to this tree before the task. Guide doctests 14 passed, 1 ignored (the editor program, compiled as an example); the guide-files test fails when the example differs from the guide (mutation). Outside crate built from section 15 word for word with both dependencies from GitHub `main` (see PP-038j2 in TASKS for the run). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). CHECKLIST step 9's new example-editor check run under Xvfb |
 | A game's own editor (PP-038j1) | ✅ GitHub `main` (`f31060d`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with the `scene_demo_editor` example: a string speed refused, a valid value accepted, the entity duplicated, saved; that file loaded strictly by the engine's `scene` example (20 entities, 3 spinning sprites); `count: -1` → red status and label; plain editor unchanged, `--help` exit 0, bad option exit 2 |
 | Editor adding (PP-038i2) | ✅ GitHub `main` (`80e08de`) identical to this tree before the task (engine untouched). clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb on a copy of `demo.ron`: Quad, Sprite (`textures/breakout/ball.png`), Text added → saved diff exactly three new entities with relative asset paths; three undos → identical file; missing `fresh.ron` → "new scene" message, quad + text saved, file reopens with 2 entities |
@@ -665,9 +672,9 @@ after the final PP-038j2 change (CI additionally runs the latest stable clippy a
 | Breakout lose screen vs PP-025 | ✅ pixel-identical (earlier run; no engine code changed since) |
 | Window destroyed (fresh display) | ✅ `error: GPU rendering failed` / `surface was lost`, exit 1, no panic (earlier run; no engine code changed since) |
 
-Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a/PP-034a trees, `docs/CHECKLIST.md`): step 1 `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; step 2 `cargo test -- --ignored` 12/12 passed on a real GPU, the first hardware run of the pixel-exact GPU tests; step 3 `GPU: AMD Radeon(TM) Graphics (Vulkan, IntegratedGpu); surface Bgra8UnormSrgb, AutoVsync` (laptop on battery, so the RTX 3060 was idle) and `audio: 2 channels at 48000 Hz (f32)`; the owner reports everything else working. Later the same day the owner reported the remaining steps (4–8) "as expected" (exact autoplay lines not quoted) and all CI jobs green, including `msrv` (Rust 1.90) and latest-deps.
+Owner-provided (not executed by Claude): Windows x64: the Stage 4 purple window was confirmed by screenshot (pixel-checked); `cargo test`, Escape and the close button confirmed on 2026-10-01. GitHub Actions: first run all green on 2026-10-01. Windows, 2026-10-09 (PP-033a/PP-034a trees, `docs/CHECKLIST.md`): step 1 `cargo test` 216 unit tests + 47 doctests passed, 0 failed, 12 ignored; step 2 `cargo test -- --ignored` 12/12 passed on a real GPU, the first hardware run of the pixel-exact GPU tests; step 3 `GPU: AMD Radeon(TM) Graphics (Vulkan, IntegratedGpu); surface Bgra8UnormSrgb, AutoVsync` (laptop on battery, so the RTX 3060 was idle) and `audio: 2 channels at 48000 Hz (f32)`; the owner reports everything else working. Later the same day the owner reported the remaining steps (4–8) "as expected" (exact autoplay lines not quoted) and all CI jobs green, including `msrv` (Rust 1.90) and latest-deps. Windows, 2026-10-14 (PP-038j2 tree, before the 0.2.0 release): the owner reports every checklist step green, including step 9 (debug overlay, `egui_panel`, scene editor, example editor), all tests green and all CI jobs green. From then on, owner-run checks are assumed green unless the owner reports a failure (DEVELOPMENT §3).
 Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-14. PP-038j2 done: phase P5 (scene editor) complete. PP-039 (release 0.2.0) is next.
+2026-10-14. PP-039 done: version 0.2.0 (the owner tags `v0.2.0`). PP-040 (tag check and P6 plan) is next.

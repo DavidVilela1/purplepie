@@ -1,6 +1,6 @@
 [package]
 name = "purplepie"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # Minimum supported Rust version, derived from the dependency graph that
 # Stage 1+ will pull in (wgpu 30.0.1 -> ordered-float 5.5 requires 1.90).

@@ -3,7 +3,7 @@
 A small, modular, cross-platform **2D game engine** written in Rust, built on
 `winit`, `wgpu`, `hecs` and `glam`.
 
-> **Status: version 0.1.0, the first release ([CHANGELOG](CHANGELOG.md), [compatibility policy](docs/RELEASING.md)).** Stages 0–10 complete; runtime essentials (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops, UI buttons) and editor foundations (scene files, hot reload) done; usable from an outside crate with a [guide](docs/GUIDE.md).
+> **Status: version 0.2.0 ([CHANGELOG](CHANGELOG.md), [compatibility policy](docs/RELEASING.md)).** Stages 0–10 complete; runtime essentials (text, sprite sheets, animation, per-texture sampling, screen-space HUD, sound, OGG music loops, UI buttons), editor foundations (scene files, hot reload), an optional debug overlay and a scene editor done; usable from an outside crate with a [guide](docs/GUIDE.md).
 > The engine runs a complete game: `cargo run --example breakout`.
 > Rendering verified on Linux (Xvfb + software GPU, pixel-checked) and Windows (owner's checklist, AMD GPU); CI builds and tests on Linux, Windows and macOS.
 > Current state: [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Next task: [docs/TASKS.md](docs/TASKS.md).
@@ -62,7 +62,7 @@ cargo new my_game
 
 ```toml
 [dependencies]
-purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }
 # or, with a PurplePie checkout next to the game: purplepie = { path = "../PurplePie" }
 # Only if you save your own components in scene files (Context::register_scene_component):
 serde = { version = "1", features = ["derive"] }

@@ -58,6 +58,10 @@ document is corrected.
 - **Commit messages (owner rule):** never add AI attribution lines such as
   `Co-Authored-By: Claude …` or `Claude-Session: …`. Use conventional style
   (`feat:`, `fix:`, `docs:` …): a subject line, then a body listing what changed and why.
+- **Owner rule (2026-10-14): owner-run checks are assumed green.** After each delivery the owner runs the expand
+  command (clippy, tests), the checklist and CI. Unless the owner reports a failure, take them as passed: record them
+  as owner-reported (never as executed by Claude) and do not ask for them again. Claude still runs and reports its
+  own checks in each session.
 - **Stop after the requested task** and report.
 
 ## 4. Definition of Done

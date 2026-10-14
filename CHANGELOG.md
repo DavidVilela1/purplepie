@@ -7,6 +7,14 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-14
+
+The debug overlay (phase P4) and the scene editor (phase P5). Depend on it with
+`purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }`, and on the editor's library,
+for a game's own editor, with `purplepie-editor = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }`
+(GUIDE §15). The engine still needs Rust 1.90; the optional `egui` and `debug-overlay` features and the editor need
+Rust 1.95.
+
 ### Added
 
 - `math::Rng`: a seedable random number generator (PCG32): `new(seed)`, `from_entropy()`, `next_u32`, `f32`,
@@ -69,8 +77,21 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ### Changed
 
+- `ron` is required at exactly 0.12.1 (see Fixed). A game that itself needs `ron` 0.12.2 or later cannot build with
+  this version; `ron = "0.12"` in a game resolves to 0.12.1 and works. This is the only change since 0.1.0 that can
+  stop a working game from building, and the reason this release is 0.2.0 rather than 0.1.1.
 - CI builds, lints and tests the whole workspace (`--workspace`), so the example games are checked with every
   engine change. Root `cargo` commands still build only the engine.
+
+### Known limitations
+
+The full list is in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). New in this version:
+
+- the scene editor edits one file per run (no New, Open or Save as), edits game components as RON text (no typed
+  fields, no adding or removing components) and runs no game logic; velocity, animation, buttons and screen-space
+  anchors are read-only;
+- the overlay and the editor have been seen running on Linux (software GPU) and Windows (owner's checklist); macOS is
+  compiled and tested in CI only.
 
 ## [0.1.0] - 2026-10-09
 
@@ -129,5 +150,6 @@ These are listed in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md):
 - rendering has been seen on Linux (software GPU) and on a Windows AMD integrated GPU; macOS is compiled and tested in
   CI but not yet seen running.
 
-[Unreleased]: https://github.com/DavidVilela1/purplepie/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DavidVilela1/purplepie/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DavidVilela1/purplepie/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DavidVilela1/purplepie/releases/tag/v0.1.0

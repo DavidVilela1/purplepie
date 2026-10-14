@@ -1,19 +1,21 @@
 # Releasing PurplePie
 
 What a PurplePie version promises, and how one is made. Written in PP-035a; first release 0.1.0 (PP-035b,
-2026-10-09).
+2026-10-09); 0.2.0 (PP-039, 2026-10-14) added the debug overlay and the scene editor.
 
 ## 1. How PurplePie is distributed
 
 - **By git tag, not crates.io.** A release is a tag `vX.Y.Z` on the repository. Games depend on it with
-  `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }`, or by path to a checkout. `publish = false` stays in
-  `Cargo.toml`.
+  `purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }`, or by path to a checkout. `publish = false` stays in
+  `Cargo.toml`. A game's own scene editor depends on `purplepie-editor` from the same tag (GUIDE §15); Cargo finds
+  that package inside the repository's workspace.
 - **Why not crates.io yet:**
   - the name has not been reserved;
   - the package would ship the engine's `assets/` and `docs/`, which need an `include` list;
   - the engine's API has had only one outside user (the PP-031 trial).
 
-  Revisit after 0.1.0 has been used by the second outside game (PP-036).
+  Revisit after 0.1.0 has been used by the second outside game (PP-036). Reviewed for 0.2.0: nothing changed (Purple
+  Swarm lives in this repository; no outside game depends on PurplePie yet), so tags stay the way to depend on it.
 - The `Cargo.lock` in the repository is the tested set of dependency versions. A game resolves its own lock file;
   the "Latest dependencies" CI workflow tests those newer patch versions (section 4).
 
@@ -32,7 +34,8 @@ What a patch release keeps working:
 | **Re-exported dependencies** | `ecs::hecs` / `ecs::World` / `ecs::Entity` (hecs 0.11), `math::Vec2` / `math::Mat4` (glam 0.33), and the `serde` 1 bounds of `register_scene_component` are part of the API. With the optional `egui` feature, so are `purplepie::egui` and `Game::egui` (egui 0.36, ADR-044). Moving them to an incompatible version needs a minor release. |
 | **Scene files** | Files of format version 1 keep loading. A patch release never writes a file that the same 0.x.0 cannot read. |
 | **Assets** | PNG textures, TrueType/OpenType fonts, WAV and OGG Vorbis sounds, and the asset-folder lookup rules (ADR-025). |
-| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `egui` and `debug-overlay` features (ADR-043, ADR-044) need Rust 1.95 because egui does, so the `msrv` job builds without them, and without the scene editor (`crates/purplepie-editor`, a tool that is not released as a crate and declares Rust 1.95). |
+| **Minimum Rust version** | `rust-version` in `Cargo.toml` (1.90 for 0.1 and 0.2). Raising it needs a minor release. CI builds with it (`msrv` job). Exception: the optional `egui` and `debug-overlay` features (ADR-043, ADR-044) need Rust 1.95 because egui does, so the `msrv` job builds without them, and without the scene editor (`crates/purplepie-editor`, a tool that is not released as a crate and declares Rust 1.95). |
+| **Scene editor library** | Since 0.2, `purplepie-editor`'s public items (`GameComponents`, `main_with`, `run`, `run_with`, `Options`, `USAGE`, `asset_folder_of`) follow the same rules as the engine's API, as games call them from their own editor binary. The editor's window, panels, shortcuts and messages are not covered. |
 | **Platforms** | Windows, Linux (X11; Wayland untested) and macOS are built and tested in CI on every push. Rendering is verified by hand: on Linux by Cowork (software GPU), on Windows by the owner's checklist (`docs/CHECKLIST.md`). macOS rendering is not yet verified. |
 
 Not covered by the promise:

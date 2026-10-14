@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-039: Release 0.2.0: the P4 overlay and the P5 editor in a tagged version, so games (and GUIDE §15) depend on a tag instead of `main`; needs the owner's CHECKLIST run (step 9 on Windows) and green CI first** · P1 · TODO ← **next task**
+- [ ] **PP-040: P6 plan: first confirm the `v0.2.0` tag (identical to the PP-039 tree; an outside crate following GUIDE §1 and §15 builds against it); then specify the bigger example game built with the editor (like GAME2.md), list the engine/editor gaps it needs, split P6 into tasks** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-039: Release 0.2.0: version 0.2.0 (engine and editor crate), CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines in README, GUIDE §1/§15 and RELEASING moved to `tag = "v0.2.0"`, RELEASING covers the editor's library; owner's checklist (incl. step 9 on Windows) and CI green (owner-reported); owner tags `v0.2.0` after pushing** · DONE (2026-10-14; verified on Linux; tag by the owner)
 - [x] **PP-038j2: A game's own editor, part 2: GUIDE §15 "The scene editor" (controls, a game's own editor binary; its files are the compiled `guide_editor` example of the editor crate, kept identical to the guide by a test; checked as an outside crate against GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed; phase P5 complete** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038j1: A game's own editor, part 1: `purplepie_editor::GameComponents` (`with::<T>(name)`), `run_with`, `main_with` (the whole editor program for a game's `main`); kept game component values checked against the game's types when the scene opens (red in the inspector, listed in the status line) and when edited (refused if they do not fit); values stay RON text, so copying, undo and saving are unchanged; engine: `scene::check_component::<T>(ron)`; example `scene_demo_editor` (phase P5, item 12; PP-038j split into j1 and j2)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038i2: Editor placing, part 2: "Add" row: a quad, a sprite (image chosen from the asset folder) or a text (font chosen from the asset folder) at the centre of the view, selected, each one undoable step; a missing scene file opens as a new scene with a plain message (no separate "New" command) (phase P5, item 11)** · DONE (2026-10-14; verified on Linux)
@@ -93,9 +94,8 @@ _None._
 
 ## Future
 
-P5 Scene editor (ADR-044) is complete (2026-10-14). P6 Proof (ROADMAP: a bigger example game made with the editor) is defined after the 0.2.0 release (PP-039):
+P5 Scene editor (ADR-044) is complete (2026-10-14) and released in 0.2.0 (PP-039). P6 Proof (ROADMAP: a bigger example game made with the editor) is defined by PP-040.
 
-- [ ] **PP-040: P6 plan: specify the bigger example game built with the editor (like GAME2.md), list the engine/editor gaps it needs, split P6 into tasks** · P2 · TODO
 
 
 ---
@@ -482,14 +482,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-039: Release 0.2.0 ← NEXT
+### PP-040: P6 plan ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Between P5 and P6 · Priority P1 · TODO |
+| Stage | Phase P6, item 1 · Priority P1 · TODO |
+| Dependencies | PP-039 (DONE); the owner has pushed PP-039 and the tag `v0.2.0` |
+| Why now | P5 is complete and released; ROADMAP P6 ("Proof: a bigger example game made with the editor") is next and has no plan yet. |
+| Scope | First, the release check left from PP-039: clone the tag `v0.2.0`, confirm it equals the PP-039 tree, and build an outside crate that follows GUIDE §1 and §15 with `tag = "v0.2.0"` (as PP-036a did for 0.1.0). Then specify the P6 game in a `docs/GAME3.md` (genre, levels built in the editor, what the levels contain, done criteria), list the engine and editor gaps it needs (each with a reason), decide where it lives (ADR-042: `games/`), and split P6 into tasks in TASKS and ROADMAP. Documentation only, besides the tag check. |
+| Acceptance criteria | Tag check recorded (identical tree, outside crate builds); GAME3.md and the P6 task list exist; no code change. |
+
+### PP-039: Release 0.2.0
+| Field | Value |
+|---|---|
+| Stage | Between P5 and P6 · Priority P1 · **DONE** (2026-10-14; verified on Linux; the owner tags `v0.2.0`) |
 | Dependencies | PP-038j2 (DONE); RELEASING §3 preconditions: green CI (incl. `msrv`, latest-deps) and the owner's CHECKLIST run, including step 9 (overlay, `egui_panel`, editor, example editor) on Windows, with no unexplained failure |
 | Why now | P4 and P5 added the debug overlay, the egui hook, picking, lenient scene loading, `Rng`/`Rect`, Purple Swarm and the scene editor, all only on `main`; GUIDE §15 has to tell games to depend on `main`. A tag gives P6 and outside games a fixed version, as 0.1.0 did for Purple Swarm. |
 | Scope | RELEASING §3: `version = "0.2.0"` (engine; decide whether the editor crate follows), `Cargo.lock` refresh; CHANGELOG `[0.2.0] - date` from `[Unreleased]` (check it lists every public change since 0.1.0, incl. breaking ones such as `InvalidRon`'s text); README, GUIDE §1 and §15 dependency lines to `tag = "v0.2.0"`; RELEASING's compatibility table reviewed for the editor and the `egui` feature; full validation plus an outside crate by the new tag after the owner tags (as in PP-035b, possibly split into a/b). |
-| Acceptance criteria | Owner's checklist report recorded; tag `v0.2.0` on GitHub; an outside crate following GUIDE §1 and §15 builds against the tag. |
+| Acceptance criteria | ✅ Preconditions (owner-reported, 2026-10-14): every checklist step green, including step 9 on Windows (overlay, `egui_panel`, editor, example editor), all tests and all CI jobs green. ✅ `version = "0.2.0"` for the engine and the editor crate (the editor's library is now covered by RELEASING §2; Purple Swarm keeps its own version); `Cargo.lock` changed in those two version lines only. ✅ Public API since 0.1.0 compared with the `v0.1.0` tag (every new `pub` item is in the CHANGELOG); the one change that can stop a game from building, `ron` held at exactly 0.12.1, is listed under Changed and is why this is 0.2.0, not 0.1.1. ✅ CHANGELOG `[0.2.0] - 2026-10-14` with dependency lines, Rust versions and known limitations; compare links. ✅ README status and dependency line, GUIDE §1 and §15, RELEASING §1 on `tag = "v0.2.0"`; DEVELOPMENT §3 records the owner rule that owner-run checks are assumed green unless reported. ✅ Validation: the DEVELOPMENT §8 set; the sandbox prints `PurplePie sandbox v0.2.0`; an outside crate following GUIDE §15 by path builds against 0.2.0 with 0 warnings (one `purplepie` 0.2.0 in its lock file); its game saved a level with a `my_game::Door`, and its editor opened it with "1 game component value(s) checked against the game's types". ⏳ Tag: the owner tags `v0.2.0` after pushing (RELEASING §3.6); PP-040 checks it. |
 
 ### PP-038j2: A game's own editor, part 2
 | Field | Value |

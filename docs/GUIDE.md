@@ -34,7 +34,7 @@ cargo new my_game
 ```toml
 # my_game/Cargo.toml
 [dependencies]
-purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.1.0" }
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }
 # or, with a PurplePie checkout next to the game: purplepie = { path = "../PurplePie" }
 serde = { version = "1", features = ["derive"] }   # only for your own components in scene files (section 11)
 ```
@@ -702,10 +702,10 @@ To have values checked against your types, give your game its own editor: a seco
 components live in a module both binaries use.
 
 ```toml
-# my_game/Cargo.toml: the editor is not in a release yet, so take both from `main` (or both by path)
+# my_game/Cargo.toml: take both from the same tag (or both by path), so there is one engine
 [dependencies]
-purplepie = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }
-purplepie-editor = { git = "https://github.com/DavidVilela1/purplepie", branch = "main" }
+purplepie = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }
+purplepie-editor = { git = "https://github.com/DavidVilela1/purplepie", tag = "v0.2.0" }
 serde = { version = "1", features = ["derive"] }
 ```
 
