@@ -257,7 +257,11 @@ goes away); Ctrl+Shift+Z brings the move back; Ctrl+Z again. Under the list, cli
 and press Enter: the square turns; tick Hidden: it disappears (its outline stays); Ctrl+Z twice brings both back.
 Click the "#8 sprite … +1 game component" row: its `scene_demo::Spin` row is a text field. Change `0.8` to `2` and
 press Enter ("changed scene_demo::Spin of #8"); then type `(speed:` and press Enter: a red "not valid RON" message,
-and the field shows the previous value again. Ctrl+Z puts `0.8` back. Ctrl+S prints "saved …". Close the window, then
+and the field shows the previous value again. Ctrl+Z puts `0.8` back. Press Ctrl+D: a copy of #8 appears a little to the
+right and below, selected, at the end of the list (20 entities); press Delete: it is gone. Click the green square
+and press Delete: it disappears. Ctrl+Z three times: the square comes back, then the copy, then the copy goes again
+(19 entities).
+Ctrl+S prints "saved …". Close the window, then
 `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
 
 ## macOS or Linux

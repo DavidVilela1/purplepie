@@ -14,7 +14,8 @@
 //! Ctrl+Shift+Z or Ctrl+Y), and save (Ctrl+S). The inspector edits position,
 //! rotation, scale, layer and hidden (PP-038h1), quads, sprites and texts, and
 //! the game's components as RON text checked when the field is left (PP-038h2),
-//! each field change one undoable step.
+//! each field change one undoable step. Delete removes the selection and Ctrl+D
+//! duplicates it (PP-038i1); undoing a delete brings the same entity back.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
@@ -31,6 +32,7 @@ mod editor;
 mod history;
 mod options;
 mod select;
+mod snapshot;
 mod summary;
 mod view;
 

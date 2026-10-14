@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-038i: Editor placing: add quads, sprites (texture chosen from the asset folder) and texts, duplicate, delete (undo restores the same `Entity` with `World::spawn_at`), new empty scene; split at its start if it does not fit one session** · P1 · TODO ← **next task**
+- [ ] **PP-038i2: Editor placing, part 2: add a quad, a sprite (texture chosen from the asset folder's images) or a text at the view's centre, each one undoable step; new empty scene** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-038i1: Editor placing, part 1: delete and duplicate the selection (Delete / Ctrl+D, buttons), each one undoable step; undoing a delete brings back the same `Entity` (`World::spawn_at`) with all its components (editor `Snapshot`); entities with components the editor does not know are refused (phase P5, item 10; PP-038i split into i1 and i2)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038h2: Editor inspector editing, part 2: quad size and colour, sprite size, tint and region, text content, size, colour and anchor, kept game components as RON text checked when the field is left (engine: `UnknownComponents::set`, `scene::InvalidRon`); one undo step per field (phase P5, item 9)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038h1: Editor inspector editing, part 1: position, rotation, scale, layer and hidden editable; edits generalized to before/after component values; one undo step per field change (phase P5, item 8)** · DONE (2026-10-14; verified on Linux)
 - [x] **PP-038g: Editor first slice part 2: select (click, cycling, list), outline, read-only inspector, move (drag, arrow keys), undo/redo, unsaved-changes marker; first vertical slice complete (phase P5, item 7)** · DONE (2026-10-14; verified on Linux)
@@ -91,7 +92,7 @@ _None._
 
 P5 Scene editor, defined by PP-038a (ADR-044), in order; PP-038f and PP-038g are the first vertical slice (complete 2026-10-14); PP-038h was split into h1 and h2 before it started:
 
-- [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
+- [ ] **PP-038j: A game's own editor: the library entry point registers the game's components (checked while editing; deleting and duplicating must then copy registered components too, e.g. through their scene RON); GUIDE section; CHECKLIST step for Windows; phase P5 complete** · P2 · TODO
 
 ---
 
@@ -477,14 +478,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-038i: Editor placing ← NEXT
+### PP-038i2: Editor placing, part 2 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P5, item 10 · Priority P1 · TODO |
+| Stage | Phase P5, item 11 · Priority P1 · TODO |
+| Dependencies | PP-038i1 (DONE); ADR-044 |
+| Why now | Deleting and duplicating work; a level built from scratch also needs new quads, sprites and texts, and a new file to start from. |
+| Scope | Editor: "Add" buttons for a quad, a sprite and a text placed at the view's centre (world space) and selected; the sprite's texture chosen from the images under the asset folder (a list; textures loaded with `Context::load_texture`), the text in the asset folder's first font (or a chosen one); each addition one undoable step (`Edit::Exists { added: true }`). New empty scene: opening a path that does not exist already starts one (PP-038f); add a "New" action only if it is needed for the flow (decide; e.g. clear the world after confirming unsaved changes). Tests: an added entity saves with its asset paths relative to the asset root; undo removes it. Xvfb: add one of each, save, diff, undo all, identical file. |
+| Acceptance criteria | Added quads, sprites and texts save as expected; every addition undoes in one step and restores an identical file. |
+
+### PP-038i1: Editor placing, part 1: delete and duplicate
+| Field | Value |
+|---|---|
+| Stage | Phase P5, item 10 · Priority P1 · **DONE** (2026-10-14; verified on Linux) |
 | Dependencies | PP-038h2 (DONE); ADR-044 |
-| Why now | The editor changes existing entities; building a level also needs adding, duplicating and removing them. |
-| Scope | Editor: add a quad, a sprite (texture chosen from the asset folder's images) and a text at the view's centre; duplicate and delete the selection (Delete key, buttons); each one undoable step: deleting keeps every component (engine, kept game components) so undo brings back the same `Entity` (`World::spawn_at`); a new empty scene. Decide first how an entity's components are copied without knowing game types (engine components by type, `UnknownComponents` as text; registered game components arrive with PP-038j). Split into PP-038i1 (delete and duplicate) and PP-038i2 (adding, new scene) at the start if it does not fit one session. |
-| Acceptance criteria | Added, duplicated and deleted entities save as expected and every action undoes in one step, restoring identical files; Xvfb run with diffs. |
+| Acceptance criteria | ✅ PP-038i split: i1 (delete, duplicate) and i2 (adding, new scene). ✅ `snapshot::Snapshot` copies an entity's saveable components (transform, quad, sprite, text, layer, hidden, screen space, animation, velocity, button, kept game components); an entity with any other component is refused with a message (counted with hecs `EntityRef::len`), never copied in part. ✅ `Edit::Exists { entity, snapshot, added }`: undoing a delete brings back the same `Entity` with `World::spawn_at` (refused if a live entity has its id), so earlier edits and the save order (by id) still match; undoing a duplicate removes it. ✅ Duplicate (Ctrl+D, button) places the copy 16 units right and down and selects it; Delete (key, button) clears the selection. ✅ Xvfb: duplicate `#7`, delete a sprite and a screen-space text → saved file lacks exactly those two entities and ends with the copy; three undos → identical file; three redos → identical to the first save; three undos → identical again. Deleting `#10` (only a kept game component) and undoing → identical file. ✅ 19 unit tests in the crate (snapshot, delete/add undo). No engine change. |
 
 ### PP-038h2: Editor inspector editing, part 2
 | Field | Value |

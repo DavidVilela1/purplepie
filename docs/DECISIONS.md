@@ -46,7 +46,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-031 | UI interaction: `ui` module with a data-only `Button` component in screen space, a `Pointer` snapshot and the game-called `update_buttons` system; topmost button wins | Accepted | Yes (PP-023) |
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
-| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`); PP-038i–PP-038j to do |
+| ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | In part: PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`); PP-038i2–PP-038j to do |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2827,6 +2827,33 @@ small and enough for the core interactions.
   identical to the original. A second run set `#12`'s horizontal anchor to Left (saved as the default, so the
   `anchor` line disappeared) and one undo restored the identical file. Selecting entities changes nothing (no
   spurious edits from the colour round trip). 16 unit tests in the crate, 1 new engine test.
+
+## Implementation notes (PP-038i1)
+- **Split:** PP-038i was split into PP-038i1 (delete and duplicate) and PP-038i2 (adding quads, sprites and texts;
+  new scene), because copying entities needed a decision of its own.
+- **Copying an entity without knowing game types:** the editor registers no game components, so an entity it opened
+  holds only what a scene file can hold: the engine's saved components and the game's kept as text. The editor's
+  `snapshot::Snapshot` copies exactly those by type (`Text` and `UnknownComponents` cloned). `Snapshot::of` counts
+  the entity's components (hecs `EntityRef::len`) and refuses an entity with any other component ("not deleted: it
+  has 1 component(s) the editor does not know") instead of losing part of it. **Alternatives:** an engine API that
+  copies an entity through its scene data (registry included) — more general, but nothing needs registered
+  components yet; PP-038j, which registers a game's components, must copy them too and will decide between that
+  and a per-type copy. hecs `World::take` returns a bundle that borrows the world, so it cannot be kept in the
+  history.
+- **Undo keeps the entity's identity:** `Edit::Exists { entity, snapshot, added }`. Undoing a delete calls
+  `World::spawn_at` with the old handle, so edits recorded before the delete still apply to it and the file order
+  (entities are saved by id) is unchanged. `spawn_at` replaces any live entity with the same id, so it is refused
+  (`apply` returns `false`) if one exists; with a strictly last-in-first-out history and no game logic running,
+  the id is always free at that point. A duplicate is an ordinary new entity; undo despawns it, redo brings it back
+  at the same handle.
+- **Commands:** Delete (key and button) and Duplicate (Ctrl+D and button; the copy is placed 16 units right and
+  down and selected); both commit any inspector edit first and are one undo step each. Undo/redo selects the
+  entity they touched, or nothing when it was removed.
+- **Verified under Xvfb** on a copy of `demo.ron`: duplicating `#7` gave `#19` at (16, 24); deleting `#5` (key) and
+  the screen-space text `#13` (button) and saving removed exactly those two entities and appended the copy; three
+  undos and a save gave a file identical to the original, three redos one identical to the first save, three
+  undos again the original. Deleting `#10`, which holds only a kept game component, and undoing also gave the
+  original. 19 unit tests in the crate.
 
 ## Revisit Conditions
 - The editor needs several viewports or a preview of the running game: render to a texture shown inside egui.

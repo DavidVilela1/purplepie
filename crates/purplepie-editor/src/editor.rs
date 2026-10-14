@@ -18,6 +18,7 @@ use purplepie::{Context, Game};
 
 use crate::history::{Edit, History};
 use crate::select;
+use crate::snapshot::{DUPLICATE_OFFSET, NotCopied, Snapshot};
 use crate::summary::{details, entity_ids, summary};
 use crate::view;
 
@@ -203,7 +204,9 @@ impl Editor {
         let word = if undo { "undid" } else { "redid" };
         let entity = edit.entity();
         if edit.apply(ctx.world_mut(), !undo) {
-            self.select(ctx, Some(entity), true);
+            // Select what changed, or nothing if it was just removed.
+            let alive = ctx.world().contains(entity);
+            self.select(ctx, alive.then_some(entity), true);
             self.report(format!("{word} {}", edit.describe()), false);
         } else {
             self.report(format!("{word}: #{} no longer exists", entity.id()), true);
@@ -282,6 +285,74 @@ impl Editor {
         self.commit_kept_draft(ctx);
     }
 
+    /// The selection's components, or a message saying why they cannot be
+    /// copied (so it is neither deleted nor duplicated).
+    fn copy_selection(&mut self, ctx: &mut Context<'_>, verb: &str) -> Option<(Entity, Snapshot)> {
+        let entity = self.selected?;
+        self.finish_edits(ctx);
+        match Snapshot::of(ctx.world(), entity) {
+            Ok(snapshot) => Some((entity, snapshot)),
+            Err(NotCopied::Gone) => {
+                self.report(format!("#{} no longer exists", entity.id()), true);
+                None
+            }
+            Err(NotCopied::Unknown(n)) => {
+                let text = format!(
+                    "#{} not {verb}: it has {n} component(s) the editor does not know",
+                    entity.id()
+                );
+                self.report(text, true);
+                None
+            }
+        }
+    }
+
+    /// Deletes the selection: one undoable step that keeps everything it had.
+    fn delete_selection(&mut self, ctx: &mut Context<'_>) {
+        let Some((entity, snapshot)) = self.copy_selection(ctx, "deleted") else {
+            return;
+        };
+        if ctx.world_mut().despawn(entity).is_err() {
+            return;
+        }
+        self.history.record(
+            Edit::Exists {
+                entity,
+                snapshot: Box::new(snapshot),
+                added: false,
+            },
+            false,
+        );
+        self.last_nudge = None;
+        self.select(ctx, None, false);
+        self.report(
+            format!("deleted #{} (Ctrl+Z brings it back)", entity.id()),
+            false,
+        );
+    }
+
+    /// Adds a copy of the selection, a little to the right and down, and
+    /// selects it: one undoable step.
+    fn duplicate_selection(&mut self, ctx: &mut Context<'_>) {
+        let Some((original, snapshot)) = self.copy_selection(ctx, "duplicated") else {
+            return;
+        };
+        let copy = snapshot.moved_by(DUPLICATE_OFFSET);
+        let entity = copy.spawn(ctx.world_mut());
+        self.history.record(
+            Edit::Exists {
+                entity,
+                snapshot: Box::new(copy),
+                added: true,
+            },
+            false,
+        );
+        self.last_nudge = None;
+        self.select(ctx, Some(entity), true);
+        let text = format!("duplicated #{} as #{}", original.id(), entity.id());
+        self.report(text, false);
+    }
+
     /// Whether the scene differs from the file (including an edit in progress).
     fn is_dirty(&self, ctx: &Context<'_>) -> bool {
         self.history.is_dirty()
@@ -307,7 +378,8 @@ impl Editor {
         }
     }
 
-    /// Keyboard shortcuts: save, fit, undo, redo, deselect, arrow steps.
+    /// Keyboard shortcuts: save, fit, undo, redo, duplicate, delete, deselect,
+    /// arrow steps.
     fn shortcuts(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
         use egui::{Key, Modifiers};
         if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::S)) {
@@ -325,6 +397,12 @@ impl Editor {
         }
         if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Z)) {
             self.step_history(ctx, true);
+        }
+        if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::D)) {
+            self.duplicate_selection(ctx);
+        }
+        if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete)) {
+            self.delete_selection(ctx);
         }
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F)) {
             self.fit_pending = true;
@@ -400,6 +478,23 @@ impl Editor {
                         .clicked()
                     {
                         self.step_history(ctx, false);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    let some = self.selected.is_some();
+                    if ui
+                        .add_enabled(some, egui::Button::new("Duplicate"))
+                        .on_hover_text("Ctrl+D")
+                        .clicked()
+                    {
+                        self.duplicate_selection(ctx);
+                    }
+                    if ui
+                        .add_enabled(some, egui::Button::new("Delete"))
+                        .on_hover_text("Delete")
+                        .clicked()
+                    {
+                        self.delete_selection(ctx);
                     }
                 });
                 ui.separator();

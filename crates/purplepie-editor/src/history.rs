@@ -8,6 +8,8 @@ use purplepie::math::{Transform2D, Vec2};
 use purplepie::render::{Hidden, Layer, Quad, Sprite, Text};
 use purplepie::scene::UnknownComponents;
 
+use crate::snapshot::Snapshot;
+
 /// One reversible change to the scene: one component of one entity.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Edit {
@@ -54,6 +56,14 @@ pub(crate) enum Edit {
         before: String,
         after: String,
     },
+    /// The entity itself, with everything it has: added by this edit (a
+    /// duplicate), or removed (deleted). Undoing a deletion brings back the
+    /// same `Entity`, so the edits before it still apply to it.
+    Exists {
+        entity: Entity,
+        snapshot: Box<Snapshot>,
+        added: bool,
+    },
 }
 
 /// Replaces `entity`'s `T`; `false` if it has none.
@@ -97,7 +107,8 @@ impl Edit {
             | Edit::Quad { entity, .. }
             | Edit::Sprite { entity, .. }
             | Edit::Text { entity, .. }
-            | Edit::Kept { entity, .. } => entity,
+            | Edit::Kept { entity, .. }
+            | Edit::Exists { entity, .. } => entity,
         }
     }
 
@@ -129,6 +140,7 @@ impl Edit {
             Edit::Sprite { before, after, .. } => *after = *before,
             Edit::Text { before, after, .. } => after.clone_from(before),
             Edit::Kept { before, after, .. } => after.clone_from(before),
+            Edit::Exists { .. } => {}
         }
     }
 
@@ -142,6 +154,7 @@ impl Edit {
             Edit::Sprite { before, after, .. } => before == after,
             Edit::Text { before, after, .. } => before == after,
             Edit::Kept { before, after, .. } => before == after,
+            Edit::Exists { .. } => false,
         }
     }
 
@@ -200,12 +213,25 @@ impl Edit {
                     after,
                 }
             }
+            Edit::Exists { .. } => self,
         }
     }
 
     /// Puts the world in the state after this edit (`forward`) or before it.
     /// `false` if the entity is gone (or does not have the component).
     pub(crate) fn apply(&self, world: &mut World, forward: bool) -> bool {
+        if let Edit::Exists {
+            entity,
+            snapshot,
+            added,
+        } = self
+        {
+            return if forward == *added {
+                !world.contains(*entity) && snapshot.spawn_at(world, *entity)
+            } else {
+                world.despawn(*entity).is_ok()
+            };
+        }
         if !world.contains(self.entity()) {
             return false;
         }
@@ -262,6 +288,7 @@ impl Edit {
                 Ok(mut kept) => kept.set(name, if forward { after } else { before }).is_ok(),
                 Err(_) => false,
             },
+            Edit::Exists { .. } => false, // handled above
         }
     }
 
@@ -318,6 +345,10 @@ impl Edit {
             Edit::Sprite { entity, .. } => format!("the sprite of #{}", entity.id()),
             Edit::Text { entity, .. } => format!("the text of #{}", entity.id()),
             Edit::Kept { entity, name, .. } => format!("{name} of #{}", entity.id()),
+            Edit::Exists { entity, added, .. } => {
+                let what = if *added { "adding" } else { "deleting" };
+                format!("{what} #{}", entity.id())
+            }
         }
     }
 }
@@ -655,5 +686,51 @@ mod tests {
             after: "1".to_owned(),
         };
         assert!(!kept_on_bare.apply(&mut world, true));
+    }
+
+    #[test]
+    fn deleting_and_adding_are_undone_with_the_same_entity() {
+        let mut world = World::new();
+        let a = world.spawn((at(1.0),));
+        let snapshot = Box::new(Snapshot::of(&world, a).expect("copyable"));
+        let mut history = History::new();
+
+        // Move, then delete; undo both: the same entity is back where it was.
+        let moved_a = moved(a, 1.0, 2.0);
+        assert!(moved_a.apply(&mut world, true));
+        history.record(moved_a.clone(), false);
+        let snapshot_now = Box::new(Snapshot::of(&world, a).expect("copyable"));
+        world.despawn(a).expect("alive");
+        let delete = Edit::Exists {
+            entity: a,
+            snapshot: snapshot_now,
+            added: false,
+        };
+        history.record(delete.clone(), true);
+        assert!(!delete.changes_nothing());
+        assert_eq!(delete.describe(), format!("deleting #{}", a.id()));
+        let undone = history.undo().expect("delete");
+        assert!(undone.apply(&mut world, false));
+        assert_eq!(x(&world, a), 2.0, "back with its components");
+        assert!(!undone.apply(&mut world, false), "already there");
+        assert!(history.undo().expect("move").apply(&mut world, false));
+        assert_eq!(x(&world, a), 1.0, "earlier edits still reach it");
+        let redo = history.redo().expect("move");
+        assert!(redo.apply(&mut world, true));
+        assert!(history.redo().expect("delete").apply(&mut world, true));
+        assert!(!world.contains(a));
+
+        // An added entity is removed by undo and comes back by redo.
+        let b = snapshot.spawn(&mut world);
+        let add = Edit::Exists {
+            entity: b,
+            snapshot,
+            added: true,
+        };
+        assert!(add.apply(&mut world, false));
+        assert!(!world.contains(b));
+        assert!(add.apply(&mut world, true));
+        assert_eq!(x(&world, b), 1.0);
+        assert_eq!(add.describe(), format!("adding #{}", b.id()));
     }
 }

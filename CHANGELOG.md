@@ -45,7 +45,7 @@ break compatibility and a patch version (0.x.**y**) may not.
   but could not be opened is never overwritten. Selecting (click in the view, again for the entity below, or in the
   list; outlined), an inspector that edits position, rotation, scale, layer, hidden, quads (size, colour), sprites
   (size, tint, region), texts (content, size, colour, anchor) and the game's components as RON text checked when the
-  field is left (velocity, animation and buttons read-only), moving
+  field is left (velocity, animation and buttons read-only), deleting (Delete) and duplicating (Ctrl+D), moving
   (left drag, arrow keys, Shift for 10 units), undo/redo of every change (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) and an
   unsaved-changes marker. A `Game` on the public API with the `egui`
   feature; Rust 1.95.
