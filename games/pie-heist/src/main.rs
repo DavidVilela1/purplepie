@@ -6,7 +6,8 @@
 //! along them, and the camera follows inside the level (PP-042a). Pies are
 //! collected by touching them; once every pie of the level is collected the
 //! exit opens, and touching it loads the next level, or wins the game on the
-//! last one (PP-042b1). Keys, doors and guards come next.
+//! last one (PP-042b1). A key opens every door of its colour; doors block
+//! like walls until then (PP-042b2). Guards come next.
 //!
 //! Run it from this folder, so its own `assets/` is found:
 //!
@@ -30,8 +31,8 @@ use purplepie::render::{
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 use pie_heist::{
-    Exit, Pie, PlayerStart, Wall, camera_target, drawn_rect, level_bounds, level_title,
-    move_and_slide, next_level, touched, wall_rect,
+    Door, Exit, Key, KeyColor, Pie, PlayerStart, Wall, blocking, camera_target, drawn_rect,
+    level_bounds, level_title, move_and_slide, next_level, touched, wall_rect,
 };
 
 const WINDOW: (u32, u32) = (960, 640);
@@ -55,6 +56,8 @@ enum Hud {
 struct Sounds {
     pie: SoundId,
     exit: SoundId,
+    key: SoundId,
+    door: SoundId,
 }
 
 /// The exit of the level being played.
@@ -69,6 +72,12 @@ struct PieHeist {
     player: Option<Entity>,
     /// The walls' areas, collected when the level loads (walls do not move).
     walls: Vec<Rect>,
+    /// The level's doors: their colour, area and entity.
+    doors: Vec<(KeyColor, Rect, Entity)>,
+    /// The keys picked up in this level.
+    keys: Vec<KeyColor>,
+    /// What blocks the player now: the walls and the doors still closed.
+    solid: Vec<Rect>,
     bounds: Option<Rect>,
     pies_total: usize,
     pies_left: usize,
@@ -104,6 +113,25 @@ impl PieHeist {
             );
         }
         self.bounds = level_bounds(&self.walls);
+
+        // Doors are quads that block until a key of their colour is held; keys
+        // and doors are drawn in their colour, whatever the file says.
+        self.doors.clear();
+        self.keys.clear();
+        for (e, t, q, door) in world.query_mut::<(Entity, &Transform2D, &mut Quad, &Door)>() {
+            q.color = door.color.color();
+            match wall_rect(t, q) {
+                Some(rect) => self.doors.push((door.color, rect, e)),
+                None => eprintln!(
+                    "pie-heist: warning: a rotated door in {} is ignored",
+                    self.level
+                ),
+            }
+        }
+        for (sprite, key) in world.query_mut::<(&mut Sprite, &Key)>() {
+            sprite.tint = key.color.color();
+        }
+        self.update_solid();
 
         let mut starts: Vec<(Entity, Vec2)> = world
             .query_mut::<(Entity, &Transform2D, &PlayerStart)>()
@@ -168,10 +196,11 @@ impl PieHeist {
         self.update_exit(ctx);
         self.update_hud(ctx);
         println!(
-            "pie-heist: {}: {} entities, {} walls, {} pies; player at ({:.1}, {:.1})",
+            "pie-heist: {}: {} entities, {} walls, {} doors, {} pies; player at ({:.1}, {:.1})",
             self.level,
             entities.len(),
             self.walls.len(),
+            self.doors.len(),
             self.pies_total,
             start.x,
             start.y
@@ -219,8 +248,14 @@ impl PieHeist {
             Some(exit) if exit.open => "   Exit open!",
             _ => "",
         };
+        let keys = if self.keys.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<String> = self.keys.iter().map(|k| format!("{k:?}")).collect();
+            format!("   Keys: {}", names.join(", "))
+        };
         let status = format!(
-            "{}   Pies {}/{}{exit}",
+            "{}   Pies {}/{}{keys}{exit}",
             level_title(&self.level),
             self.pies_total - self.pies_left,
             self.pies_total
@@ -274,8 +309,56 @@ impl PieHeist {
         }
     }
 
+    /// The walls and the doors no key opens yet.
+    fn update_solid(&mut self) {
+        let doors: Vec<(KeyColor, Rect)> = self.doors.iter().map(|(c, r, _)| (*c, *r)).collect();
+        self.solid = blocking(&self.walls, &doors, &self.keys);
+    }
+
+    /// Picks up the keys the player touches; every door of their colour opens
+    /// (it disappears and stops blocking).
+    fn pick_up_keys(&mut self, ctx: &mut Context<'_>, player: Rect) {
+        let keys: Vec<(Entity, KeyColor)> = ctx
+            .world_mut()
+            .query_mut::<(Entity, &Key)>()
+            .into_iter()
+            .map(|(e, k)| (e, k.color))
+            .collect();
+        let areas: Vec<(Entity, KeyColor, Rect)> = keys
+            .into_iter()
+            .filter_map(|(e, c)| Self::area(ctx, e).map(|r| (e, c, r)))
+            .collect();
+        let rects: Vec<Rect> = areas.iter().map(|(_, _, r)| *r).collect();
+        for i in touched(player, &rects) {
+            let (entity, color, _) = areas[i];
+            let _ = ctx.world_mut().despawn(entity);
+            if !self.keys.contains(&color) {
+                self.keys.push(color);
+            }
+            self.play(ctx, |s| s.key);
+            let opened: Vec<Entity> = self
+                .doors
+                .iter()
+                .filter(|(c, _, _)| *c == color)
+                .map(|(_, _, e)| *e)
+                .collect();
+            for door in &opened {
+                let _ = ctx.world_mut().insert_one(*door, Hidden);
+            }
+            if !opened.is_empty() {
+                self.play(ctx, |s| s.door);
+            }
+            println!(
+                "pie-heist: {color:?} key picked up; {} door(s) open",
+                opened.len()
+            );
+        }
+        self.update_solid();
+    }
+
     /// Collects the pies the player touches, then goes through an open exit.
     fn pick_up(&mut self, ctx: &mut Context<'_>, player: Rect) {
+        self.pick_up_keys(ctx, player);
         let pies: Vec<Entity> = ctx
             .world_mut()
             .query_mut::<(Entity, &Pie)>()
@@ -329,6 +412,8 @@ impl Game for PieHeist {
         self.sounds = Some(Sounds {
             pie: ctx.load_sound("sounds/pie.wav")?,
             exit: ctx.load_sound("sounds/exit.wav")?,
+            key: ctx.load_sound("sounds/key.wav")?,
+            door: ctx.load_sound("sounds/door.wav")?,
         });
         self.load_level(ctx)
     }
@@ -351,7 +436,7 @@ impl Game for PieHeist {
         };
         let mut at = None;
         if let Ok(mut t) = ctx.world_mut().get::<&mut Transform2D>(player) {
-            t.position = move_and_slide(t.position, Vec2::splat(PLAYER_SIZE), delta, &self.walls);
+            t.position = move_and_slide(t.position, Vec2::splat(PLAYER_SIZE), delta, &self.solid);
             at = Some(t.position);
         }
         if let Some(at) = at {
@@ -393,6 +478,9 @@ fn main() -> purplepie::Result<()> {
         level,
         player: None,
         walls: Vec::new(),
+        doors: Vec::new(),
+        keys: Vec::new(),
+        solid: Vec::new(),
         bounds: None,
         pies_total: 0,
         pies_left: 0,

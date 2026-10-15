@@ -86,5 +86,29 @@
                 "pie_heist::Exit": (next: ""),
             },
         ),
+        (
+            transform: (
+                position: (120.0, 0.0),
+            ),
+            quad: (
+                size: (20.0, 380.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Door": (color: Gold),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, -120.0),
+            ),
+            sprite: (
+                texture: "textures/key.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Key": (color: Gold),
+            },
+        ),
     ],
 )

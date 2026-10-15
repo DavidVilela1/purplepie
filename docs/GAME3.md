@@ -109,7 +109,7 @@ than the window.
 3. **PP-042b:** split in two:
    - **PP-042b1 (done):** pies, the exit and level progression, the HUD and two sounds; level 1 completed and level 2
      made in the editor; both played through by a script;
-   - **PP-042b2:** keys and doors.
+   - **PP-042b2 (done):** keys and doors; level 2 got a gold door before the exit and a gold key, in the editor.
 4. **PP-042c:** guards and being caught (level restart); title, pause, level-complete and win screens.
 5. **PP-042d:** levels 2–5 built in the editor; the level-check decision and its test; a balance pass.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and

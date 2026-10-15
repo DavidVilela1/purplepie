@@ -27,8 +27,8 @@ guide section with the checklist step (PP-038j2). It was released in **0.2.0** (
 PP-040). **Phase P6 (proof): in progress** since PP-040 (2026-10-15), which planned Pie Heist ([GAME3.md](GAME3.md)), a
 top-down heist whose five levels are drawn in the editor. PP-041 let the editor add and remove game components, and
 PP-042a started the game (`games/pie-heist`, its editor `games/pie-heist-editor`, level 1 drawn in it, movement and
-walls); PP-042b1 added pies, exits and level progression with two levels made in the editor. Next: PP-042b2, keys and
-doors.
+walls); PP-042b1 added pies, exits and level progression with two levels made in the editor, and PP-042b2 keys and
+doors. Next: PP-042c, guards and the game's screens.
 
 ## Current Stage
 
@@ -90,7 +90,8 @@ Add…" with the game's defaults, an "x" to remove; engine `scene::component_tex
 with level 1 drawn in that editor; the editor's new quads were invisible on the default background and are now
 light. PP-042b1 made the heist playable end to end: pies are collected, the exit opens when all are, exits lead to
 the next level, and the last one wins; level 1 was completed and level 2 made in the editor, and a script played
-through both. Next: **PP-042b2**, keys and doors.
+through both. PP-042b2 added keys and doors: a key opens every door of its colour, and level 2 now needs one (a gold
+door and key placed in the editor). Next: **PP-042c**, guards and the game's screens.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -172,6 +173,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-042b2: Pie Heist keys and doors (a key opens the doors of its colour); level 2 got a door and a key in the editor; scripted play-through.
 - PP-042b1: Pie Heist pies, exits and progression; HUD and sounds; level 1 completed and level 2 made in the editor; scripted play-through of both levels.
 - PP-042a: Pie Heist skeleton: `games/pie-heist` (components, rules, level loading, movement, wall collision, camera) and `games/pie-heist-editor`; level 1 drawn in the editor; editor fix for invisible new quads.
 - PP-041: editor adds a game component (the game's types given with `GameComponents::with_default`) and removes one, each one undo step; engine `scene::component_text`.
@@ -224,7 +226,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-042b2: Pie Heist keys and doors** (phase P6, item 5): a key opens every door of its colour; doors block like walls until then; a door added to a level in the editor. See [TASKS.md](TASKS.md#pp-042b2-pie-heist-keys-and-doors--next).
+- **PP-042c: Pie Heist guards and screens** (phase P6, item 6): guards walking their paths (touching one restarts the level), and the title, pause, level-complete and win screens; probably split into c1/c2. See [TASKS.md](TASKS.md#pp-042c-pie-heist-guards-and-screens--next).
 
 ## Blocked
 
@@ -263,10 +265,14 @@ executable, else `assets/` in the working directory (ADR-025).
 - Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys reach the game except while an egui text field has the focus; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - `egui` hook (optional feature, PP-038c): an egui pass runs every frame while `with_egui` is on (cost not measured separately; the visible overlay costs about a quarter of the frame rate in debug builds on a software GPU); the game's UI covers the scene drawn under it (no separate viewport); the egui context is recreated when the platform suspends the app, so panel sizes and positions reset then. Seen only on Linux/lavapipe.
 - Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are RON text checked as syntax, and against the game's types only in a game's own editor (PP-038j1), with no typed widgets; game components are added from a game's own editor's defaults (`with_default`) and removed with the "x" (PP-041); velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
-- Pie Heist (PP-042a/b1): movement, walls, pies, exits and two levels; no keys, doors, guards or screens yet (Escape quits); walls must be axis-aligned (rotated ones are ignored with a warning); the sounds are simple generated tones.
+- Pie Heist (PP-042a/b1/b2): movement, walls, pies, exits, keys and doors, two levels; no guards or screens yet (Escape quits); keys and doors are coloured by the game, not by the level file; walls must be axis-aligned (rotated ones are ignored with a warning); the sounds are simple generated tones.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-15: PP-042b2 Pie Heist: keys and doors.**
+  - A key opens every door of its colour; until then the door blocks like a wall. Keys and doors are drawn in their colour (red, blue, gold) and the HUD lists the keys held. Level 2 now has a gold door before the exit and the gold key to open it, both placed in the game's editor.
+  - 6 unit tests in the game's library; a scripted run was stopped by the door, then took the key and won.
 
 - **2026-10-15: PP-042b1 Pie Heist: pies, exits and two levels.**
   - Pies are collected by touching them; the exit stays faded until every pie is collected, then leads to the next level, and the last level's exit wins ("You win! 16 s"). A HUD shows the level and the pies. Level 1 got its pies and exit, and level 2 was made, in the game's editor.
@@ -646,15 +652,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-042b1 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-042b2 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 246 unit tests + 59 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 262 + 60, 13 ignored; editor 24 + 4 doctests; Purple Swarm 10; Pie Heist 5 |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 246 unit tests + 59 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 262 + 60, 13 ignored; editor 24 + 4 doctests; Purple Swarm 10; Pie Heist 6 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Pie Heist keys and doors (PP-042b2) | ✅ GitHub `main` (`0f3b561`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Level 2 edited in `pie-heist-editor` under Xvfb (door + key, `(color: Gold)` typed); scripted run: stopped at the closed door at x = 96, then pie, key ("1 door(s) open"), "you win in 9.6 s"; level 1's route unchanged |
 | Pie Heist pies and exits (PP-042b1) | ✅ GitHub `main` (`ccd14aa`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Levels edited/made in `pie-heist-editor` under Xvfb; scripted play-through of level 1 and level 2 to "you win in 16.5 s" |
 | Pie Heist skeleton (PP-042a) | ✅ GitHub `main` (`c51113a`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`); CI YAML parses. Level 1 drawn in `pie-heist-editor` under Xvfb (six entities saved); the game under Xvfb: stops at the inner wall, reaches (309.7, -226.0) around it |
 | Add/remove game components (PP-041) | ✅ GitHub `main` (`704a417`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with `scene_demo_editor`: Spin added to `#1` and removed from `#8` → saved diff exactly those; two undos → identical file; `#8`'s menu offered only Visits |
@@ -714,4 +721,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-15. PP-042b1 done (Pie Heist pies, exits, two levels made in the editor). PP-042b2 (keys and doors) is next.
+2026-10-15. PP-042b2 done (Pie Heist keys and doors). PP-042c (guards and screens) is next.

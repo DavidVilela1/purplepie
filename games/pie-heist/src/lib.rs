@@ -147,6 +147,34 @@ pub fn move_and_slide(position: Vec2, size: Vec2, delta: Vec2, walls: &[Rect]) -
     at
 }
 
+/// What blocks the player: the walls, and every door whose colour is not
+/// among the keys held.
+pub fn blocking(walls: &[Rect], doors: &[(KeyColor, Rect)], keys: &[KeyColor]) -> Vec<Rect> {
+    walls
+        .iter()
+        .copied()
+        .chain(
+            doors
+                .iter()
+                .filter(|(color, _)| !keys.contains(color))
+                .map(|(_, rect)| *rect),
+        )
+        .collect()
+}
+
+impl KeyColor {
+    /// How keys and doors of this colour are drawn (the game colours them
+    /// when a level loads, whatever the level file says).
+    pub fn color(self) -> purplepie::render::Color {
+        use purplepie::render::Color;
+        match self {
+            KeyColor::Red => Color::hex(0xEF476F),
+            KeyColor::Blue => Color::hex(0x4CC9F0),
+            KeyColor::Gold => Color::hex(0xFFD60A),
+        }
+    }
+}
+
 /// The area a sprite or quad of `size` covers with `transform` (scale applied,
 /// rotation ignored): what the player touches to pick something up.
 pub fn drawn_rect(transform: &Transform2D, size: Vec2) -> Rect {
@@ -327,6 +355,29 @@ mod tests {
         assert_eq!(level_title("levels/level1.ron"), "Level 1");
         assert_eq!(level_title("levels/vault12.ron"), "Vault 12");
         assert_eq!(level_title("bonus.ron"), "Bonus");
+    }
+
+    #[test]
+    fn keys_open_only_the_doors_of_their_colour() {
+        let walls = [wall(0.0, 0.0, 10.0, 10.0)];
+        let red = wall(100.0, 0.0, 10.0, 50.0);
+        let gold = wall(200.0, 0.0, 10.0, 50.0);
+        let doors = [(KeyColor::Red, red), (KeyColor::Gold, gold)];
+        assert_eq!(blocking(&walls, &doors, &[]), [walls[0], red, gold]);
+        assert_eq!(blocking(&walls, &doors, &[KeyColor::Gold]), [walls[0], red]);
+        assert_eq!(
+            blocking(&walls, &doors, &[KeyColor::Blue, KeyColor::Red]),
+            [walls[0], gold]
+        );
+        // A closed door stops the player like a wall.
+        let size = Vec2::splat(20.0);
+        let solid = blocking(&walls, &doors, &[]);
+        let stopped = move_and_slide(Vec2::new(50.0, 0.0), size, Vec2::new(200.0, 0.0), &solid);
+        assert_eq!(stopped, Vec2::new(85.0, 0.0));
+        let open = blocking(&walls, &doors, &[KeyColor::Red]);
+        let through = move_and_slide(Vec2::new(50.0, 0.0), size, Vec2::new(100.0, 0.0), &open);
+        assert_eq!(through, Vec2::new(150.0, 0.0));
+        assert_ne!(KeyColor::Red.color(), KeyColor::Gold.color());
     }
 
     #[test]
