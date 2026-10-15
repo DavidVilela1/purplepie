@@ -5,8 +5,8 @@
 //! [`UnknownComponents`], what
 //! [`Context::load_scene_keeping_unknown`](crate::Context::load_scene_keeping_unknown)
 //! keeps of game components it cannot read, [`check_component`], which checks
-//! such text against a game component type, and [`InvalidRon`], their error
-//! (ADR-044).
+//! such text against a game component type, [`component_text`], which writes a
+//! value as that text, and [`InvalidRon`], their error (ADR-044).
 //!
 //! # Engine notes
 //!
@@ -137,9 +137,37 @@ pub fn check_component<T: DeserializeOwned>(ron: &str) -> Result<(), InvalidRon>
         .map_err(|err| InvalidRon(format!("does not fit the type: {err}")))
 }
 
+/// Writes `value` as the one line of RON a scene file holds for a registered
+/// game component: exactly the text [`Context::save_scene`](crate::Context::save_scene)
+/// writes for it (ADR-036, ADR-040). For tools that add a game's components as
+/// text, such as a game's own scene editor offering a default value (ADR-044).
+///
+/// ```
+/// use purplepie::scene::component_text;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize, Default)]
+/// struct Speed {
+///     value: f32,
+///     label: String,
+/// }
+///
+/// assert_eq!(
+///     component_text(&Speed::default()).unwrap(),
+///     r#"(value: 0.0, label: "")"#
+/// );
+/// ```
+pub fn component_text<T: Serialize>(value: &T) -> Result<String, InvalidRon> {
+    registry::to_raw(value)
+        .map(|raw| raw.get_ron().to_owned())
+        .map_err(|err| InvalidRon(format!("could not be written as RON: {err}")))
+}
+
 /// Text refused by [`UnknownComponents::set`] or [`check_component`]: not one
 /// valid RON value ("not valid RON: 1:8-1:9: Unexpected end of RON"), or, for
 /// `check_component`, not a value of the type ("does not fit the type: …").
+/// [`component_text`] also returns it for a value it cannot write ("could not
+/// be written as RON: …").
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct InvalidRon(String);
@@ -1802,6 +1830,41 @@ mod tests {
         assert!(
             broken.to_string().starts_with("not valid RON: "),
             "{broken}"
+        );
+    }
+
+    #[test]
+    fn component_text_is_what_a_save_writes() {
+        let spin = demo::Spin {
+            speed: 2.5,
+            direction: demo::Turn::CounterClockwise,
+        };
+        let text = component_text(&spin).expect("writes");
+        assert_eq!(text, "(speed: 2.5, direction: CounterClockwise)");
+        let mut registry = Registry::default();
+        registry
+            .register::<demo::Spin>("scene_demo::Spin")
+            .expect("spin");
+        let (textures, fonts, mut world) = (Textures::default(), Fonts::default(), World::new());
+        world.spawn((spin,));
+        let saved = capture(&world, &textures, &fonts, None, &registry).expect("capture");
+        assert_eq!(
+            saved.entities[0].components["scene_demo::Spin"].get_ron(),
+            text
+        );
+        // And it reads back as the same type.
+        assert_eq!(check_component::<demo::Spin>(&text), Ok(()));
+        // A value that cannot be written is an error, not a panic.
+        struct Refuses;
+        impl Serialize for Refuses {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("no"))
+            }
+        }
+        let err = component_text(&Refuses).expect_err("refuses");
+        assert!(
+            err.to_string().starts_with("could not be written as RON"),
+            "{err}"
         );
     }
 }

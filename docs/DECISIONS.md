@@ -2908,6 +2908,26 @@ small and enough for the core interactions.
   20 entities", "3 spinning sprites"). A file with `count: -1` opened with a red status ("Integer is out of
   bounds") and a red label. The plain `purplepie-editor` opened `demo.ron` as before.
 
+## Implementation notes (PP-041, phase P6: adding and removing game components)
+- **Engine API:** `scene::component_text<T: Serialize>(&T) -> Result<String, InvalidRon>` uses the registry's
+  writer (`to_raw`, one spaced line, ADR-040), so the text is exactly what `save_scene` writes for a registered
+  component. The error reuses `InvalidRon` ("could not be written as RON: …") rather than adding a type: it is the
+  same family of failure (RON text that cannot be produced or read), and a serializer refusing a value is rare.
+- **Defaults come from the game:** `GameComponents::with_default::<T: Serialize + DeserializeOwned + Default>(name)`
+  writes `T::default()` once, when the editor is built. `with::<T>` stays for types that are only checked (no
+  `Default`, or not meant to be added). The plain editor knows no types, so it can remove game components but not add
+  them. **Alternative:** a value typed by the designer in an empty field — rejected, as every new component would
+  start as an error until the designer knew the type's RON shape.
+- **Undo:** `Edit::GameComponent { entity, name, text, added }` like `Edit::Exists`: added ↔ removed. Applying an add
+  inserts an `UnknownComponents` when the entity has none and refuses to overwrite an existing value of that name;
+  undoing it leaves an empty `UnknownComponents`, which saves nothing (`is_saved` ignores empty ones), so files
+  come back byte for byte.
+- **Inspector:** a "Game component: Add…" menu after the game components lists the defaults the entity does not have
+  (disabled when none remain); each game component row ends with an "x". Both finish any edit in progress first.
+- **Verified under Xvfb** with `scene_demo_editor` (both types now `with_default`): Spin added to quad `#1`, removed
+  from `#8`, saved: exactly those two places changed; two undos and a save restored the original file. `#8`'s menu
+  offered only Visits.
+
 ## Implementation notes (PP-038j2; phase P5 complete)
 - **Guide:** GUIDE §15 "The scene editor". The guide's rule is that every Rust block compiles; the game's own editor
   program needs the editor crate, which the `purplepie` doctests cannot use. So that block is marked `ignore`, and its

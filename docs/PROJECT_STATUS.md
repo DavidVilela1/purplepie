@@ -25,8 +25,8 @@ texts and game components kept as RON text (PP-038h2), deleting and duplicating 
 adding quads, sprites and texts (PP-038i2), a game's own editor that checks its component types (PP-038j1), and the
 guide section with the checklist step (PP-038j2). It was released in **0.2.0** (PP-039, 2026-10-14; tag checked in
 PP-040). **Phase P6 (proof): in progress** since PP-040 (2026-10-15), which planned Pie Heist ([GAME3.md](GAME3.md)), a
-top-down heist whose five levels are drawn in the editor. Next: PP-041, adding and removing game components in the
-editor.
+top-down heist whose five levels are drawn in the editor. PP-041 let the editor add and remove game components. Next:
+PP-042a, the Pie Heist skeleton and its editor, with level 1 drawn in the editor.
 
 ## Current Stage
 
@@ -82,7 +82,9 @@ does not exist yet. PP-038j1 lets a game build its own editor in three lines (`p
 code is a compiled example kept identical to the guide by a test), the checklist step for the example editor, and
 closed **phase P5**. PP-039 released it as **version 0.2.0**; the owner tagged `v0.2.0`, and PP-040 checked the tag and
 planned **phase P6**: Pie Heist ([GAME3.md](GAME3.md)), whose levels are made in the editor. Next: **PP-041**, adding and
-removing game components in the editor, the one gap every Pie Heist level needs.
+removing game components in the editor, the one gap every Pie Heist level needs; PP-041 built it ("Game component:
+Add…" with the game's defaults, an "x" to remove; engine `scene::component_text`). Next: **PP-042a**, the Pie Heist
+skeleton and its editor.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -164,6 +166,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-041: editor adds a game component (the game's types given with `GameComponents::with_default`) and removes one, each one undo step; engine `scene::component_text`.
 - PP-040: P6 plan: tag `v0.2.0` checked (identical tree; outside crate by the tag builds); GAME3.md (Pie Heist), gaps, P6 split into PP-041 and PP-042a–e.
 - PP-039: release 0.2.0: version, CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines on `tag = "v0.2.0"` (README, GUIDE §1/§15, RELEASING), RELEASING covers the editor's library; preconditions owner-reported green.
 - PP-038j2: GUIDE §15 "The scene editor" (controls; a game's own editor binary, its files compiled as the editor crate's `guide_editor` example and kept identical to the guide by a test; checked as an outside crate depending on GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed. Phase P5 complete.
@@ -213,7 +216,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-041: Editor: add and remove game components** (phase P6, item 2): an "Add component" menu with the game's types (default values) and a remove button, each one undo step; a small engine helper that writes a component as scene RON. See [TASKS.md](TASKS.md#pp-041-editor-add-and-remove-game-components--next).
+- **PP-042a: Pie Heist skeleton and its editor** (phase P6, item 3): `games/pie-heist` (components, level loading, movement with wall collision, camera) and `games/pie-heist-editor`; level 1 drawn in the editor; grid-snapping decision. May be split at its start. See [TASKS.md](TASKS.md#pp-042a-pie-heist-skeleton-and-its-editor--next).
 
 ## Blocked
 
@@ -251,10 +254,14 @@ executable, else `assets/` in the working directory (ADR-025).
 - Logging reaches the console only if the game opts in with `EngineConfig::with_console_log(true)` (ADR-040; the sandbox and examples do) or installs its own `log` backend; otherwise engine warnings are silent.
 - Debug overlay (optional feature): stats and a read-only entity inspector (engine components, registered game components as RON; unregistered ones only counted; long `Debug` values for `Text`/`Sprite`; a new selection's game components appear one frame later); at the top left over any HUD there (it can be collapsed); in debug builds on a software GPU it costs about a quarter of the frame rate (sandbox 59 → 43 fps; release 56 → 53 fps), mostly unoptimized egui; keys reach the game except while an egui text field has the focus; the feature needs Rust 1.95, and binaries built with it embed egui's fonts (R-26). Seen only on Linux/lavapipe.
 - `egui` hook (optional feature, PP-038c): an egui pass runs every frame while `with_egui` is on (cost not measured separately; the visible overlay costs about a quarter of the frame rate in debug builds on a software GPU); the game's UI covers the scene drawn under it (no separate viewport); the egui context is recreated when the platform suspends the app, so panel sizes and positions reset then. Seen only on Linux/lavapipe.
-- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are RON text checked as syntax, and against the game's types only in a game's own editor (PP-038j1), with no typed widgets; game components cannot be added to or removed from an entity; velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
+- Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are RON text checked as syntax, and against the game's types only in a game's own editor (PP-038j1), with no typed widgets; game components are added from a game's own editor's defaults (`with_default`) and removed with the "x" (PP-041); velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-15: PP-041 Editor adds and removes game components.**
+  - In a game's own editor, "Game component: Add…" in the inspector gives the selected entity one of the game's components with its default value (types given with the new `GameComponents::with_default`); the "x" after a component removes it. Both are one undo step.
+  - Engine: `scene::component_text(&value)` writes a value exactly as a scene save does. 1 engine test; the editor crate has 24 unit tests and 4 doctests.
 
 - **2026-10-15: PP-040 Phase P6 planned.**
   - The `v0.2.0` tag equals the released tree, and an outside crate following the guide builds against it.
@@ -622,15 +629,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-040 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-041 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 58 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 261 + 59, 13 ignored; editor 22 + 3 doctests; Purple Swarm 10 |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 246 unit tests + 59 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 262 + 60, 13 ignored; editor 24 + 4 doctests; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Add/remove game components (PP-041) | ✅ GitHub `main` (`704a417`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with `scene_demo_editor`: Spin added to `#1` and removed from `#8` → saved diff exactly those; two undos → identical file; `#8`'s menu offered only Visits |
 | P6 plan (PP-040) | ✅ GitHub `main` (`55bb6a5`) identical to this tree before the task; tag `v0.2.0` (annotated, `55bb6a5`) cloned and identical. Outside crate with GUIDE §15's dependency lines (`purplepie` and `purplepie-editor` at `tag = "v0.2.0"`) and its two files: built against the tag in 3 min 14 s with 0 warnings and one `purplepie` in its lock file; under Xvfb its game saved a level with a `my_game::Door` and its editor opened it ("1 game component value(s) checked against the game's types"). Documentation-only change otherwise (`cargo fmt --check`) |
 | Release 0.2.0 (PP-039) | ✅ GitHub `main` (`290d87f`) identical to this tree before the task. Public items compared with a clone of the `v0.1.0` tag. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`); `cargo build`; sandbox under Xvfb prints `PurplePie sandbox v0.2.0`; R-19 `chunks_exact` grep empty; outside crate (GUIDE §15 files) by path builds against 0.2.0 |
 | Guide section and P5 close-out (PP-038j2) | ✅ GitHub `main` (`4f0dc83`) identical to this tree before the task. Guide doctests 14 passed, 1 ignored (the editor program, compiled as an example); the guide-files test fails when the example differs from the guide (mutation). Outside crate built from section 15 word for word with both dependencies from GitHub `main` (see PP-038j2 in TASKS for the run). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). CHECKLIST step 9's new example-editor check run under Xvfb |
@@ -687,4 +695,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-15. PP-040 done: tag checked, phase P6 planned (Pie Heist, GAME3.md). PP-041 (editor: add and remove game components) is next.
+2026-10-15. PP-041 done (editor adds and removes game components). PP-042a (Pie Heist skeleton and its editor) is next.

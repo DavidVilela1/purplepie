@@ -7,6 +7,14 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ## [Unreleased]
 
+### Added
+
+- `scene::component_text(&value)`: writes a game component as the one line of RON `save_scene` writes for it, for
+  tools that add components as text (ADR-044).
+- Scene editor: the inspector adds a game component to the selected entity ("Game component: Add…", for the types a
+  game's own editor gives with the new `GameComponents::with_default::<T>(name)`, starting from `T::default()`) and
+  removes one (the "x" after its field); both are one undo step.
+
 ## [0.2.0] - 2026-10-14
 
 The debug overlay (phase P4) and the scene editor (phase P5). Depend on it with

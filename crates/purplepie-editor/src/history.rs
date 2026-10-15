@@ -64,6 +64,14 @@ pub(crate) enum Edit {
         snapshot: Box<Snapshot>,
         added: bool,
     },
+    /// A game component kept as text, added to the entity by this edit
+    /// (`added`) with `text`, or removed from it (its text was `text`).
+    GameComponent {
+        entity: Entity,
+        name: String,
+        text: String,
+        added: bool,
+    },
 }
 
 /// Replaces `entity`'s `T`; `false` if it has none.
@@ -108,7 +116,8 @@ impl Edit {
             | Edit::Sprite { entity, .. }
             | Edit::Text { entity, .. }
             | Edit::Kept { entity, .. }
-            | Edit::Exists { entity, .. } => entity,
+            | Edit::Exists { entity, .. }
+            | Edit::GameComponent { entity, .. } => entity,
         }
     }
 
@@ -140,7 +149,7 @@ impl Edit {
             Edit::Sprite { before, after, .. } => *after = *before,
             Edit::Text { before, after, .. } => after.clone_from(before),
             Edit::Kept { before, after, .. } => after.clone_from(before),
-            Edit::Exists { .. } => {}
+            Edit::Exists { .. } | Edit::GameComponent { .. } => {}
         }
     }
 
@@ -154,7 +163,7 @@ impl Edit {
             Edit::Sprite { before, after, .. } => before == after,
             Edit::Text { before, after, .. } => before == after,
             Edit::Kept { before, after, .. } => before == after,
-            Edit::Exists { .. } => false,
+            Edit::Exists { .. } | Edit::GameComponent { .. } => false,
         }
     }
 
@@ -213,7 +222,7 @@ impl Edit {
                     after,
                 }
             }
-            Edit::Exists { .. } => self,
+            Edit::Exists { .. } | Edit::GameComponent { .. } => self,
         }
     }
 
@@ -288,6 +297,31 @@ impl Edit {
                 Ok(mut kept) => kept.set(name, if forward { after } else { before }).is_ok(),
                 Err(_) => false,
             },
+            Edit::GameComponent {
+                entity,
+                name,
+                text,
+                added,
+            } => {
+                if forward == *added {
+                    if world.get::<&UnknownComponents>(*entity).is_err()
+                        && world
+                            .insert_one(*entity, UnknownComponents::default())
+                            .is_err()
+                    {
+                        return false;
+                    }
+                    match world.get::<&mut UnknownComponents>(*entity) {
+                        Ok(mut kept) => kept.get(name).is_none() && kept.set(name, text).is_ok(),
+                        Err(_) => false,
+                    }
+                } else {
+                    match world.get::<&mut UnknownComponents>(*entity) {
+                        Ok(mut kept) => kept.remove(name).is_some(),
+                        Err(_) => false,
+                    }
+                }
+            }
             Edit::Exists { .. } => false, // handled above
         }
     }
@@ -348,6 +382,18 @@ impl Edit {
             Edit::Exists { entity, added, .. } => {
                 let what = if *added { "adding" } else { "deleting" };
                 format!("{what} #{}", entity.id())
+            }
+            Edit::GameComponent {
+                entity,
+                name,
+                added,
+                ..
+            } => {
+                if *added {
+                    format!("adding {name} to #{}", entity.id())
+                } else {
+                    format!("removing {name} from #{}", entity.id())
+                }
             }
         }
     }
@@ -732,5 +778,52 @@ mod tests {
         assert!(add.apply(&mut world, true));
         assert_eq!(x(&world, b), 1.0);
         assert_eq!(add.describe(), format!("adding #{}", b.id()));
+    }
+
+    #[test]
+    fn game_components_are_added_and_removed_in_one_step() {
+        let mut world = World::new();
+        let bare = world.spawn((at(0.0),));
+        let add = Edit::GameComponent {
+            entity: bare,
+            name: "game::Wall".to_owned(),
+            text: "()".to_owned(),
+            added: true,
+        };
+        let kept = |world: &World, name: &str| {
+            world
+                .get::<&UnknownComponents>(bare)
+                .ok()
+                .and_then(|k| k.get(name).map(str::to_owned))
+        };
+        assert!(add.apply(&mut world, true), "an UnknownComponents is added");
+        assert_eq!(kept(&world, "game::Wall").as_deref(), Some("()"));
+        assert!(!add.apply(&mut world, true), "already there");
+        assert!(add.apply(&mut world, false));
+        assert_eq!(kept(&world, "game::Wall"), None);
+        assert!(!add.apply(&mut world, false), "already gone");
+        assert_eq!(
+            add.describe(),
+            format!("adding game::Wall to #{}", bare.id())
+        );
+
+        let remove = Edit::GameComponent {
+            entity: bare,
+            name: "game::Wall".to_owned(),
+            text: "()".to_owned(),
+            added: false,
+        };
+        assert!(add.apply(&mut world, true));
+        assert!(remove.apply(&mut world, true));
+        assert_eq!(kept(&world, "game::Wall"), None);
+        assert!(remove.apply(&mut world, false), "undo brings the text back");
+        assert_eq!(kept(&world, "game::Wall").as_deref(), Some("()"));
+        assert_eq!(
+            remove.describe(),
+            format!("removing game::Wall from #{}", bare.id())
+        );
+        assert!(!remove.changes_nothing());
+        world.despawn(bare).expect("alive");
+        assert!(!remove.apply(&mut world, false), "gone");
     }
 }

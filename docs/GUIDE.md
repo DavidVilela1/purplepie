@@ -697,7 +697,8 @@ A file that does not exist yet opens as an empty scene; Ctrl+S creates it. In th
   means unsaved changes. Close the window to quit (Escape only deselects).
 
 Your own components (section 11) appear as one text field each, holding their value as RON, for example
-`(leads_to: "levels/two.ron")`. The editor above does not know your types, so it only checks that the text is RON.
+`(leads_to: "levels/two.ron")`; the small "x" next to one removes it from the entity. The editor above does not know
+your types, so it only checks that the text is RON, and it cannot add one of your components to an entity.
 To have values checked against your types, give your game its own editor: a second binary in the same crate, whose
 components live in a module both binaries use.
 
@@ -713,7 +714,7 @@ serde = { version = "1", features = ["derive"] }
 // src/components.rs: the game's own scene components, used by both binaries.
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Door {
     pub leads_to: String,
 }
@@ -733,13 +734,19 @@ use purplepie_editor::GameComponents;
 mod components;
 
 fn main() -> ExitCode {
-    // The same names the game registers with `register_scene_component`.
-    purplepie_editor::main_with(GameComponents::new().with::<components::Door>("my_game::Door"))
+    // The same names the game registers with `register_scene_component`;
+    // `with_default` also lets the inspector add the component to an entity.
+    purplepie_editor::main_with(
+        GameComponents::new().with_default::<components::Door>("my_game::Door"),
+    )
 }
 ```
 
 `cargo run --bin editor -- assets/levels/one.ron` opens the level: the status line says how many values were checked,
 a value that does not fit its type is shown in red, and an edit that does not fit is refused with the reason ("does
-not fit the type: …"). The values stay text, so they are saved exactly as you typed them. Because both binaries share
+not fit the type: …"). Types given with `with_default` (they need `Default` and `Serialize` too) appear under "Game
+component: Add…" in the inspector, which adds one to the selected entity with its default value; use `with` for a
+type that should only be checked. (`with_default` came after 0.2.0: with the `v0.2.0` tag, use `with`, or take both
+crates from `branch = "main"` until the next release.) The values stay text, so they are saved exactly as you typed them. Because both binaries share
 the crate's dependencies, the game is now built with egui too (and needs Rust 1.95); to keep the game without it,
 put the editor binary in its own small crate next to the game instead.

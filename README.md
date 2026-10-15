@@ -168,7 +168,7 @@ undo and redo; `*` in the title marks unsaved changes. The inspector edits posit
 quads (size, colour), sprites (size, tint, region) and texts (content, size, colour, anchor) — drag a number or click
 it to type — and the game's own components as RON text, checked when you leave the field. Delete removes the
 selection and Ctrl+D duplicates it; the Add row places a quad, a sprite (an image from the asset folder) or a text at
-the centre of the view (all undoable). Opening a file that does not exist starts a new scene. A game can build its own editor that checks its component
+the centre of the view (all undoable). Opening a file that does not exist starts a new scene; the "x" after a game component removes it. A game can build its own editor that checks its component
 values against its types: `fn main() -> ExitCode { purplepie_editor::main_with(GameComponents::new().with::<Spin>("my_game::Spin")) }`
 (example: `cargo run -p purplepie-editor --example scene_demo_editor -- assets/scenes/demo.ron`). The
 [guide](docs/GUIDE.md#15-the-scene-editor) (section 15) explains the editor and how to give your game its own.

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-041: Editor: add and remove game components on the selected entity (the game's types with default values), each one undo step; engine helper writing a component as scene RON (phase P6, item 2; GAME3.md gap 1)** · P1 · TODO ← **next task**
+- [ ] **PP-042a: `games/pie-heist` skeleton + `games/pie-heist-editor`: components registered, level loading, player movement with wall collision, camera; level 1 drawn in the editor; grid-snapping decision; ADR-042 note (split at its start if needed)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-040: P6 plan: tag `v0.2.0` checked (identical to the PP-039 tree; an outside crate following GUIDE §1/§15 builds against it); `docs/GAME3.md` specifies Pie Heist, a top-down heist whose five levels are drawn in the editor; gaps listed; P6 split into PP-041 and PP-042a–e (phase P6, item 1)** · DONE (2026-10-15)
 - [x] **PP-039: Release 0.2.0: version 0.2.0 (engine and editor crate), CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines in README, GUIDE §1/§15 and RELEASING moved to `tag = "v0.2.0"`, RELEASING covers the editor's library; owner's checklist (incl. step 9 on Windows) and CI green (owner-reported); owner tags `v0.2.0` after pushing** · DONE (2026-10-14; verified on Linux; tag by the owner)
 - [x] **PP-038j2: A game's own editor, part 2: GUIDE §15 "The scene editor" (controls, a game's own editor binary; its files are the compiled `guide_editor` example of the editor crate, kept identical to the guide by a test; checked as an outside crate against GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed; phase P5 complete** · DONE (2026-10-14; verified on Linux)
@@ -97,7 +98,6 @@ _None._
 
 P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042a: `games/pie-heist` skeleton + `games/pie-heist-editor`: components registered, level loading, player movement with wall collision, camera; level 1 drawn in the editor; grid-snapping decision; ADR-042 note** · P2 · TODO
 - [ ] **PP-042b: Pie Heist: pies, keys, doors, exit and level progression; HUD and sounds** · P2 · TODO
 - [ ] **PP-042c: Pie Heist: guards and being caught; title, pause, level-complete and win screens** · P2 · TODO
 - [ ] **PP-042d: Pie Heist: levels 2–5 built in the editor; level-check decision and test; balance pass** · P2 · TODO
@@ -489,14 +489,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-041: Editor: add and remove game components ← NEXT
+### PP-042a: Pie Heist skeleton and its editor ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 2 · Priority P1 · TODO |
+| Stage | Phase P6, item 3 · Priority P1 · TODO |
+| Dependencies | PP-041 (DONE); ADR-042, ADR-044; [GAME3.md](GAME3.md) |
+| Why now | The editor can now give an entity any of the game's components, so a Pie Heist level can be drawn from nothing. The skeleton proves the loop: game components defined once, a level drawn in the game's editor, the game loading and playing it. |
+| Scope | `games/pie-heist` (workspace member, `purplepie = { path = "../.." }`, Rust 1.90): `src/lib.rs` with the GAME3.md components (`Wall`, `Pie`, `Key`, `Door`, `Exit`, `Guard`, `PlayerStart`; `Serialize + Deserialize + Default`) and a function registering them, unit-tested level rules (wall push-out with `math::Rect`); `src/main.rs` loading `levels/level1.ron`, the player at `PlayerStart`, movement with wall collision, camera following inside the level bounds. `games/pie-heist-editor` (Rust 1.95): `main_with` over the same types with `with_default`. CI: the `msrv` job also excludes `pie-heist-editor`. Level 1 drawn with the editor under Xvfb (walls, start, a pie, an exit), saved and played (the player stops at walls). Decide grid snapping from that experience. ADR-042 note. Split at its start if it does not fit: e.g. a1 crates + components + loading, a2 movement, collision and level 1. |
+| Acceptance criteria | Both crates build in the workspace; the game loads level 1 strictly (all components registered) and the player cannot cross walls (unit test of the push-out and an Xvfb run); level 1 was made in the editor, not by hand; the grid-snapping decision is recorded with its reason. |
+
+### PP-041: Editor: add and remove game components
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 2 · Priority P1 · **DONE** (2026-10-15; verified on Linux) |
 | Dependencies | PP-040 (DONE); ADR-036, ADR-044; GAME3.md gap 1 |
 | Why now | Pie Heist's levels are drawn in the editor, and its walls, pies, keys, doors, exits and guards are game components. Today the editor edits only components a file already has, so a new quad cannot become a `Wall`. Every later P6 task needs this. |
 | Scope | Engine: a small public helper that writes a value as scene RON exactly like `save_scene` writes a registered component (one line, same formatting), e.g. `scene::component_text(&T) -> Result<String, …>`; decide the name and error type, record in ADR-044's notes. Editor: `GameComponents` learns a default value for a type (e.g. `with_default::<T: Default + Serialize + DeserializeOwned>(name)`, decide whether `with` stays for types without a default); an "Add component" menu in the inspector listing the game's names the selection does not have yet; a remove button per kept component; both one undo step (`Edit::Kept` generalised to absent ↔ present, or a new kind). Entities without `UnknownComponents` get one. GUIDE §15 and the example editors updated. |
-| Acceptance criteria | Adding inserts the default text and saves it; removing drops it from the file; both undo in one step to an identical file; names already present are not offered; tests for the helper (same text as a save) and the edits; an Xvfb run with the example editor (add `scene_demo::Spin` to a quad, remove it from `#8`, undo both, diff). |
+| Acceptance criteria | ✅ Engine: `scene::component_text<T: Serialize>(&T) -> Result<String, InvalidRon>` (doc example), the registry's own one-line writer, so it is exactly what `save_scene` writes (test compares with a capture, and reads it back with `check_component`); a value that refuses to serialize gives "could not be written as RON: …". ✅ Editor: `GameComponents::with_default::<T: Serialize + DeserializeOwned + Default>(name)` (doc example), `addable()`; inspector row "Game component: Add…" listing the given defaults the entity does not have (disabled when none are left), an "x" after each game component's field; `Edit::GameComponent { entity, name, text, added }` (adds an `UnknownComponents` to an entity that has none; never overwrites an existing value). The example editor and GUIDE §15's editor use `with_default`; the guide says it came after 0.2.0. ✅ Xvfb with the example editor: Add… on quad `#1` offered `scene_demo::Spin` and `scene_demo::Visits`, on `#8` only `Visits`; adding Spin to `#1` and removing it from `#8`, then saving, changed exactly those two places (`(speed: 0.0, direction: Clockwise)` added); two undos and a save gave the original file. ✅ 24 unit tests + 4 doctests in the editor crate; 1 engine test + doctest. |
 
 ### PP-040: P6 plan
 | Field | Value |

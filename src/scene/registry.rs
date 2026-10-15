@@ -57,7 +57,7 @@ fn save<T: hecs::Component + Serialize>(e: &hecs::EntityRef<'_>) -> Saved {
 /// Writes a game component as one line of RON spaced like the engine's parts
 /// of the file (`(speed: 2.0, mode: Fast)`, not `(speed:2.0,mode:Fast)`; ADR-040).
 /// `RawValue::from_rust` writes the compact form.
-fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, BoxError> {
+pub(crate) fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, BoxError> {
     let one_line = ron::ser::PrettyConfig::new()
         .new_line("\n")
         .struct_names(false)

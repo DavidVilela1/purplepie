@@ -8,6 +8,9 @@ use purplepie_editor::GameComponents;
 mod components;
 
 fn main() -> ExitCode {
-    // The same names the game registers with `register_scene_component`.
-    purplepie_editor::main_with(GameComponents::new().with::<components::Door>("my_game::Door"))
+    // The same names the game registers with `register_scene_component`;
+    // `with_default` also lets the inspector add the component to an entity.
+    purplepie_editor::main_with(
+        GameComponents::new().with_default::<components::Door>("my_game::Door"),
+    )
 }

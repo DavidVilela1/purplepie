@@ -314,6 +314,72 @@ impl Editor {
         }
     }
 
+    /// Adds the game's component `name` to `entity` with its default value:
+    /// one undoable step.
+    fn add_game_component(&mut self, ctx: &mut Context<'_>, entity: Entity, name: String) {
+        self.finish_edits(ctx);
+        let text = match self.components.default_text(&name) {
+            Some(Ok(text)) => text,
+            Some(Err(error)) => {
+                self.report(format!("could not add {name}: {error}"), true);
+                return;
+            }
+            None => return,
+        };
+        let edit = Edit::GameComponent {
+            entity,
+            name,
+            text,
+            added: true,
+        };
+        self.record_now(ctx, edit);
+    }
+
+    /// Removes the game component `name` from `entity`: one undoable step
+    /// that keeps its text for undo.
+    fn remove_game_component(&mut self, ctx: &mut Context<'_>, entity: Entity, name: String) {
+        self.finish_edits(ctx);
+        let text = ctx
+            .world()
+            .get::<&UnknownComponents>(entity)
+            .ok()
+            .and_then(|kept| kept.get(&name).map(str::to_owned));
+        let Some(text) = text else {
+            return;
+        };
+        let edit = Edit::GameComponent {
+            entity,
+            name,
+            text,
+            added: false,
+        };
+        self.record_now(ctx, edit);
+    }
+
+    /// Applies `edit` and records it as one step, saying so in the status line.
+    fn record_now(&mut self, ctx: &mut Context<'_>, edit: Edit) {
+        if edit.apply(ctx.world_mut(), true) {
+            let text = match &edit {
+                Edit::GameComponent {
+                    entity,
+                    name,
+                    added: true,
+                    ..
+                } => format!("added {name} to #{}", entity.id()),
+                Edit::GameComponent { entity, name, .. } => {
+                    format!(
+                        "removed {name} from #{} (Ctrl+Z brings it back)",
+                        entity.id()
+                    )
+                }
+                other => other.describe(),
+            };
+            self.report(text, false);
+            self.history.record(edit, false);
+            self.last_nudge = None;
+        }
+    }
+
     /// Ends every inspector edit in progress (before saving, undoing,
     /// selecting another entity or moving).
     fn finish_edits(&mut self, ctx: &mut Context<'_>) {
@@ -736,6 +802,8 @@ impl Editor {
         let (mut new_quad, mut new_sprite, mut new_text) = (quad, sprite, text.clone());
         let mut fields = Fields::default();
         let mut kept_focused = false;
+        // A game component to add to or remove from the entity.
+        let (mut add, mut remove): (Option<String>, Option<String>) = (None, None);
         egui::ScrollArea::vertical()
             .id_salt("purplepie editor inspector")
             .auto_shrink([false, true])
@@ -794,17 +862,50 @@ impl Editor {
                                 .as_ref()
                                 .filter(|d| d.entity == entity && &d.name == name);
                             let mut typed = draft.map_or_else(|| value.clone(), |d| d.text.clone());
-                            let field = egui::TextEdit::singleline(&mut typed)
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(180.0);
-                            if ui.add(field).has_focus() {
-                                kept_focused = true;
-                                self.kept_draft = Some(KeptDraft {
-                                    entity,
-                                    name: name.clone(),
-                                    text: typed,
-                                });
-                            }
+                            ui.horizontal(|ui| {
+                                let field = egui::TextEdit::singleline(&mut typed)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(180.0);
+                                if ui.add(field).has_focus() {
+                                    kept_focused = true;
+                                    self.kept_draft = Some(KeptDraft {
+                                        entity,
+                                        name: name.clone(),
+                                        text: typed,
+                                    });
+                                }
+                                if ui
+                                    .small_button("x")
+                                    .on_hover_text("remove this component from the entity")
+                                    .clicked()
+                                {
+                                    remove = Some(name.clone());
+                                }
+                            });
+                            ui.end_row();
+                        }
+                        // The game's types this entity does not have yet.
+                        let addable: Vec<&str> = self
+                            .components
+                            .addable()
+                            .filter(|name| !kept.iter().any(|(n, _)| n == name))
+                            .collect();
+                        if !self.components.is_empty() {
+                            ui.label("Game component");
+                            ui.add_enabled_ui(!addable.is_empty(), |ui| {
+                                ui.menu_button("Add…", |ui| {
+                                    for name in &addable {
+                                        if ui.button(*name).clicked() {
+                                            add = Some((*name).to_owned());
+                                            ui.close();
+                                        }
+                                    }
+                                })
+                                .response
+                                .on_disabled_hover_text(
+                                    "every game type with a default value is already here",
+                                );
+                            });
                             ui.end_row();
                         }
                     });
@@ -906,6 +1007,12 @@ impl Editor {
         if !kept_focused {
             // The field was left (Enter, a click elsewhere): check and apply.
             self.commit_kept_draft(ctx);
+        }
+        if let Some(name) = add {
+            self.add_game_component(ctx, entity, name);
+        }
+        if let Some(name) = remove {
+            self.remove_game_component(ctx, entity, name);
         }
     }
 

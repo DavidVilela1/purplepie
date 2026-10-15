@@ -7,15 +7,27 @@
 //! duplicating and undoing copy it like any other value. Knowing the types
 //! only adds checks, with
 //! [`scene::check_component`](purplepie::scene::check_component), which reads
-//! a value exactly as the game's scene load will.
+//! a value exactly as the game's scene load will. A type given with a default
+//! value ([`GameComponents::with_default`]) can also be added to an entity in
+//! the inspector (PP-041), written with
+//! [`scene::component_text`](purplepie::scene::component_text).
 
 use std::collections::BTreeMap;
 use std::fmt;
 
-use purplepie::scene::{InvalidRon, check_component};
+use purplepie::scene::{InvalidRon, check_component, component_text};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 type Check = fn(&str) -> Result<(), InvalidRon>;
+
+/// One of the game's types: how to check a value, and the text of its
+/// default value if it can be added.
+#[derive(Clone)]
+struct Entry {
+    check: Check,
+    default: Option<Result<String, InvalidRon>>,
+}
 
 /// The game's scene component types, by the names it registers them under
 /// with [`Context::register_scene_component`](purplepie::Context::register_scene_component).
@@ -34,7 +46,7 @@ type Check = fn(&str) -> Result<(), InvalidRon>;
 /// ```
 #[derive(Clone, Default)]
 pub struct GameComponents {
-    checks: BTreeMap<String, Check>,
+    entries: BTreeMap<String, Entry>,
 }
 
 impl GameComponents {
@@ -47,24 +59,68 @@ impl GameComponents {
     /// needed (`Deserialize`), as the editor never builds the values.
     #[must_use]
     pub fn with<T: DeserializeOwned>(mut self, name: &str) -> Self {
-        self.checks.insert(name.to_owned(), check_component::<T>);
+        let entry = Entry {
+            check: check_component::<T>,
+            default: None,
+        };
+        self.entries.insert(name.to_owned(), entry);
+        self
+    }
+
+    /// Adds the type `T` like [`with`](Self::with), and lets the inspector
+    /// add it to an entity, starting from `T::default()`.
+    ///
+    /// ```
+    /// use purplepie_editor::GameComponents;
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize, Default)]
+    /// struct Wall;
+    ///
+    /// let components = GameComponents::new().with_default::<Wall>("my_game::Wall");
+    /// assert_eq!(components.addable().collect::<Vec<_>>(), ["my_game::Wall"]);
+    /// ```
+    #[must_use]
+    pub fn with_default<T: Serialize + DeserializeOwned + Default>(mut self, name: &str) -> Self {
+        let entry = Entry {
+            check: check_component::<T>,
+            default: Some(component_text(&T::default())),
+        };
+        self.entries.insert(name.to_owned(), entry);
         self
     }
 
     /// The names given, sorted.
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.checks.keys().map(String::as_str)
+        self.entries.keys().map(String::as_str)
+    }
+
+    /// The names that can be added to an entity (given with a default),
+    /// sorted.
+    pub fn addable(&self) -> impl Iterator<Item = &str> {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| entry.default.is_some())
+            .map(|(name, _)| name.as_str())
     }
 
     /// `true` when no type was given.
     pub fn is_empty(&self) -> bool {
-        self.checks.is_empty()
+        self.entries.is_empty()
     }
 
     /// Checks `ron` against the type named `name`; `None` if that name was
     /// not given.
     pub(crate) fn check(&self, name: &str, ron: &str) -> Option<Result<(), InvalidRon>> {
-        self.checks.get(name).map(|check| check(ron))
+        self.entries.get(name).map(|entry| (entry.check)(ron))
+    }
+
+    /// The text of the default value of the type named `name`; `None` if it
+    /// was not given with a default.
+    pub(crate) fn default_text(&self, name: &str) -> Option<Result<String, InvalidRon>> {
+        self.entries
+            .get(name)
+            .and_then(|entry| entry.default.clone())
     }
 }
 
@@ -101,6 +157,30 @@ mod tests {
         assert_eq!(components.check("demo::Other", "anything"), None);
         assert!(GameComponents::new().is_empty());
         assert_eq!(format!("{components:?}"), r#"["demo::Spin"]"#);
+    }
+
+    #[derive(serde::Serialize, Deserialize, Default)]
+    struct Tag {
+        label: String,
+        level: u8,
+    }
+
+    #[test]
+    fn types_with_a_default_can_be_added_with_its_text() {
+        let components = GameComponents::new()
+            .with::<Spin>("demo::Spin")
+            .with_default::<Tag>("demo::Tag");
+        assert_eq!(components.addable().collect::<Vec<_>>(), ["demo::Tag"]);
+        assert_eq!(
+            components.default_text("demo::Tag"),
+            Some(Ok(r#"(label: "", level: 0)"#.to_owned()))
+        );
+        assert_eq!(components.default_text("demo::Spin"), None, "no default");
+        let text = components
+            .default_text("demo::Tag")
+            .expect("given")
+            .expect("written");
+        assert_eq!(components.check("demo::Tag", &text), Some(Ok(())));
     }
 
     #[test]
