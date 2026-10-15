@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042c: Pie Heist: guards and being caught (level restart, "caught" count); title, pause, level-complete and win screens; split at its start (c1 guards, c2 screens) if needed** · P1 · TODO ← **next task**
+- [ ] **PP-042c2: Pie Heist screens: title, pause, level complete, win with "Play again"** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -60,6 +60,7 @@ _None._
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-042b2: Pie Heist keys and doors: a key opens every door of its colour (doors block like walls until then, then disappear); keys and doors drawn in their colour; HUD "Keys: Gold"; key and door sounds; level 2 gained a gold door before the exit and a gold key, in the editor; scripted play-through (phase P6, item 5)** · DONE (2026-10-15; verified on Linux)
+- [x] **PP-042c1: Pie Heist guards and being caught** · DONE (2026-10-15; verified on Linux; PP-042c split into c1 and c2)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -490,14 +491,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042c: Pie Heist guards and screens ← NEXT
+### PP-042c2: Pie Heist screens ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 6 · Priority P1 · TODO |
+| Stage | Phase P6, item 6 (second half) · Priority P1 · TODO |
+| Dependencies | PP-042c1 (DONE); [GAME3.md](GAME3.md) |
+| Why now | Every game component works (walls, pies, keys, doors, exits, guards); the screens turn the levels into a game someone can start, pause and finish, and replay. |
+| Scope | A small screen state in the game: title ("Pie Heist", "Click to start", a `ui::Button`), play, pause (Escape: the world stops, guards too; Escape again resumes or Q quits, as GAME3.md says), a short "Level N complete" banner between levels, and a win screen with the time and the caught count and a "Play again" button (restarts at level 1 with time and caught reset). The HUD gains the time. Screen rules that need no window (which screen follows which input) in `lib.rs` with unit tests. Xvfb: a run through title → play → pause → resume → win → play again, with screenshots. |
+| Acceptance criteria | Title, pause, level-complete and win screens shown under Xvfb; Escape/Q behave as documented; "Play again" restarts with zeroed time and caught; unit tests for the screen transitions. |
+
+### PP-042c1: Pie Heist guards and being caught
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 6 (first half) · Priority P1 · **DONE** (2026-10-15; verified on Linux; PP-042c split into c1 guards and c2 screens) |
 | Dependencies | PP-042b2 (DONE); [GAME3.md](GAME3.md) |
-| Why now | Walls, pies, keys, doors and exits work; guards are the last game component, and the screens turn the levels into a game someone can start and finish. |
-| Scope | Guards: walk `Guard::path` (points relative to the start position, looping) at `speed`; touching the player restarts the level (pies, keys and doors back) and adds one to "caught"; rules in `lib.rs` with unit tests (position along a looping path after t seconds, empty or one-point paths stand still). A guard texture; a guard placed in a level with the editor, its path typed as RON. Screens: title ("Click to start"), pause (Escape; Escape again or Q quits), level complete banner, win screen with time and caught count, and "Play again". Likely split at its start: PP-042c1 guards, PP-042c2 screens. |
-| Acceptance criteria | A guard follows its path; touching it restarts the level and counts; the path was made in the editor; unit tests; Xvfb runs for being caught and for the screen flow. |
+| Why now | Walls, pies, keys, doors and exits worked; guards were the last game component. |
+| Scope | Guards walk `Guard::path` (relative to where the level puts them, looping) at `speed`; touching the player restarts the level and adds one to "caught"; rule in `lib.rs` with unit tests; a guard texture and a caught sound; a guard placed in level 2 with the editor. |
+| Acceptance criteria | ✅ `patrol_offset(path, speed, seconds)`: walks the path's legs and back from the last point to the first (two points: back and forth); a one-point path, repeated points, or a speed that is zero, negative or not finite stand on the first point, an empty path on the start; unit test (7 in the game's library now). ✅ Game: guards collected at load (drawn on layer 5, under the player), moved every fixed update from the level's time, which restarts with the level; touching one plays `caught.wav`, prints "caught by a guard (1 time(s)); restarting levels/level2.ron" and reloads the level (pies, keys, doors and guards back); "Caught N" in the HUD and in the win banner; the load line counts guards. ✅ Level 2 changed in `pie-heist-editor` under Xvfb: a sprite with `textures/guard.png` at (-80, 0) given `pie_heist::Guard` from "Add…", its value typed as `(path: [(0.0, -160.0), (0.0, 160.0)], speed: 160.0)` (a 4 s round across the way to the door). ✅ Xvfb: standing in the guard's way, the player was caught and the level restarted ("Caught 1", player back at the start); waiting for the guard to reach the top of its walk, the player passed it, took the pie and the key and won ("You win!  13 s, caught 1"); level 1 (no guards) loads as before. |
 
 ### PP-042b2: Pie Heist keys and doors
 | Field | Value |

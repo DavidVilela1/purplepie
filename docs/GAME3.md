@@ -100,6 +100,15 @@ In the game, the player starts at the hidden start marker, stops at the inner wa
 the floor and walks under the inner wall to the other side; the camera stays centred because level 1 is smaller
 than the window.
 
+## Guards (PP-042c1)
+
+A guard's path is typed in the editor's field as RON, relative to where the guard is placed: level 2's guard at
+(-80, 0) has `(path: [(0.0, -160.0), (0.0, 160.0)], speed: 160.0)`, so it walks up and down across the way to the
+door, a round every 4 s. A path loops: after its last point the guard walks back to the first, so two points are a
+back-and-forth walk. Guards walk through walls (the designer keeps paths inside rooms); they start again from the
+first point whenever the level restarts. Typing the path was quick for a straight walk; a longer path is a list of
+numbers that is only seen in the game (see "Seeing guard paths in the editor" above, still not planned).
+
 ## Plan
 
 1. **PP-041 (done):** editor: add and remove game components (with defaults from the game's types), each one undo step;
@@ -110,7 +119,10 @@ than the window.
    - **PP-042b1 (done):** pies, the exit and level progression, the HUD and two sounds; level 1 completed and level 2
      made in the editor; both played through by a script;
    - **PP-042b2 (done):** keys and doors; level 2 got a gold door before the exit and a gold key, in the editor.
-4. **PP-042c:** guards and being caught (level restart); title, pause, level-complete and win screens.
+4. **PP-042c:** split in two:
+   - **PP-042c1 (done):** guards walk their paths (`patrol_offset`); touching one restarts the level and counts as
+     caught; level 2 got a guard in the editor, its path typed as RON;
+   - **PP-042c2:** title, pause, level-complete and win screens, "Play again", the time in the HUD.
 5. **PP-042d:** levels 2–5 built in the editor; the level-check decision and its test; a balance pass.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and
    CHANGELOG; phase P6 complete. A 0.3.0 release follows if engine or editor APIs changed.

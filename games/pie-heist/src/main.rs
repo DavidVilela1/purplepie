@@ -7,7 +7,9 @@
 //! collected by touching them; once every pie of the level is collected the
 //! exit opens, and touching it loads the next level, or wins the game on the
 //! last one (PP-042b1). A key opens every door of its colour; doors block
-//! like walls until then (PP-042b2). Guards come next.
+//! like walls until then (PP-042b2). Guards walk their patrol paths;
+//! touching one restarts the level (pies, keys and doors come back) and counts
+//! as caught (PP-042c1). The title, pause and win screens come next.
 //!
 //! Run it from this folder, so its own `assets/` is found:
 //!
@@ -31,8 +33,8 @@ use purplepie::render::{
 use purplepie::{Context, Engine, EngineConfig, Game};
 
 use pie_heist::{
-    Door, Exit, Key, KeyColor, Pie, PlayerStart, Wall, blocking, camera_target, drawn_rect,
-    level_bounds, level_title, move_and_slide, next_level, touched, wall_rect,
+    Door, Exit, Guard, Key, KeyColor, Pie, PlayerStart, Wall, blocking, camera_target, drawn_rect,
+    level_bounds, level_title, move_and_slide, next_level, patrol_offset, touched, wall_rect,
 };
 
 const WINDOW: (u32, u32) = (960, 640);
@@ -58,6 +60,14 @@ struct Sounds {
     exit: SoundId,
     key: SoundId,
     door: SoundId,
+    caught: SoundId,
+}
+
+/// A guard of the level being played: where it started, and its patrol.
+struct Patrol {
+    entity: Entity,
+    origin: Vec2,
+    guard: Guard,
 }
 
 /// The exit of the level being played.
@@ -82,6 +92,11 @@ struct PieHeist {
     pies_total: usize,
     pies_left: usize,
     exit: Option<LevelExit>,
+    guards: Vec<Patrol>,
+    /// Seconds since the level was (re)started: where the guards are.
+    level_time: f32,
+    /// How many times a guard caught the player, over the whole game.
+    caught: u32,
     /// The game time when the last level's exit was reached; the player
     /// stops, and the banner shows it.
     won: Option<f64>,
@@ -132,6 +147,25 @@ impl PieHeist {
             sprite.tint = key.color.color();
         }
         self.update_solid();
+
+        // Guards walk from where the level puts them; drawn above the floor
+        // items, below the player.
+        self.guards = world
+            .query_mut::<(Entity, &Transform2D, &Guard)>()
+            .into_iter()
+            .map(|(entity, t, guard)| Patrol {
+                entity,
+                origin: t.position,
+                guard: guard.clone(),
+            })
+            .collect();
+        self.guards.sort_by_key(|p| p.entity.id());
+        for patrol in &self.guards {
+            let _ = world.insert_one(patrol.entity, Layer(5));
+        }
+        self.level_time = 0.0;
+        self.move_guards(ctx);
+        let world = ctx.world_mut();
 
         let mut starts: Vec<(Entity, Vec2)> = world
             .query_mut::<(Entity, &Transform2D, &PlayerStart)>()
@@ -196,12 +230,13 @@ impl PieHeist {
         self.update_exit(ctx);
         self.update_hud(ctx);
         println!(
-            "pie-heist: {}: {} entities, {} walls, {} doors, {} pies; player at ({:.1}, {:.1})",
+            "pie-heist: {}: {} entities, {} walls, {} doors, {} pies, {} guards; player at ({:.1}, {:.1})",
             self.level,
             entities.len(),
             self.walls.len(),
             self.doors.len(),
             self.pies_total,
+            self.guards.len(),
             start.x,
             start.y
         );
@@ -255,14 +290,15 @@ impl PieHeist {
             format!("   Keys: {}", names.join(", "))
         };
         let status = format!(
-            "{}   Pies {}/{}{keys}{exit}",
+            "{}   Pies {}/{}   Caught {}{keys}{exit}",
             level_title(&self.level),
             self.pies_total - self.pies_left,
-            self.pies_total
+            self.pies_total,
+            self.caught
         );
         Self::set_hud(ctx, Hud::Status, status);
         let banner = match self.won {
-            Some(at) => format!("You win!  {at:.0} s"),
+            Some(at) => format!("You win!  {at:.0} s, caught {}", self.caught),
             None => String::new(),
         };
         Self::set_hud(ctx, Hud::Banner, banner);
@@ -307,6 +343,41 @@ impl PieHeist {
         if let Some(sounds) = &self.sounds {
             ctx.play_sound(sound(sounds), 0.8);
         }
+    }
+
+    /// Puts every guard where its patrol is after `level_time` seconds.
+    fn move_guards(&self, ctx: &mut Context<'_>) {
+        for patrol in &self.guards {
+            let at = patrol.origin
+                + patrol_offset(&patrol.guard.path, patrol.guard.speed, self.level_time);
+            if let Ok(mut t) = ctx.world_mut().get::<&mut Transform2D>(patrol.entity) {
+                t.position = at;
+            }
+        }
+    }
+
+    /// Restarts the level when a guard touches the player: pies, keys, doors
+    /// and guards are back where the level file puts them. `true` if caught.
+    fn check_caught(&mut self, ctx: &mut Context<'_>, player: Rect) -> bool {
+        let guards: Vec<Rect> = self
+            .guards
+            .iter()
+            .filter_map(|p| Self::area(ctx, p.entity))
+            .collect();
+        if touched(player, &guards).is_empty() {
+            return false;
+        }
+        self.caught += 1;
+        self.play(ctx, |s| s.caught);
+        println!(
+            "pie-heist: caught by a guard ({} time(s)); restarting {}",
+            self.caught, self.level
+        );
+        if let Err(error) = self.load_level(ctx) {
+            eprintln!("pie-heist: could not reload {}: {error:?}", self.level);
+            ctx.request_exit();
+        }
+        true
     }
 
     /// The walls and the doors no key opens yet.
@@ -414,6 +485,7 @@ impl Game for PieHeist {
             exit: ctx.load_sound("sounds/exit.wav")?,
             key: ctx.load_sound("sounds/key.wav")?,
             door: ctx.load_sound("sounds/door.wav")?,
+            caught: ctx.load_sound("sounds/caught.wav")?,
         });
         self.load_level(ctx)
     }
@@ -431,6 +503,8 @@ impl Game for PieHeist {
         .clamp(Vec2::splat(-1.0), Vec2::ONE)
         .normalize_or_zero();
         let delta = direction * PLAYER_SPEED * ctx.dt();
+        self.level_time += ctx.dt();
+        self.move_guards(ctx);
         let Some(player) = self.player else {
             return;
         };
@@ -440,7 +514,10 @@ impl Game for PieHeist {
             at = Some(t.position);
         }
         if let Some(at) = at {
-            self.pick_up(ctx, Rect::from_center_size(at, Vec2::splat(PLAYER_SIZE)));
+            let area = Rect::from_center_size(at, Vec2::splat(PLAYER_SIZE));
+            if !self.check_caught(ctx, area) {
+                self.pick_up(ctx, area);
+            }
         }
     }
 
@@ -485,6 +562,9 @@ fn main() -> purplepie::Result<()> {
         pies_total: 0,
         pies_left: 0,
         exit: None,
+        guards: Vec::new(),
+        level_time: 0.0,
+        caught: 0,
         won: None,
         font: None,
         sounds: None,

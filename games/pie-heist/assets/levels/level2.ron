@@ -110,5 +110,17 @@
                 "pie_heist::Key": (color: Gold),
             },
         ),
+        (
+            transform: (
+                position: (-80.0, 0.0),
+            ),
+            sprite: (
+                texture: "textures/guard.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Guard": (path: [(0.0, -160.0), (0.0, 160.0)], speed: 160.0),
+            },
+        ),
     ],
 )

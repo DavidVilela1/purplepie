@@ -175,6 +175,39 @@ impl KeyColor {
     }
 }
 
+/// Where a guard is, relative to where it starts, `seconds` after the level
+/// began: it walks from `path`'s first point to the next, then on to the
+/// last, and back to the first (the path loops; two points walk back and
+/// forth) at `speed` units per second. A path of one point, a speed that is
+/// zero, negative or not a number, or a path whose points are all the same
+/// keeps the guard on the first point; an empty path, on its start.
+pub fn patrol_offset(path: &[(f32, f32)], speed: f32, seconds: f32) -> Vec2 {
+    let points: Vec<Vec2> = path.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    let Some(&first) = points.first() else {
+        return Vec2::ZERO;
+    };
+    let legs = || {
+        points
+            .iter()
+            .zip(points.iter().cycle().skip(1))
+            .map(|(&from, &to)| (from, to))
+    };
+    let length: f32 = legs().map(|(from, to)| from.distance(to)).sum();
+    let walked = speed * seconds;
+    if !(length > 0.0 && walked.is_finite() && speed > 0.0) {
+        return first;
+    }
+    let mut left = walked.rem_euclid(length);
+    for (from, to) in legs() {
+        let leg = from.distance(to);
+        if left <= leg {
+            return from.lerp(to, if leg > 0.0 { left / leg } else { 0.0 });
+        }
+        left -= leg;
+    }
+    first
+}
+
 /// The area a sprite or quad of `size` covers with `transform` (scale applied,
 /// rotation ignored): what the player touches to pick something up.
 pub fn drawn_rect(transform: &Transform2D, size: Vec2) -> Rect {
@@ -378,6 +411,56 @@ mod tests {
         let through = move_and_slide(Vec2::new(50.0, 0.0), size, Vec2::new(100.0, 0.0), &open);
         assert_eq!(through, Vec2::new(150.0, 0.0));
         assert_ne!(KeyColor::Red.color(), KeyColor::Gold.color());
+    }
+
+    #[test]
+    fn guards_walk_their_path_in_a_loop() {
+        let close = |a: Vec2, b: Vec2| (a - b).length() < 1e-3;
+        // Two points: back and forth, 400 units a round at 100 units/s.
+        let line = [(0.0, 0.0), (200.0, 0.0)];
+        assert_eq!(patrol_offset(&line, 100.0, 0.0), Vec2::ZERO);
+        assert!(close(
+            patrol_offset(&line, 100.0, 1.5),
+            Vec2::new(150.0, 0.0)
+        ));
+        assert!(close(
+            patrol_offset(&line, 100.0, 3.0),
+            Vec2::new(100.0, 0.0)
+        ));
+        assert!(close(
+            patrol_offset(&line, 100.0, 4.5),
+            Vec2::new(50.0, 0.0)
+        ));
+        // Three points: the last leg goes back to the first point.
+        let triangle = [(0.0, 0.0), (30.0, 0.0), (30.0, 40.0)];
+        assert!(close(
+            patrol_offset(&triangle, 10.0, 5.0),
+            Vec2::new(30.0, 20.0)
+        ));
+        assert!(close(
+            patrol_offset(&triangle, 10.0, 9.5),
+            Vec2::new(15.0, 20.0)
+        ));
+        assert!(close(patrol_offset(&triangle, 10.0, 12.0), Vec2::ZERO));
+        // A path that does not start at (0, 0) starts the guard elsewhere.
+        let offset = [(0.0, -50.0), (0.0, 50.0)];
+        assert_eq!(patrol_offset(&offset, 25.0, 0.0), Vec2::new(0.0, -50.0));
+        // Standing still: empty, one point, repeated points, no speed.
+        assert_eq!(patrol_offset(&[], 100.0, 3.0), Vec2::ZERO);
+        assert_eq!(
+            patrol_offset(&[(5.0, 6.0)], 100.0, 3.0),
+            Vec2::new(5.0, 6.0)
+        );
+        assert_eq!(
+            patrol_offset(&[(5.0, 6.0), (5.0, 6.0)], 100.0, 3.0),
+            Vec2::new(5.0, 6.0)
+        );
+        for speed in [0.0, -10.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(patrol_offset(&line, speed, 3.0), Vec2::ZERO, "{speed}");
+        }
+        // A long time is still on the path.
+        let late = patrol_offset(&line, 100.0, 3600.0 + 1.0);
+        assert!(close(late, Vec2::new(100.0, 0.0)), "{late}");
     }
 
     #[test]
