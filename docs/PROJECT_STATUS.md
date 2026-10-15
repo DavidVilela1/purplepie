@@ -23,7 +23,10 @@ crate's first slice (`crates/purplepie-editor`: open, list, pan/zoom, save, PP-0
 PP-038g) and an inspector that edits every saved value: transform, layer and hidden (PP-038h1), quads, sprites,
 texts and game components kept as RON text (PP-038h2), deleting and duplicating entities with undo (PP-038i1) and
 adding quads, sprites and texts (PP-038i2), a game's own editor that checks its component types (PP-038j1), and the
-guide section with the checklist step (PP-038j2). It was released in **0.2.0** (PP-039, 2026-10-14). Next: phase P6.
+guide section with the checklist step (PP-038j2). It was released in **0.2.0** (PP-039, 2026-10-14; tag checked in
+PP-040). **Phase P6 (proof): in progress** since PP-040 (2026-10-15), which planned Pie Heist ([GAME3.md](GAME3.md)), a
+top-down heist whose five levels are drawn in the editor. Next: PP-041, adding and removing game components in the
+editor.
 
 ## Current Stage
 
@@ -77,8 +80,9 @@ does not exist yet. PP-038j1 lets a game build its own editor in three lines (`p
 `GameComponents`): values of its components are checked against its types when the scene opens and when edited
 (engine: `scene::check_component`). PP-038j2 added GUIDE §15 (using the editor, and a game's own editor binary whose
 code is a compiled example kept identical to the guide by a test), the checklist step for the example editor, and
-closed **phase P5**. PP-039 released it as **version 0.2.0** (the owner tags `v0.2.0`). Next: **PP-040**, which checks
-the tag and plans phase P6.
+closed **phase P5**. PP-039 released it as **version 0.2.0**; the owner tagged `v0.2.0`, and PP-040 checked the tag and
+planned **phase P6**: Pie Heist ([GAME3.md](GAME3.md)), whose levels are made in the editor. Next: **PP-041**, adding and
+removing game components in the editor, the one gap every Pie Heist level needs.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -160,6 +164,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-040: P6 plan: tag `v0.2.0` checked (identical tree; outside crate by the tag builds); GAME3.md (Pie Heist), gaps, P6 split into PP-041 and PP-042a–e.
 - PP-039: release 0.2.0: version, CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines on `tag = "v0.2.0"` (README, GUIDE §1/§15, RELEASING), RELEASING covers the editor's library; preconditions owner-reported green.
 - PP-038j2: GUIDE §15 "The scene editor" (controls; a game's own editor binary, its files compiled as the editor crate's `guide_editor` example and kept identical to the guide by a test; checked as an outside crate depending on GitHub `main`); CHECKLIST step 9 with the example editor; RISKS reviewed. Phase P5 complete.
 - PP-038j1: a game's own editor: `purplepie_editor::GameComponents`, `run_with`, `main_with`; kept game component values checked against the game's types on open and on edit (still saved as text); engine `scene::check_component::<T>`; example `scene_demo_editor`.
@@ -208,7 +213,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-040: P6 plan** (phase P6, item 1): confirm the `v0.2.0` tag (identical tree; outside crate by the tag), then specify the bigger example game built with the editor (`docs/GAME3.md`), list the gaps it needs and split P6 into tasks. See [TASKS.md](TASKS.md#pp-040-p6-plan--next).
+- **PP-041: Editor: add and remove game components** (phase P6, item 2): an "Add component" menu with the game's types (default values) and a remove button, each one undo step; a small engine helper that writes a component as scene RON. See [TASKS.md](TASKS.md#pp-041-editor-add-and-remove-game-components--next).
 
 ## Blocked
 
@@ -250,6 +255,10 @@ executable, else `assets/` in the working directory (ADR-025).
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-10-15: PP-040 Phase P6 planned.**
+  - The `v0.2.0` tag equals the released tree, and an outside crate following the guide builds against it.
+  - [GAME3.md](GAME3.md) specifies Pie Heist: five levels drawn in the editor, with walls, pies, keys, doors, exits, guards and the player start as the game's components. The one gap that blocks it, adding and removing game components in the editor, is PP-041. Documentation only.
 
 - **2026-10-14: PP-039 Release 0.2.0.**
   - Version 0.2.0 for the engine and the editor crate; CHANGELOG `[0.2.0] - 2026-10-14`; README, GUIDE and RELEASING now point to `tag = "v0.2.0"`. The owner tags it after pushing.
@@ -613,7 +622,7 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.95.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-10-13,
-after the final PP-039 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-040 change (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
@@ -622,6 +631,7 @@ after the final PP-039 change (CI additionally runs the latest stable clippy and
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
 | `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 245 unit tests + 58 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 261 + 59, 13 ignored; editor 22 + 3 doctests; Purple Swarm 10 |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| P6 plan (PP-040) | ✅ GitHub `main` (`55bb6a5`) identical to this tree before the task; tag `v0.2.0` (annotated, `55bb6a5`) cloned and identical. Outside crate with GUIDE §15's dependency lines (`purplepie` and `purplepie-editor` at `tag = "v0.2.0"`) and its two files: built against the tag in 3 min 14 s with 0 warnings and one `purplepie` in its lock file; under Xvfb its game saved a level with a `my_game::Door` and its editor opened it ("1 game component value(s) checked against the game's types"). Documentation-only change otherwise (`cargo fmt --check`) |
 | Release 0.2.0 (PP-039) | ✅ GitHub `main` (`290d87f`) identical to this tree before the task. Public items compared with a clone of the `v0.1.0` tag. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`); `cargo build`; sandbox under Xvfb prints `PurplePie sandbox v0.2.0`; R-19 `chunks_exact` grep empty; outside crate (GUIDE §15 files) by path builds against 0.2.0 |
 | Guide section and P5 close-out (PP-038j2) | ✅ GitHub `main` (`4f0dc83`) identical to this tree before the task. Guide doctests 14 passed, 1 ignored (the editor program, compiled as an example); the guide-files test fails when the example differs from the guide (mutation). Outside crate built from section 15 word for word with both dependencies from GitHub `main` (see PP-038j2 in TASKS for the run). clippy `--workspace --all-targets --all-features`; `cargo doc --workspace --all-features` (`-D warnings`). CHECKLIST step 9's new example-editor check run under Xvfb |
 | A game's own editor (PP-038j1) | ✅ GitHub `main` (`f31060d`) identical to this tree before the task. clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor` (+ `incompatible_msrv`); `cargo doc` with `--workspace --all-features` and without features (`-D warnings`). Xvfb with the `scene_demo_editor` example: a string speed refused, a valid value accepted, the entity duplicated, saved; that file loaded strictly by the engine's `scene` example (20 entities, 3 spinning sprites); `count: -1` → red status and label; plain editor unchanged, `--help` exit 0, bad option exit 2 |
@@ -677,4 +687,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-10-14. PP-039 done: version 0.2.0 (the owner tags `v0.2.0`). PP-040 (tag check and P6 plan) is next.
+2026-10-15. PP-040 done: tag checked, phase P6 planned (Pie Heist, GAME3.md). PP-041 (editor: add and remove game components) is next.
