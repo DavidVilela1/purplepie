@@ -12,6 +12,8 @@ use purplepie::math::{Rect, Transform2D, Vec2};
 use purplepie::render::Quad;
 use serde::{Deserialize, Serialize};
 
+pub mod screen;
+
 /// The names the components are saved under in level files.
 pub mod names {
     pub const WALL: &str = "pie_heist::Wall";

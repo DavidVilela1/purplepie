@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042c2: Pie Heist screens: title, pause, level complete, win with "Play again"** · P1 · TODO ← **next task**
+- [ ] **PP-042d1: Pie Heist level check: decide how shipped levels are checked (one start, one exit, every `next` exists, loads strictly) and add the test** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -61,6 +61,7 @@ _None._
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
 - [x] **PP-042b2: Pie Heist keys and doors: a key opens every door of its colour (doors block like walls until then, then disappear); keys and doors drawn in their colour; HUD "Keys: Gold"; key and door sounds; level 2 gained a gold door before the exit and a gold key, in the editor; scripted play-through (phase P6, item 5)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042c1: Pie Heist guards and being caught** · DONE (2026-10-15; verified on Linux; PP-042c split into c1 and c2)
+- [x] **PP-042c2: Pie Heist screens (title, pause, level complete, win with "Play again")** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -102,7 +103,7 @@ _None._
 
 P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042d: Pie Heist: levels 2–5 built in the editor; level-check decision and test; balance pass** · P2 · TODO
+- [ ] **PP-042d2: Pie Heist: levels 3–5 built in the editor (each about 2 000 × 1 500, using every component); a balance pass over all five** · P2 · TODO (split again at its start if needed)
 - [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete (release 0.3.0 if APIs changed)** · P2 · TODO
 
 
@@ -491,14 +492,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042c2: Pie Heist screens ← NEXT
+### PP-042d1: Pie Heist level check ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 6 (second half) · Priority P1 · TODO |
+| Stage | Phase P6, item 7 (first part; PP-042d split into d1 level check and d2 levels 3–5) · Priority P1 · TODO |
+| Dependencies | PP-042c2 (DONE); [GAME3.md](GAME3.md) gaps table, "A test that every shipped level loads" |
+| Why now | The game is complete for two levels; three more large levels come next, and a check that every shipped level is well formed should exist before they are drawn, so each one is checked as it is saved. |
+| Scope | Decide between the two options in GAME3.md: a timed Xvfb run (as Purple Swarm's autoplay) or a small engine API that reads a scene file's entities and components without a window (e.g. a `scene` function over the file's text, with the game's registered types). Record the decision (an ADR-035/036 note, or a new ADR if it adds public engine API). Then a test in `games/pie-heist` that, for every file in `assets/levels/`: it loads strictly with the game's components; it has exactly one `PlayerStart` and one `Exit`; every `Exit::next` names a shipped level and the chain from level 1 reaches a last level without loops; every wall and door is axis-aligned. Runs in `cargo test` (CI) if the chosen option allows it. |
+| Acceptance criteria | Decision recorded with its reasons; the test passes on levels 1–2 and fails (checked by a temporary edit) on a level with two starts, a missing `next` file or a rotated wall. |
+
+### PP-042c2: Pie Heist screens
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 6 (second half) · Priority P1 · **DONE** (2026-10-15; verified on Linux) |
 | Dependencies | PP-042c1 (DONE); [GAME3.md](GAME3.md) |
-| Why now | Every game component works (walls, pies, keys, doors, exits, guards); the screens turn the levels into a game someone can start, pause and finish, and replay. |
-| Scope | A small screen state in the game: title ("Pie Heist", "Click to start", a `ui::Button`), play, pause (Escape: the world stops, guards too; Escape again resumes or Q quits, as GAME3.md says), a short "Level N complete" banner between levels, and a win screen with the time and the caught count and a "Play again" button (restarts at level 1 with time and caught reset). The HUD gains the time. Screen rules that need no window (which screen follows which input) in `lib.rs` with unit tests. Xvfb: a run through title → play → pause → resume → win → play again, with screenshots. |
-| Acceptance criteria | Title, pause, level-complete and win screens shown under Xvfb; Escape/Q behave as documented; "Play again" restarts with zeroed time and caught; unit tests for the screen transitions. |
+| Why now | Every game component worked; the screens turn the levels into a game someone can start, pause, finish and replay. |
+| Scope | A screen state for the game, with its rules free of engine types and unit-tested; title, pause, level-complete banner, win screen with a "Play again" button; the time in the HUD. Pause follows GAME3.md and Purple Swarm: a click resumes, Escape or Q quits (an earlier draft of this task said "Escape again resumes", which contradicted GAME3.md). |
+| Acceptance criteria | ✅ `pie_heist::screen`: `Screen` (Title, Playing, Paused, LevelComplete, Won), `Presses` (click, play_again, escape, quit), `Action`; `Screen::action` (a click wins over a key; on the win screen only the button plays again; Escape or Q quits from title, pause and win; Escape pauses while playing; Q does nothing while playing), `Screen::after`, `Screen::runs` (only Playing moves the world), `clock` ("1:05"); 4 unit tests (11 in the game's library). ✅ Game: `with_exit_on_escape(false)`; starts on the title over the frozen first level; a dark shade, a yellow title and lines of help on every screen; "Level 1 complete / Next: Level 2" for 1.5 s after an exit (a click skips it; the next level waits frozen); the win screen shows the time and caught count and a `ui::Button` "Play again" (lighter when hovered) that restarts at the first level with both reset; the time counts only while playing; the HUD shows it; each screen change is printed. ✅ Xvfb: title (keys ignored), click → play, Escape → paused (time stays 0:00), click → play, level 1 → "Level 1 complete" banner, click → level 2, pie and key, win screen ("Time 0:17   Caught 0", button hovered), a stray click ignored, "Play again" → level 1 with time 0:00, Escape → paused, Q → quit; the guard run again: caught once, win screen "Time 0:09   Caught 1". |
 
 ### PP-042c1: Pie Heist guards and being caught
 | Field | Value |

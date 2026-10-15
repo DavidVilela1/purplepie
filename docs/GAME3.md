@@ -21,7 +21,8 @@ code or a small engine or editor task. Planned in PP-040 (2026-10-15) against re
   (pies and keys come back) and adds one to "caught".
 - **Hints:** text in the level, placed in the editor (a plain `Text` entity).
 - **Screens:** title ("Click to start"), play (HUD: pies left, level, time, caught), level complete (a short banner),
-  win. Escape pauses; Escape again or Q quits.
+  win (time, caught, "Play again"). Escape pauses; a click resumes, Escape again or Q quits (as in Purple Swarm). The
+  time counts only while playing.
 - **Sound:** pie, key, door, caught, exit (short WAVs); music optional.
 - **Size:** five levels, each bigger than the window (about 2 000 × 1 500 units), built only in the editor.
 
@@ -122,8 +123,11 @@ numbers that is only seen in the game (see "Seeing guard paths in the editor" ab
 4. **PP-042c:** split in two:
    - **PP-042c1 (done):** guards walk their paths (`patrol_offset`); touching one restarts the level and counts as
      caught; level 2 got a guard in the editor, its path typed as RON;
-   - **PP-042c2:** title, pause, level-complete and win screens, "Play again", the time in the HUD.
-5. **PP-042d:** levels 2–5 built in the editor; the level-check decision and its test; a balance pass.
+   - **PP-042c2 (done):** title, pause, level-complete and win screens, "Play again", the time in the HUD
+     (`pie_heist::screen`).
+5. **PP-042d:** split in two:
+   - **PP-042d1:** the level-check decision and its test, before more levels are drawn;
+   - **PP-042d2:** levels 3–5 built in the editor (level 2 exists); a balance pass over all five.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and
    CHANGELOG; phase P6 complete. A 0.3.0 release follows if engine or editor APIs changed.
 

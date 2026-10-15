@@ -9,7 +9,10 @@
 //! last one (PP-042b1). A key opens every door of its colour; doors block
 //! like walls until then (PP-042b2). Guards walk their patrol paths;
 //! touching one restarts the level (pies, keys and doors come back) and counts
-//! as caught (PP-042c1). The title, pause and win screens come next.
+//! as caught (PP-042c1). The game starts on a title screen; Escape pauses;
+//! a banner marks each completed level, and the last exit shows the time and
+//! the caught count with a "Play again" button (PP-042c2). On the title,
+//! pause and win screens Escape or Q quits.
 //!
 //! Run it from this folder, so its own `assets/` is found:
 //!
@@ -21,17 +24,20 @@
 //!
 //! Levels are drawn with the game's editor: `cargo run -p pie-heist-editor --
 //! assets/levels/level1.ron`. `PIE_HEIST_EXIT_AFTER_FRAMES=N` closes the game
-//! after N frames and prints where the player is (for automated checks).
+//! after N frames and prints where the player is (for automated checks); the
+//! game prints every screen change ("pie-heist: screen Playing").
 
 use purplepie::audio::SoundId;
 use purplepie::ecs::Entity;
-use purplepie::input::KeyCode;
+use purplepie::input::{KeyCode, MouseButton};
 use purplepie::math::{Rect, Transform2D, Vec2};
 use purplepie::render::{
     Color, FontId, Hidden, Layer, Quad, ScreenSpace, Sprite, Text, TextAnchor,
 };
+use purplepie::ui::{self, Button};
 use purplepie::{Context, Engine, EngineConfig, Game};
 
+use pie_heist::screen::{Action, Presses, Screen, clock};
 use pie_heist::{
     Door, Exit, Guard, Key, KeyColor, Pie, PlayerStart, Wall, blocking, camera_target, drawn_rect,
     level_bounds, level_title, move_and_slide, next_level, patrol_offset, touched, wall_rect,
@@ -43,15 +49,29 @@ const PLAYER_SPEED: f32 = 220.0;
 const FIRST_LEVEL: &str = "levels/level1.ron";
 /// How a locked exit looks: its own colours, faded.
 const LOCKED_TINT: Color = Color::rgba(1.0, 1.0, 1.0, 0.3);
+/// How long the "Level N complete" banner stays (a click skips it).
+const LEVEL_BANNER_SECONDS: f32 = 1.5;
+const PLAY_AGAIN_SIZE: Vec2 = Vec2::new(200.0, 48.0);
+const BUTTON_COLOR: Color = Color::hex(0x7B2CBF);
+const BUTTON_HOVER_COLOR: Color = Color::hex(0x9D4EDD);
 
 /// The player's entity.
 struct Player;
 
-/// Marks the HUD's text entities.
+/// Marks the HUD's and the screens' entities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hud {
+    /// The status line while playing: level, pies, caught, time, keys.
     Status,
+    /// A screen's big title.
     Banner,
+    /// A screen's smaller lines under the title.
+    Prompt,
+    /// Darkens the frozen level behind a screen.
+    Shade,
+    /// The win screen's button, and its label.
+    PlayAgain,
+    PlayAgainLabel,
 }
 
 /// Sounds, loaded once.
@@ -97,9 +117,14 @@ struct PieHeist {
     level_time: f32,
     /// How many times a guard caught the player, over the whole game.
     caught: u32,
-    /// The game time when the last level's exit was reached; the player
-    /// stops, and the banner shows it.
-    won: Option<f64>,
+    screen: Screen,
+    /// Seconds played over the whole game: not the title, pauses or banners.
+    play_time: f64,
+    /// The level the game started with, where "Play again" goes.
+    first_level: String,
+    /// The title of the level just completed, and how long its banner stays.
+    completed: String,
+    banner_left: f32,
     font: Option<FontId>,
     sounds: Option<Sounds>,
     exit_after: Option<u32>,
@@ -260,12 +285,41 @@ impl PieHeist {
         ));
         world.spawn((
             Transform2D::default(),
+            Quad::new(Vec2::splat(4000.0), Color::rgba(0.03, 0.02, 0.06, 0.85)),
+            ScreenSpace::CENTER,
+            Layer(19),
+            Hud::Shade,
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, 80.0)),
             Text::new("", font, 44.0)
                 .with_color(Color::hex(0xFFD60A))
                 .with_anchor(TextAnchor::CENTER),
             ScreenSpace::CENTER,
             Layer(21),
             Hud::Banner,
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, 36.0)),
+            Text::new("", font, 22.0).with_anchor(TextAnchor::TOP_CENTER),
+            ScreenSpace::CENTER,
+            Layer(21),
+            Hud::Prompt,
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, -110.0)),
+            Quad::new(PLAY_AGAIN_SIZE, BUTTON_COLOR),
+            Button::new(PLAY_AGAIN_SIZE),
+            ScreenSpace::CENTER,
+            Layer(21),
+            Hud::PlayAgain,
+        ));
+        world.spawn((
+            Transform2D::from_position(Vec2::new(0.0, -110.0)),
+            Text::new("Play again", font, 24.0).with_anchor(TextAnchor::CENTER),
+            ScreenSpace::CENTER,
+            Layer(22),
+            Hud::PlayAgainLabel,
         ));
         Ok(())
     }
@@ -290,18 +344,108 @@ impl PieHeist {
             format!("   Keys: {}", names.join(", "))
         };
         let status = format!(
-            "{}   Pies {}/{}   Caught {}{keys}{exit}",
+            "{}   Pies {}/{}   Caught {}   Time {}{keys}{exit}",
             level_title(&self.level),
             self.pies_total - self.pies_left,
             self.pies_total,
-            self.caught
+            self.caught,
+            clock(self.play_time)
         );
         Self::set_hud(ctx, Hud::Status, status);
-        let banner = match self.won {
-            Some(at) => format!("You win!  {at:.0} s, caught {}", self.caught),
-            None => String::new(),
+        let (banner, prompt) = match self.screen {
+            Screen::Title => (
+                "PIE HEIST".to_owned(),
+                "Collect every pie, then reach the exit.\nKeys open doors of their colour; guards send you back.\nWASD or arrows move, Escape pauses.\n\nClick to start   Esc quits".to_owned(),
+            ),
+            Screen::Playing => (String::new(), String::new()),
+            Screen::Paused => (
+                "Paused".to_owned(),
+                "Click to resume   Esc or Q quits".to_owned(),
+            ),
+            Screen::LevelComplete => (
+                format!("{} complete", self.completed),
+                format!("Next: {}", level_title(&self.level)),
+            ),
+            Screen::Won => (
+                "You win!".to_owned(),
+                format!(
+                    "Time {}   Caught {}\n\nEsc quits",
+                    clock(self.play_time),
+                    self.caught
+                ),
+            ),
         };
         Self::set_hud(ctx, Hud::Banner, banner);
+        Self::set_hud(ctx, Hud::Prompt, prompt);
+        Self::show(ctx, Hud::Shade, self.screen != Screen::Playing);
+        let won = self.screen == Screen::Won;
+        Self::show(ctx, Hud::PlayAgain, won);
+        Self::show(ctx, Hud::PlayAgainLabel, won);
+    }
+
+    /// Shows or hides the HUD entities marked `which`.
+    fn show(ctx: &mut Context<'_>, which: Hud, visible: bool) {
+        let world = ctx.world_mut();
+        let marked: Vec<(Entity, bool)> = world
+            .query_mut::<(Entity, &Hud, Option<&Hidden>)>()
+            .into_iter()
+            .filter(|(_, hud, _)| **hud == which)
+            .map(|(e, _, hidden)| (e, hidden.is_some()))
+            .collect();
+        for (entity, hidden) in marked {
+            if visible && hidden {
+                let _ = world.remove_one::<Hidden>(entity);
+            } else if !visible && !hidden {
+                let _ = world.insert_one(entity, Hidden);
+            }
+        }
+    }
+
+    /// Whether the "Play again" button was clicked this frame (after
+    /// `ui::update_buttons`), and its hover colour.
+    fn play_again_clicked(ctx: &mut Context<'_>) -> bool {
+        let mut clicked = false;
+        for (button, quad, hud) in ctx.world_mut().query_mut::<(&Button, &mut Quad, &Hud)>() {
+            if *hud == Hud::PlayAgain {
+                clicked |= button.clicked();
+                quad.color = if button.is_hovered() {
+                    BUTTON_HOVER_COLOR
+                } else {
+                    BUTTON_COLOR
+                };
+            }
+        }
+        clicked
+    }
+
+    /// Does what a screen action asks, and moves to the next screen.
+    fn apply(&mut self, ctx: &mut Context<'_>, action: Action) {
+        match action {
+            Action::Nothing => return,
+            Action::Quit => {
+                println!("pie-heist: quit");
+                ctx.request_exit();
+                return;
+            }
+            Action::Restart => {
+                self.caught = 0;
+                self.play_time = 0.0;
+                self.level = self.first_level.clone();
+                if let Err(error) = self.load_level(ctx) {
+                    eprintln!("pie-heist: could not load {}: {error:?}", self.level);
+                    ctx.request_exit();
+                }
+            }
+            Action::Start | Action::Pause | Action::Resume | Action::Continue => {}
+        }
+        self.set_screen(self.screen.after(action));
+    }
+
+    fn set_screen(&mut self, screen: Screen) {
+        if screen != self.screen {
+            println!("pie-heist: screen {screen:?}");
+            self.screen = screen;
+        }
     }
 
     /// Opens the exit once every pie is collected, and shows whether it is open.
@@ -462,16 +606,21 @@ impl PieHeist {
         match exit.next.clone() {
             Some(next) => {
                 println!("pie-heist: exit to {next}");
+                self.completed = level_title(&self.level);
                 self.level = next;
                 if let Err(error) = self.load_level(ctx) {
                     eprintln!("pie-heist: could not load {}: {error:?}", self.level);
                     ctx.request_exit();
                 }
+                self.banner_left = LEVEL_BANNER_SECONDS;
+                self.set_screen(Screen::LevelComplete);
             }
             None => {
-                let at = ctx.time().elapsed();
-                self.won = Some(at);
-                println!("pie-heist: you win in {at:.1} s");
+                println!(
+                    "pie-heist: you win in {:.1} s, caught {}",
+                    self.play_time, self.caught
+                );
+                self.set_screen(Screen::Won);
             }
         }
     }
@@ -491,9 +640,10 @@ impl Game for PieHeist {
     }
 
     fn fixed_update(&mut self, ctx: &mut Context<'_>) {
-        if self.won.is_some() {
+        if !self.screen.runs() {
             return;
         }
+        self.play_time += f64::from(ctx.dt());
         let input = ctx.input();
         let direction = Vec2::new(
             input.axis(KeyCode::A, KeyCode::D)
@@ -521,7 +671,31 @@ impl Game for PieHeist {
         }
     }
 
+    /// Screen changes are read every frame, so no click or key edge is missed.
     fn update(&mut self, ctx: &mut Context<'_>) {
+        let pointer = ui::Pointer::from_input(ctx.input());
+        let viewport = ctx.viewport_size();
+        ui::update_buttons(ctx.world_mut(), pointer, viewport);
+        let input = ctx.input();
+        let presses = Presses {
+            click: input.mouse_just_pressed(MouseButton::Left),
+            play_again: false,
+            escape: input.just_pressed(KeyCode::Escape),
+            quit: input.just_pressed(KeyCode::Q),
+        };
+        let presses = Presses {
+            play_again: Self::play_again_clicked(ctx),
+            ..presses
+        };
+        let action = self.screen.action(presses);
+        self.apply(ctx, action);
+        if self.screen == Screen::LevelComplete {
+            self.banner_left -= ctx.dt();
+            if self.banner_left <= 0.0 {
+                self.apply(ctx, Action::Continue);
+            }
+        }
+
         if let (Some(at), Some(bounds)) = (self.player_position(ctx), self.bounds) {
             let half_view = ctx.viewport_size() / (2.0 * ctx.camera().effective_zoom());
             ctx.camera_mut().position = camera_target(at, half_view, bounds);
@@ -541,7 +715,7 @@ impl Game for PieHeist {
 }
 
 fn main() -> purplepie::Result<()> {
-    let level = std::env::args()
+    let first_level = std::env::args()
         .nth(1)
         .unwrap_or_else(|| FIRST_LEVEL.to_owned());
     let exit_after = std::env::var("PIE_HEIST_EXIT_AFTER_FRAMES")
@@ -550,9 +724,10 @@ fn main() -> purplepie::Result<()> {
     let config = EngineConfig::new("Pie Heist")
         .with_size(WINDOW.0, WINDOW.1)
         .with_clear_color(Color::hex(0x14101E))
-        .with_console_log(true);
+        .with_console_log(true)
+        .with_exit_on_escape(false);
     Engine::new(config)?.run(PieHeist {
-        level,
+        level: first_level.clone(),
         player: None,
         walls: Vec::new(),
         doors: Vec::new(),
@@ -565,7 +740,11 @@ fn main() -> purplepie::Result<()> {
         guards: Vec::new(),
         level_time: 0.0,
         caught: 0,
-        won: None,
+        screen: Screen::Title,
+        play_time: 0.0,
+        first_level,
+        completed: String::new(),
+        banner_left: 0.0,
         font: None,
         sounds: None,
         exit_after,

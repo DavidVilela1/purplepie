@@ -16,7 +16,7 @@ break compatibility and a patch version (0.x.**y**) may not.
   removes one (the "x" after its field); both are one undo step.
 - `games/pie-heist/` and `games/pie-heist-editor/`: a third example game, whose levels are drawn in its own scene editor
   (docs/GAME3.md). So far: two levels, movement with wall collision, the camera, pies, keys and doors, guards (being caught restarts
-  the level), exits and level progression.
+  the level), exits and level progression, and title, pause, level-complete and win screens.
 
 ### Fixed
 
