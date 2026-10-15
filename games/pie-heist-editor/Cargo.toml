@@ -1,0 +1,18 @@
+[package]
+name = "pie-heist-editor"
+version = "0.1.0"
+edition = "2024"
+# The scene editor needs the engine's `egui` feature, so Rust 1.95; the game
+# itself stays on 1.90 (a separate crate, as GUIDE section 15 suggests). The
+# CI `msrv` job excludes it, like `purplepie-editor`.
+rust-version = "1.95"
+description = "The scene editor for Pie Heist's levels: PurplePie's editor with the game's component types (docs/GAME3.md)."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+pie-heist = { path = "../pie-heist" }
+purplepie-editor = { path = "../../crates/purplepie-editor" }
+
+[lints.rust]
+unsafe_code = "forbid"

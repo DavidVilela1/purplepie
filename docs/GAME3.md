@@ -64,7 +64,7 @@ layers, texts.
 | **The editor cannot add or remove a game component** (it edits only the ones a file already has). A new quad cannot become a `Wall`; a designer would have to duplicate an existing wall. | **Editor (+ a small engine helper): PP-041, done** (2026-10-15: "Game component: Add…" with `with_default`, an "x" to remove; `scene::component_text`) | Making levels from scratch is the point of P6. An "Add component" menu needs a default value for each of the game's types, as RON text: `GameComponents` would take `T: Default + Serialize` for that, and the engine would write the text exactly as `save_scene` does (the editor has no `ron` dependency, on purpose: R-31). Removing is `UnknownComponents::remove` plus an undo step. |
 | Wall collision response (stop and slide) | Game code | Axis-separated push-out against `Rect`s, a few dozen lines. Walls are axis-aligned by rule, so no rotated boxes. Not engine physics (out of scope for PurplePie). |
 | Level bounds for the camera clamp | Game code | The union of the wall rectangles, computed when the level loads. |
-| Grid snapping in the editor (aligning maze walls) | **Decide while building level 1 (PP-042a)** | Typed positions and Shift+arrow steps of 10 units may be enough. If aligning walls is slow, a snap setting becomes an editor task; record the measured reason. |
+| Grid snapping in the editor (aligning maze walls) | **Decided in PP-042a: not now** | Level 1's walls were placed by typing four numbers each (position x/y, size x/y) and came out exact; no wall needed dragging. Snapping only matters when walls are placed with the mouse. Revisit in PP-042d if drawing levels 2–5 by mouse is slow. |
 | Seeing guard paths in the editor | Not planned | The path is RON text relative to the guard; the designer reads it in the inspector. Revisit only if building levels 2–5 shows it is the slowest part. |
 | A test that every shipped level loads, with one `PlayerStart` and one `Exit` | **Decide in PP-042d** | Games cannot load a scene without a running engine (`load_scene` is a `Context` method). Either a timed Xvfb run like Purple Swarm's autoplay, or a small engine API to read a scene file's entities without a window. The choice is made when the five levels exist. |
 | Changing a sprite's texture in the editor | Not planned | Delete and add again with the right image. Revisit if it shows up while building levels. |
@@ -83,11 +83,28 @@ layers, texts.
 This is one more workspace member of the kind ADR-042 already allows, plus a second editor crate; it gets a note
 in ADR-042 (not a new ADR) in PP-042a.
 
+## Building level 1 (PP-042a)
+
+Level 1 (`assets/levels/level1.ron`) was drawn with `pie-heist-editor` on an empty file, driven under Xvfb: five
+quads (an 820 × 520 room and an inner wall with a gap at the bottom), each given its position and size in the
+inspector and `pie_heist::Wall` from "Game component: Add…", and a sprite with `textures/start.png` given
+`pie_heist::PlayerStart`. Saving wrote exactly those six entities. Findings:
+
+- **Fixed in the editor:** "Add → Quad" made a quad in `Color::PURPLEPIE`, the engine's default background, so it was
+  invisible on a new scene. New quads are now light lavender (`#E0D7F5`).
+- Typing exact numbers was quick and precise; no grid snapping needed (see the gaps table).
+- The inspector rows move down as the entity list grows (until the list reaches its maximum height); harmless for a
+  person, but scripted checks have to compute positions from the entity count.
+
+In the game, the player starts at the hidden start marker, stops at the inner wall (touching it), slides along
+the floor and walks under the inner wall to the other side; the camera stays centred because level 1 is smaller
+than the window.
+
 ## Plan
 
-1. **PP-041:** editor: add and remove game components (with defaults from the game's types), each one undo step;
+1. **PP-041 (done):** editor: add and remove game components (with defaults from the game's types), each one undo step;
    the engine helper that writes a component as scene RON. Updates GUIDE §15 and the example editor.
-2. **PP-042a:** `games/pie-heist` skeleton and `games/pie-heist-editor`: components registered, level loading,
+2. **PP-042a (done):** `games/pie-heist` skeleton and `games/pie-heist-editor`: components registered, level loading,
    player movement with wall collision, camera; level 1 drawn in the editor; the grid-snapping decision.
 3. **PP-042b:** pies, keys, doors, the exit and level progression; HUD and sounds.
 4. **PP-042c:** guards and being caught (level restart); title, pause, level-complete and win screens.

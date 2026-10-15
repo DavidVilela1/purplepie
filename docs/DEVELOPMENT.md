@@ -135,6 +135,7 @@ cargo build
 cargo run            # sandbox
 cargo run --features debug-overlay      # sandbox with the debug overlay (F12)
 (cd games/purple-swarm && cargo run)   # example game, from its own folder (ADR-042)
+(cd games/pie-heist && cargo run)      # third example game (P6); its levels: cargo run -p pie-heist-editor -- assets/levels/level1.ron
 cargo run -p purplepie-editor -- assets/scenes/demo.ron   # the scene editor (ADR-044; Rust 1.95)
 ```
 

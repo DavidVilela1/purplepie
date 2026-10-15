@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042a: `games/pie-heist` skeleton + `games/pie-heist-editor`: components registered, level loading, player movement with wall collision, camera; level 1 drawn in the editor; grid-snapping decision; ADR-042 note (split at its start if needed)** · P1 · TODO ← **next task**
+- [ ] **PP-042b: Pie Heist: pies, keys, doors, exit and level progression; HUD and sounds; level 1 completed in the editor** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-040: P6 plan: tag `v0.2.0` checked (identical to the PP-039 tree; an outside crate following GUIDE §1/§15 builds against it); `docs/GAME3.md` specifies Pie Heist, a top-down heist whose five levels are drawn in the editor; gaps listed; P6 split into PP-041 and PP-042a–e (phase P6, item 1)** · DONE (2026-10-15)
 - [x] **PP-039: Release 0.2.0: version 0.2.0 (engine and editor crate), CHANGELOG `[0.2.0] - 2026-10-14`, dependency lines in README, GUIDE §1/§15 and RELEASING moved to `tag = "v0.2.0"`, RELEASING covers the editor's library; owner's checklist (incl. step 9 on Windows) and CI green (owner-reported); owner tags `v0.2.0` after pushing** · DONE (2026-10-14; verified on Linux; tag by the owner)
@@ -98,7 +99,6 @@ _None._
 
 P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042b: Pie Heist: pies, keys, doors, exit and level progression; HUD and sounds** · P2 · TODO
 - [ ] **PP-042c: Pie Heist: guards and being caught; title, pause, level-complete and win screens** · P2 · TODO
 - [ ] **PP-042d: Pie Heist: levels 2–5 built in the editor; level-check decision and test; balance pass** · P2 · TODO
 - [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete (release 0.3.0 if APIs changed)** · P2 · TODO
@@ -489,14 +489,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042a: Pie Heist skeleton and its editor ← NEXT
+### PP-042b: Pie Heist pies, keys, doors and exits ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 3 · Priority P1 · TODO |
+| Stage | Phase P6, item 4 · Priority P1 · TODO |
+| Dependencies | PP-042a (DONE); [GAME3.md](GAME3.md) |
+| Why now | Level 1 can be walked; the heist itself (collect every pie, open doors with keys, leave through the exit) is the next playable slice, and it exercises the remaining components in the editor. |
+| Scope | Game: pies collected on touch (`math::Rect`/circle overlap); keys picked up, doors of their colour removed from the walls; the exit locked (dimmed) until every pie is collected, then touching it loads `Exit::next` (or, when empty, shows "You win" for now; the real screens are PP-042c); a screen-space HUD (pies left, level name); short sounds (pie, key, door, exit) copied or made for the game; engine-free rules in `lib.rs` with unit tests (e.g. which doors a key opens, whether the exit is open). Content: textures for pie, key (three colours), exit; level 1 completed in the editor (pies, a key and a door, the exit) and a small level 2 so progression is tested. Xvfb: play level 1 to the exit (scripted keys) and see level 2 load. |
+| Acceptance criteria | Collecting every pie opens the exit; a key opens only its colour's doors; the exit loads the next level; HUD and sounds work; all content changes were made in the editor; unit tests for the rules; an Xvfb run that completes level 1. |
+
+### PP-042a: Pie Heist skeleton and its editor
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 3 · Priority P1 · **DONE** (2026-10-15; verified on Linux) |
 | Dependencies | PP-041 (DONE); ADR-042, ADR-044; [GAME3.md](GAME3.md) |
 | Why now | The editor can now give an entity any of the game's components, so a Pie Heist level can be drawn from nothing. The skeleton proves the loop: game components defined once, a level drawn in the game's editor, the game loading and playing it. |
 | Scope | `games/pie-heist` (workspace member, `purplepie = { path = "../.." }`, Rust 1.90): `src/lib.rs` with the GAME3.md components (`Wall`, `Pie`, `Key`, `Door`, `Exit`, `Guard`, `PlayerStart`; `Serialize + Deserialize + Default`) and a function registering them, unit-tested level rules (wall push-out with `math::Rect`); `src/main.rs` loading `levels/level1.ron`, the player at `PlayerStart`, movement with wall collision, camera following inside the level bounds. `games/pie-heist-editor` (Rust 1.95): `main_with` over the same types with `with_default`. CI: the `msrv` job also excludes `pie-heist-editor`. Level 1 drawn with the editor under Xvfb (walls, start, a pie, an exit), saved and played (the player stops at walls). Decide grid snapping from that experience. ADR-042 note. Split at its start if it does not fit: e.g. a1 crates + components + loading, a2 movement, collision and level 1. |
-| Acceptance criteria | Both crates build in the workspace; the game loads level 1 strictly (all components registered) and the player cannot cross walls (unit test of the push-out and an Xvfb run); level 1 was made in the editor, not by hand; the grid-snapping decision is recorded with its reason. |
+| Acceptance criteria | ✅ `games/pie-heist` (Rust 1.90, `purplepie` by path + serde; library + binary) and `games/pie-heist-editor` (Rust 1.95, `pie-heist` + `purplepie-editor`) are workspace members; `Cargo.lock` gained exactly those two packages; CI `msrv` also excludes `pie-heist-editor` (YAML checked). ✅ Library: the seven GAME3.md components with defaults (a `Guard` added in the editor walks 200 units at 90 units/s), `register`, and rules with 4 unit tests: `move_and_slide` stops at faces, slides, never passes through a wall however long the step (a first, unswept version failed this test), lets a box walk out of a wall it starts in; `wall_rect` refuses rotated quads (half turns allowed); `level_bounds`; `camera_target`. ✅ Game: strict load of `levels/level1.ron` (or a level given on the command line), warnings for rotated walls and missing or repeated starts, the start marker hidden, player sprite, WASD/arrows at 220 units/s, camera inside the level; `PIE_HEIST_EXIT_AFTER_FRAMES`. ✅ Level 1 drawn in `pie-heist-editor` under Xvfb on an empty file (five walls typed by position and size with `pie_heist::Wall` added, a start sprite with `pie_heist::PlayerStart`); saved file has exactly those six entities. ✅ Played under Xvfb: loads "6 entities, 5 walls; player at (-300.0, 0.0)"; holding D stopped the player touching the inner wall (screenshot); S then D took it under that wall to (309.7, -226.0), resting on the floor's face (-240 + 14). ✅ Grid snapping: not needed (GAME3.md). ✅ Editor fix: new quads are light lavender (they were the background colour, invisible). ✅ ADR-042 note, ARCHITECTURE, README, DEVELOPMENT, CHANGELOG. |
 
 ### PP-041: Editor: add and remove game components
 | Field | Value |

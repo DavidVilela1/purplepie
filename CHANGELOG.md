@@ -14,6 +14,13 @@ break compatibility and a patch version (0.x.**y**) may not.
 - Scene editor: the inspector adds a game component to the selected entity ("Game component: Add…", for the types a
   game's own editor gives with the new `GameComponents::with_default::<T>(name)`, starting from `T::default()`) and
   removes one (the "x" after its field); both are one undo step.
+- `games/pie-heist/` and `games/pie-heist-editor/`: a third example game, whose levels are drawn in its own scene editor
+  (docs/GAME3.md). So far: level 1, movement with wall collision, and the camera.
+
+### Fixed
+
+- Scene editor: a quad added with "Add → Quad" was the engine's default background purple, so it was invisible on a
+  new scene; it is now light lavender.
 
 ## [0.2.0] - 2026-10-14
 

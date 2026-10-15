@@ -86,7 +86,12 @@ debug-overlay = ["egui"]
 # `--workspace` includes the games (CI does). Declaring the workspace also keeps Cargo from
 # attaching this project to a workspace in a parent folder.
 [workspace]
-members = ["games/purple-swarm", "crates/purplepie-editor"]
+members = [
+    "games/purple-swarm",
+    "games/pie-heist",
+    "games/pie-heist-editor",
+    "crates/purplepie-editor",
+]
 
 [lints.rust]
 unsafe_code = "forbid"

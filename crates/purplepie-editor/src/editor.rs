@@ -83,7 +83,10 @@ const NUDGE_MERGE_SECONDS: f64 = 1.0;
 
 /// What a new quad looks like.
 const NEW_QUAD_SIZE: Vec2 = Vec2::new(64.0, 64.0);
-const NEW_QUAD_COLOR: Color = Color::PURPLEPIE;
+/// Light, so it shows on the engine's default purple background (a new quad
+/// in `Color::PURPLEPIE` was invisible there; found drawing Pie Heist's level
+/// 1, PP-042a).
+const NEW_QUAD_COLOR: Color = Color::hex(0xE0D7F5);
 /// What a new text says, and its size.
 const NEW_TEXT: &str = "Text";
 const NEW_TEXT_SIZE: f32 = 32.0;

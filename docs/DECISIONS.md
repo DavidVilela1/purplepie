@@ -48,7 +48,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
 | ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | Yes (P5 complete): PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`), PP-038j2 (GUIDE §15; phase P5 complete 2026-10-14) |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
-| ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`) |
+| ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`; PP-042a: `games/pie-heist` + `games/pie-heist-editor`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
 | ADR-040 | Second API review (everything public since ADR-026): edge anchors renamed `TOP_CENTER`/`CENTER_LEFT`/`CENTER_RIGHT`/`BOTTOM_CENTER` (scene files read old names); `Error`'s `Debug` prints message + causes; `Error::Save` carries the resolved path; growing public types `#[non_exhaustive]` | Accepted | Yes (PP-034a; PP-034b: scene component formatting, opt-in `EngineConfig::console_log`) |
 | ADR-039 | Starter template: none in the repository yet; `docs/GUIDE.md` (section 1 setup + section 14 complete game, compiled by `cargo test`) is the template; revisit at 0.1.0 | Accepted | Yes (PP-032b) |
@@ -2327,6 +2327,14 @@ option based on the manifest directory, which would make `cargo run -p` from the
 
 ---
 
+## Note (PP-042a, 2026-10-15): a game with its own editor crate
+Pie Heist (GAME3.md) is the second game under this ADR and the first with content made in the scene editor. It has
+two members: `games/pie-heist` (library with the components and level rules, plus the game binary; Rust 1.90, no
+egui) and `games/pie-heist-editor` (a three-line `main` over `purplepie_editor::main_with` with the game's types;
+Rust 1.95). Keeping the editor in its own crate is GUIDE §15's advice: a crate's binaries share dependency
+features, so an editor binary inside the game's crate would build the game with egui too. The CI `msrv` job
+excludes `pie-heist-editor` like `purplepie-editor`. No change to the decision.
+
 # ADR-043: Debug overlay: egui inside the engine behind a `debug-overlay` feature
 
 ## Status
@@ -2856,7 +2864,7 @@ small and enough for the core interactions.
   original. 19 unit tests in the crate.
 
 ## Implementation notes (PP-038i2)
-- **Adding:** an "Add" row with Quad (64 × 64, `Color::PURPLEPIE`), Sprite (a menu of the asset folder's PNG files;
+- **Adding:** an "Add" row with Quad (64 × 64, `Color::PURPLEPIE`; light `#E0D7F5` since PP-042a, as the purple quad was invisible on the default background), Sprite (a menu of the asset folder's PNG files;
   natural size from `Context::texture_size`) and Text ("Text", size 32, `TextAnchor::CENTER`; a menu of its TTF/OTF
   files). The new entity is placed at the world point under the centre of the free view, rounded to whole units,
   selected, and recorded as `Edit::Exists { added: true }`; a file that fails to load is reported and nothing is

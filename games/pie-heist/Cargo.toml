@@ -1,0 +1,18 @@
+[package]
+name = "pie-heist"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+description = "Pie Heist: a top-down heist whose levels are made in the scene editor, PurplePie's third example game (docs/GAME3.md)."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# A game written only against PurplePie's public API, kept in this workspace so
+# CI builds it with every engine change (ADR-042). The library holds the
+# components and level rules that its editor (`games/pie-heist-editor`) shares.
+[dependencies]
+purplepie = { path = "../.." }
+serde = { version = "1.0.229", features = ["derive"] }
+
+[lints.rust]
+unsafe_code = "forbid"

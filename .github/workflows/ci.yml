@@ -116,7 +116,8 @@ jobs:
       # Rust 1.95 (ADR-043, ADR-044; RELEASING). They are the only features
       # today, so: no features (the `egui_panel` example needs `egui` and is
       # skipped). The other jobs build them on the latest stable with
-      # `--all-features`. The scene editor needs the `egui` feature, so it is
-      # excluded here (its own `rust-version` is 1.95).
+      # `--all-features`. The scene editor and Pie Heist's editor need the
+      # `egui` feature, so they are excluded here (their own `rust-version` is
+      # 1.95); the games themselves are checked.
       - name: Check with the minimum version
-        run: cargo +1.90 check --locked --workspace --all-targets --exclude purplepie-editor
+        run: cargo +1.90 check --locked --workspace --all-targets --exclude purplepie-editor --exclude pie-heist-editor
