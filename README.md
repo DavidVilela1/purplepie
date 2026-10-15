@@ -187,7 +187,7 @@ cargo run --example breakout   # the example game: arrows/A-D/mouse move, Space/
 # PURPLEPIE_BREAKOUT_AUTOPLAY=win cargo run --example breakout   a bot plays a whole game (deterministic)
 cargo run --example scene      # loads assets/scenes/demo.ron (PURPLEPIE_SCENE_EXAMPLE=build|save: build in code / write it)
 (cd games/purple-swarm && cargo run)   # the second example game, run from its folder (docs/GAME2.md)
-(cd games/pie-heist && cargo run)      # the third, in progress: levels made in the editor (docs/GAME3.md)
+(cd games/pie-heist && cargo run)      # the third, in progress: collect the pies, take the exit; levels made in the editor (docs/GAME3.md)
 # PURPLEPIE_SANDBOX_CAMERA=0,120,2 cargo run   start the sandbox with camera at (0,120), zoom 2
 # PURPLEPIE_LOG=info cargo run    (PowerShell: $env:PURPLEPIE_LOG="info"; cargo run) shows GPU details (sandbox and examples)
 cargo run --features debug-overlay   # the sandbox with the debug overlay (F12 toggles; needs Rust 1.95)

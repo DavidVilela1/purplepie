@@ -147,6 +147,51 @@ pub fn move_and_slide(position: Vec2, size: Vec2, delta: Vec2, walls: &[Rect]) -
     at
 }
 
+/// The area a sprite or quad of `size` covers with `transform` (scale applied,
+/// rotation ignored): what the player touches to pick something up.
+pub fn drawn_rect(transform: &Transform2D, size: Vec2) -> Rect {
+    Rect::from_center_size(transform.position, size * transform.scale.abs())
+}
+
+/// The indices of `items` that `player` overlaps (touching edges do not
+/// count), in order.
+pub fn touched(player: Rect, items: &[Rect]) -> Vec<usize> {
+    items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| player.overlaps(**item))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// The level an exit leads to, or `None` when it ends the game.
+pub fn next_level(exit: &Exit) -> Option<&str> {
+    let next = exit.next.trim();
+    (!next.is_empty()).then_some(next)
+}
+
+/// "Level 1" for `levels/level1.ron`: the file's name without folder and
+/// extension, with a space before its number.
+pub fn level_title(path: &str) -> String {
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .map_or_else(|| path.to_owned(), |s| s.to_string_lossy().into_owned());
+    let split = stem
+        .find(|c: char| c.is_ascii_digit())
+        .unwrap_or(stem.len());
+    let (word, number) = stem.split_at(split);
+    let mut title: String = word
+        .chars()
+        .enumerate()
+        .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
+        .collect();
+    if !number.is_empty() {
+        title.push(' ');
+        title.push_str(number);
+    }
+    title
+}
+
 /// The smallest rectangle around every wall: the level's bounds for the
 /// camera. `None` without walls.
 pub fn level_bounds(walls: &[Rect]) -> Option<Rect> {
@@ -253,6 +298,35 @@ mod tests {
             camera_target(Vec2::new(480.0, 0.0), half_view, bounds),
             Vec2::new(200.0, 0.0)
         );
+    }
+
+    #[test]
+    fn pickups_exits_and_titles() {
+        let player = wall(0.0, 0.0, 28.0, 28.0);
+        let items = [
+            wall(20.0, 0.0, 16.0, 16.0),  // overlaps
+            wall(22.0, 0.0, 16.0, 16.0),  // touches the edge only
+            wall(-10.0, 5.0, 16.0, 16.0), // overlaps
+        ];
+        assert_eq!(touched(player, &items), [0, 2]);
+        let scaled = Transform2D {
+            scale: Vec2::new(-2.0, 1.0),
+            ..Transform2D::from_position(Vec2::new(5.0, 6.0))
+        };
+        assert_eq!(
+            drawn_rect(&scaled, Vec2::splat(10.0)).size(),
+            Vec2::new(20.0, 10.0)
+        );
+
+        let onward = Exit {
+            next: " levels/level2.ron ".to_owned(),
+        };
+        assert_eq!(next_level(&onward), Some("levels/level2.ron"));
+        assert_eq!(next_level(&Exit::default()), None, "the last level");
+
+        assert_eq!(level_title("levels/level1.ron"), "Level 1");
+        assert_eq!(level_title("levels/vault12.ron"), "Vault 12");
+        assert_eq!(level_title("bonus.ron"), "Bonus");
     }
 
     #[test]

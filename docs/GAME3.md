@@ -106,7 +106,10 @@ than the window.
    the engine helper that writes a component as scene RON. Updates GUIDE §15 and the example editor.
 2. **PP-042a (done):** `games/pie-heist` skeleton and `games/pie-heist-editor`: components registered, level loading,
    player movement with wall collision, camera; level 1 drawn in the editor; the grid-snapping decision.
-3. **PP-042b:** pies, keys, doors, the exit and level progression; HUD and sounds.
+3. **PP-042b:** split in two:
+   - **PP-042b1 (done):** pies, the exit and level progression, the HUD and two sounds; level 1 completed and level 2
+     made in the editor; both played through by a script;
+   - **PP-042b2:** keys and doors.
 4. **PP-042c:** guards and being caught (level restart); title, pause, level-complete and win screens.
 5. **PP-042d:** levels 2–5 built in the editor; the level-check decision and its test; a balance pass.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and

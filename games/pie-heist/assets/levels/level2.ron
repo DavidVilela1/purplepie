@@ -1,0 +1,90 @@
+// PurplePie scene (ADR-035). Asset paths are relative to the asset root.
+(
+    version: 1,
+    entities: [
+        (
+            transform: (
+                position: (0.0, 200.0),
+            ),
+            quad: (
+                size: (620.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, -200.0),
+            ),
+            quad: (
+                size: (620.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (-300.0, 0.0),
+            ),
+            quad: (
+                size: (20.0, 400.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (300.0, 0.0),
+            ),
+            quad: (
+                size: (20.0, 400.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (-200.0, 0.0),
+            ),
+            sprite: (
+                texture: "textures/start.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::PlayerStart": (),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, 120.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (200.0, 0.0),
+            ),
+            sprite: (
+                texture: "textures/exit.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Exit": (next: ""),
+            },
+        ),
+    ],
+)

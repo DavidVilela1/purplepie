@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042b: Pie Heist: pies, keys, doors, exit and level progression; HUD and sounds; level 1 completed in the editor** · P1 · TODO ← **next task**
+- [ ] **PP-042b2: Pie Heist: keys and doors (a key opens the doors of its colour); key/door sounds; a door in a level, drawn in the editor** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -59,6 +59,7 @@ _None._
 - [x] **PP-031: Outside-crate trial (phase P3.5, item 1)** · DONE (2026-10-08; verified on Linux; findings in [USABILITY.md](USABILITY.md))
 - [x] **PP-032a: Newcomer guide `docs/GUIDE.md`, compiled by `cargo test` (phase P3.5, item 2, part 1)** · DONE (2026-10-08; verified on Linux)
 - [x] **PP-032b: Module docs for game authors + starter-template decision (ADR-039; phase P3.5, item 2 complete)** · DONE (2026-10-09; verified on Linux)
+- [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-040: P6 plan: tag `v0.2.0` checked (identical to the PP-039 tree; an outside crate following GUIDE §1/§15 builds against it); `docs/GAME3.md` specifies Pie Heist, a top-down heist whose five levels are drawn in the editor; gaps listed; P6 split into PP-041 and PP-042a–e (phase P6, item 1)** · DONE (2026-10-15)
@@ -489,14 +490,21 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042b: Pie Heist pies, keys, doors and exits ← NEXT
+### PP-042b2: Pie Heist keys and doors ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 4 · Priority P1 · TODO |
+| Stage | Phase P6, item 5 · Priority P1 · TODO |
+| Dependencies | PP-042b1 (DONE); [GAME3.md](GAME3.md) |
+| Why now | Pies, exits and progression work across two levels drawn in the editor; keys and doors are the remaining piece of the heist before guards. |
+| Scope | Game: keys picked up on touch; every door of the key's colour stops being a wall and disappears (doors are walls until then: `Door` quads join the wall list at load); the HUD shows the keys held; key and door sounds. Rules in `lib.rs` with unit tests (which doors a key opens; walls minus open doors). Content: key textures in three colours (or one texture tinted per colour), a door used in level 2 (or a new small level) drawn in the editor, so the exit is behind a door. Xvfb: a scripted play-through that needs the key. |
+| Acceptance criteria | A key opens exactly the doors of its colour; a closed door blocks like a wall; the level change was made in the editor; unit tests; an Xvfb run through the door. |
+
+### PP-042b1: Pie Heist pies, exits and progression
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 4 · Priority P1 · **DONE** (2026-10-15; verified on Linux; PP-042b split into b1 and b2) |
 | Dependencies | PP-042a (DONE); [GAME3.md](GAME3.md) |
-| Why now | Level 1 can be walked; the heist itself (collect every pie, open doors with keys, leave through the exit) is the next playable slice, and it exercises the remaining components in the editor. |
-| Scope | Game: pies collected on touch (`math::Rect`/circle overlap); keys picked up, doors of their colour removed from the walls; the exit locked (dimmed) until every pie is collected, then touching it loads `Exit::next` (or, when empty, shows "You win" for now; the real screens are PP-042c); a screen-space HUD (pies left, level name); short sounds (pie, key, door, exit) copied or made for the game; engine-free rules in `lib.rs` with unit tests (e.g. which doors a key opens, whether the exit is open). Content: textures for pie, key (three colours), exit; level 1 completed in the editor (pies, a key and a door, the exit) and a small level 2 so progression is tested. Xvfb: play level 1 to the exit (scripted keys) and see level 2 load. |
-| Acceptance criteria | Collecting every pie opens the exit; a key opens only its colour's doors; the exit loads the next level; HUD and sounds work; all content changes were made in the editor; unit tests for the rules; an Xvfb run that completes level 1. |
+| Acceptance criteria | ✅ Rules in `lib.rs` (5 unit tests now): `drawn_rect`, `touched` (overlap, touching edges do not count), `next_level` (empty `next` ends the game), `level_title` ("Level 1"). ✅ Game: pies collected on touch (despawned, sound, "pie collected (n left)"); the exit faded until every pie is collected, then "exit open" and full colour; touching the open exit loads `Exit::next` or, on the last level, stops the player and shows "You win! N s" (the time frozen at the win; a first version kept counting, caught on the screenshot); warnings for a missing or repeated exit; HUD "Level 1   Pies 0/3   Exit open!"; generated `pie.wav`/`exit.wav` and `pie.png`/`exit.png`. ✅ Content made in `pie-heist-editor` under Xvfb: level 1 gained three pies and an exit (`next: "levels/level2.ron"`, typed into the component's field); level 2 is new (room, start, one pie, exit with the default `next: ""`). ✅ Scripted play-through under Xvfb: "3 pies" → three "pie collected" → "exit open" → "exit to levels/level2.ron" → level 2 "1 pies" → collected → "you win in 16.5 s"; screenshots show the faded exit at the start and the frozen win banner. |
 
 ### PP-042a: Pie Heist skeleton and its editor
 | Field | Value |

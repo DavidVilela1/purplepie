@@ -74,5 +74,53 @@
                 "pie_heist::PlayerStart": (),
             },
         ),
+        (
+            transform: (
+                position: (-300.0, 160.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (200.0, 160.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (200.0, -160.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (330.0, 0.0),
+            ),
+            sprite: (
+                texture: "textures/exit.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Exit": (next: "levels/level2.ron"),
+            },
+        ),
     ],
 )
