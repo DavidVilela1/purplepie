@@ -48,6 +48,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
 | ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | Yes (P5 complete): PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`), PP-038j2 (GUIDE §15; phase P5 complete 2026-10-14) |
 | ADR-045 | `purplepie::Headless`: the engine's state without a window, GPU or audio device, lending the same `Context` games get, so tests and tools can register components, load scenes strictly and inspect the world; Pie Heist checks every shipped level with it in `cargo test` | Accepted | Yes: PP-042d1 (`Headless::new`, `Headless::context`; `games/pie-heist/tests/levels.rs`, `pie_heist::check`) |
+| ADR-046 | The engine editor (P7): grow `crates/purplepie-editor` into the development interface (project from the asset folder, scenes opened and saved in one run, project panel, console, Run as a separate process, game hints, previews); the game never runs inside the editor's process; no project file | Accepted | No: planned in PP-043 ([EDITOR.md](EDITOR.md)); tasks PP-044a–g |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`; PP-042a: `games/pie-heist` + `games/pie-heist-editor`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -3031,6 +3032,84 @@ anything that does not need a window.
   input supplied by the test, in a new ADR.
 - `EngineState` gains something that needs a window or a device at construction: keep `Headless` working by making
   that part lazy, or narrow what `Headless` offers.
+
+
+---
+
+# ADR-046: The engine editor: grow the scene editor, run games as separate processes
+
+## Status
+Accepted (2026-11-03, PP-043). Plans phase P7 ([EDITOR.md](EDITOR.md)); nothing is built yet (tasks PP-044a–g).
+Extends ADR-044 (the scene editor) and keeps ADR-008 (one `Game`, one world per engine) and ADR-013 (no new dependency
+decided here). P6 is parked by the owner's decision of the same day.
+
+## Context
+The owner asked for "a full engine editor": one place to develop a game, not only to place entities. The scene
+editor (ADR-044) is a `Game` on the public egui hook. It opens one scene given on the command line, saves it,
+checks a game's component types, and adds and removes them. It has no way to switch scenes, browse a project, see
+messages other than one line, or run the game. Building four Pie Heist levels (GAME3.md) also showed two gaps: guard
+paths and door colours cannot be seen. Facts checked for this plan:
+- the engine runs one event loop and one `Game` with one world per process (ADR-008);
+- a game is a binary with its own `EngineConfig` (window, clear colour, fixed step) and loads its own scenes by path;
+- the runner exits on the window's close request, so a game cannot ask "save first?";
+- a spike: `cargo build -p pie-heist` while `cargo run -p pie-heist-editor` was running was not blocked by Cargo's
+  build lock (Linux, 19 s).
+
+## Decision
+- **Grow `crates/purplepie-editor`**: same crate, binary and `main_with`, so every game's own editor gets each
+  feature. It becomes the engine's development interface. Product name "PurplePie Editor", window title unchanged.
+- **The project is the folder holding the asset folder.** It is found as the asset folder is now, or given with
+  `--project`. There is no project file.
+- **Scenes:** New, Open and Save As in one run; one scene at a time; history per scene; a save question before
+  anything that would lose changes.
+- **Panels:**
+  - a project panel (the asset folder's files);
+  - a console (the editor's messages and the game's output);
+  - game hints drawn over the view from the game's component values (API in its own task);
+  - image previews.
+- **The game runs as a separate process.** Run saves the scene and starts the project's run command:
+  - by default `cargo run --` in the project folder, plus the scene's path relative to the asset folder;
+  - set in code by a game's editor crate, or with `--run` for the plain binary.
+
+  Its output is read on threads and shown in the console; Stop ends it. Standard library only.
+- Each feature is its own task. An engine API that a task turns out to need (window close handling, texture pixels
+  for previews) gets an ADR note when that task starts.
+
+## Alternatives
+- **A new editor app or crate ("studio") beside the scene editor.** Two editors would duplicate the scene editing,
+  and every game's own editor would have to move. Rejected.
+- **Running the game inside the editor's process (a play mode).** The engine hosts one `Game` and one world, and the
+  game's window settings and scene loading are its own, so this needs either a second engine in-process (not
+  possible with winit's one event loop) or swapping the editor's world for the game's. A crash in the game would also
+  take unsaved editor work with it. Rejected for P7; ADR-044's revisit condition still covers live editing of a
+  running game.
+- **Showing the running game inside an editor panel** (render to a texture). It is a large renderer change for little
+  gain over a second window. Rejected, as in ADR-044.
+- **A project file** (`purplepie.toml`). It would add one more file to keep in sync, when the folder layout already
+  says everything. Revisit if a project needs settings beyond the run command.
+- **Docking panels, tabs, plugins, scripting.** These would make it an editor framework, which PurplePie is not.
+  Not planned.
+
+## Rationale
+It builds on what exists and is tested (ADR-044's editor and its tests), and needs no change to the engine's core
+model. It keeps the game a normal program that behaves the same whether started from the editor or a terminal. It
+adds no dependency.
+
+## Consequences
+- The editor crate grows by several panels. `editor.rs` (1 477 lines) is split into modules as they arrive.
+- New public editor API (run command, hints) follows the editor's own semver from 0.2.0; release 0.3.0 closes P7.
+- Running a game from the editor depends on its command and arguments: games that want "run this scene" accept the
+  scene path, as Pie Heist does.
+- The editor starts child processes. Stopping them, and Windows file locks (a running game's executable cannot be
+  rebuilt), are risk R-32.
+- P6 is parked: level 5, the balance pass and the wrap-up wait (TASKS "Parked").
+
+## Revisit Conditions
+- A game needs live editing while it runs: build it on the egui hook in the game's process (ADR-044), not in the
+  editor.
+- Projects need settings beyond the run command: add a project file in a new ADR.
+- The editor's size starts to dominate the workspace, or a second editor is proposed: re-check the "one editor"
+  decision.
 
 ---
 

@@ -167,6 +167,10 @@ that stood on the loop at its pie was caught and sent back to the start. Finding
 
 ## Plan
 
+**Parked (2026-11-03, owner):** after item 5's first two parts (levels 3 and 4), P6 waits while phase P7 builds the
+engine editor ([EDITOR.md](EDITOR.md)). Level 5, the balance pass (PP-042d2c) and item 6 (PP-042e) resume when the
+owner asks.
+
 1. **PP-041 (done):** editor: add and remove game components (with defaults from the game's types), each one undo step;
    the engine helper that writes a component as scene RON. Updates GUIDE §15 and the example editor.
 2. **PP-042a (done):** `games/pie-heist` skeleton and `games/pie-heist-editor`: components registered, level loading,

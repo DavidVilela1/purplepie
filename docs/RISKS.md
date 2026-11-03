@@ -1,6 +1,6 @@
 # PurplePie Technical Risks
 
-Last reviewed: 2026-10-14 (PP-038j2, end of P5: no new risk; R-29 and R-30 notes for the scene editor below; PP-038c: egui is public with the `egui` feature, R-30; PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
+Last reviewed: 2026-11-03 (PP-043: R-32 added for running games from the editor). Before: 2026-10-14 (PP-038j2, end of P5: no new risk; R-29 and R-30 notes for the scene editor below; PP-038c: egui is public with the `egui` feature, R-30; PP-038b: R-31 mitigated by holding ron at 0.12.1; PP-038a: R-31 added, R-30 extended for the planned public egui hook).
 
 **Status:** `OPEN` (could happen), `MONITORING` (watched at a known trigger),
 `MATERIALIZED` (happening now), `MITIGATED` (handled, may recur), `CLOSED`.
@@ -41,6 +41,7 @@ Likelihood and impact are qualitative: Low, Medium or High.
 | R-29 | Scene files: format compatibility and silent loss of unsaved components | OPEN | Medium | Medium | PP-026a |
 | R-30 | Debug overlay UI dependency (egui): version coupling with wgpu/winit, Rust version, build weight | OPEN | Medium | Medium | PP-037a, PP-038a |
 | R-31 | Scene parsing is quadratic in the number count (ron 0.12.2) | MITIGATED | Medium | Medium | PP-038a, PP-038b |
+| R-32 | Engine editor runs games as child processes: stopping them, their output, and Windows file locks | OPEN | Medium | Medium | PP-043, PP-044d |
 
 ## Details
 
@@ -305,4 +306,21 @@ Likelihood and impact are qualitative: Low, Medium or High.
   hand.
 - **Fallback:** if ron's fix is never released, keep 0.12.1 or store game component values in a way that avoids
   `deserialize_any` (for example as RON text in a string), which needs a scene format version bump.
+
+### R-32: Engine editor runs games as child processes: stopping them, their output, and Windows file locks
+- **Context (2026-11-03, PP-043, ADR-046):** P7's Run starts the game's command (by default `cargo run --`) from
+  the editor and reads its output.
+- **Risks:**
+  - a game that does not exit leaves a process behind if the editor closes first;
+  - output pipes that are not read can block the game (a pipe's buffer fills);
+  - on Windows, a running executable cannot be overwritten, so rebuilding a game that is still running fails, and a
+    shared dependency rebuilt while another binary uses it may fail the same way;
+  - `cargo run` may wait for the build lock if another build holds it.
+- **Evidence so far:** on Linux, `cargo build -p pie-heist` was not blocked while `cargo run -p pie-heist-editor`
+  was running (PP-043 spike).
+- **Mitigation (planned in PP-044d):**
+  - read both pipes on their own threads, always;
+  - Stop kills the child process, and closing the editor stops it too;
+  - report a failed start, and the exit status, in the console;
+  - the owner checks Run and Stop on Windows with the CHECKLIST step of PP-044g.
 

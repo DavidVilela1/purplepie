@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042d2c: Pie Heist level 5 (the last; uses every component) built in the editor; a balance pass over all five levels (guard speeds, distances, a target time each)** · P1 · TODO ← **next task**
+- [ ] **PP-044a: Engine editor: scenes in one run: New, Open, Save As, and "Save / Don't save / Cancel" before switching or closing; the window title shows the scene and unsaved changes** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -65,6 +65,7 @@ _None._
 - [x] **PP-042d1: Pie Heist level check (`purplepie::Headless`, ADR-045; `tests/levels.rs`)** · DONE (2026-11-03; verified on Linux)
 - [x] **PP-042d2a: Pie Heist level 3 built in the editor** · DONE (2026-11-03; verified on Linux; PP-042d2 split into d2a level 3, d2b level 4, d2c level 5 + balance)
 - [x] **PP-042d2b: Pie Heist level 4 built in the editor** · DONE (2026-11-03; verified on Linux)
+- [x] **PP-043: P7 plan: the engine editor (docs/EDITOR.md, ADR-046); P6 parked** · DONE (2026-11-03)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -104,9 +105,21 @@ _None._
 
 ## Future
 
-P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
+P7 Engine editor ([EDITOR.md](EDITOR.md), ADR-046), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete (release 0.3.0 if APIs changed)** · P2 · TODO
+- [ ] **PP-044b: Engine editor: the project panel (the asset folder as a tree: scenes, images, fonts, sounds; click a scene to open it; refresh on changes)** · P2 · TODO
+- [ ] **PP-044c: Engine editor: the console panel (the editor's messages with time and level; the status line shows the latest)** · P2 · TODO
+- [ ] **PP-044d: Engine editor: Run (F5) and Stop: the project's run command as a separate process, its output in the console, exit status; `--run` and a code option for a game's editor; Pie Heist's editor configured** · P2 · TODO
+- [ ] **PP-044e: Engine editor: game hints in the view (a game's editor draws lines, rectangles and labels from its component values; ADR-044 note); Pie Heist's guard paths and door colours** · P2 · TODO
+- [ ] **PP-044f: Engine editor: image previews in the project panel and the sprite picker (decide: decode in the editor or an engine API for texture pixels)** · P2 · TODO
+- [ ] **PP-044g: Engine editor: GUIDE §15 rewritten, CHECKLIST step, README, CHANGELOG; phase P7 complete; then release 0.3.0** · P2 · TODO
+
+## Parked
+
+Owner decision (2026-11-03): P6's remaining work waits until the owner asks for it; Pie Heist has four of its five levels, every mechanic and screen, and a test of every level.
+
+- [ ] **PP-042d2c: Pie Heist level 5 (the last; uses every component) built in the editor; a balance pass over all five levels** · P3 · PARKED (details below)
+- [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete** · P3 · PARKED
 
 
 
@@ -494,7 +507,16 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042d2c: Pie Heist level 5 and balance ← NEXT
+### PP-044a: Engine editor: scenes in one run ← NEXT
+| Field | Value |
+|---|---|
+| Stage | Phase P7, item 2 · Priority P1 · TODO |
+| Dependencies | PP-043 (DONE); ADR-044, ADR-046; [EDITOR.md](EDITOR.md) |
+| Why now | Every later P7 feature (project panel, Run) opens or saves scenes inside one run; today the scene is fixed by the command line. |
+| Scope | Editor only. New (an empty scene, unsaved until Save As), Open (a path field; relative paths taken from the project folder, the folder holding the asset folder), Save As (a path field; the asset folder stays the project's); a "Save / Don't save / Cancel" question before switching scenes or closing a changed scene (closing needs the window's close request: check whether the engine lets a game refuse it, and if not, decide in the task: an engine API with an ADR note, or saving a recovery copy); opening clears the world, the history, the selection and pending edits, and loads with `load_scene_keeping_unknown`; the window title shows the scene file and `*` when changed. Shortcuts Ctrl+N, Ctrl+O, Ctrl+Shift+S. Begin splitting `editor.rs` (the file menu in its own module). Unit tests for the path rules and the question's choices; Xvfb run: open level 1, change it, open level 2 (the question), save as a copy, new scene. |
+| Acceptance criteria | The three actions and the question work under Xvfb; nothing unsaved is lost without the question; tests for the rules; GUIDE §15 notes the new actions. |
+
+### PP-042d2c: Pie Heist level 5 and balance · PARKED
 | Field | Value |
 |---|---|
 | Stage | Phase P6, item 7 (second part, 3 of 3) · Priority P1 · TODO |
