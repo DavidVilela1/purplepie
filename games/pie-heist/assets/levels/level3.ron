@@ -215,7 +215,7 @@
                 size: (32.0, 32.0),
             ),
             components: {
-                "pie_heist::Exit": (next: ""),
+                "pie_heist::Exit": (next: "levels/level4.ron"),
             },
         ),
         (

@@ -1,0 +1,209 @@
+// PurplePie scene (ADR-035). Asset paths are relative to the asset root.
+(
+    version: 1,
+    entities: [
+        (
+            transform: (
+                position: (0.0, 750.0),
+            ),
+            quad: (
+                size: (2020.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, -750.0),
+            ),
+            quad: (
+                size: (2020.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (-1000.0, 0.0),
+            ),
+            quad: (
+                size: (20.0, 1500.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (1000.0, 0.0),
+            ),
+            quad: (
+                size: (20.0, 1500.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (-200.0, 250.0),
+            ),
+            quad: (
+                size: (1600.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (200.0, -250.0),
+            ),
+            quad: (
+                size: (1600.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Wall": (),
+            },
+        ),
+        (
+            transform: (
+                position: (795.0, 250.0),
+            ),
+            quad: (
+                size: (390.0, 20.0),
+                color: (0.8784314, 0.84313726, 0.9607843, 1.0),
+            ),
+            components: {
+                "pie_heist::Door": (color: Gold),
+            },
+        ),
+        (
+            transform: (
+                position: (-850.0, -600.0),
+            ),
+            sprite: (
+                texture: "textures/start.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::PlayerStart": (),
+            },
+        ),
+        (
+            transform: (
+                position: (800.0, -600.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (800.0, -450.0),
+            ),
+            sprite: (
+                texture: "textures/key.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Key": (color: Gold),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, -150.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, 700.0),
+            ),
+            sprite: (
+                texture: "textures/pie.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Pie": (),
+            },
+        ),
+        (
+            transform: (
+                position: (-850.0, 600.0),
+            ),
+            sprite: (
+                texture: "textures/exit.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Exit": (next: ""),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, -500.0),
+            ),
+            sprite: (
+                texture: "textures/guard.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Guard": (path: [(0.0, -200.0), (0.0, 200.0)], speed: 100.0),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, 0.0),
+            ),
+            sprite: (
+                texture: "textures/guard.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Guard": (path: [(-700.0, -150.0), (700.0, -150.0), (700.0, 150.0), (-700.0, 150.0)], speed: 200.0),
+            },
+        ),
+        (
+            transform: (
+                position: (0.0, 500.0),
+            ),
+            sprite: (
+                texture: "textures/guard.png",
+                size: (32.0, 32.0),
+            ),
+            components: {
+                "pie_heist::Guard": (path: [(0.0, -200.0), (0.0, 200.0)], speed: 120.0),
+            },
+        ),
+        (
+            transform: (
+                position: (-600.0, -420.0),
+            ),
+            text: (
+                content: "Gold key, gold door.\nTime the patrols.",
+                font: "fonts/Poppins-Regular.ttf",
+                size: 32.0,
+                anchor: (Center, Middle),
+            ),
+        ),
+    ],
+)

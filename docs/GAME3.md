@@ -141,6 +141,30 @@ in 40 s without being caught. Findings:
   - None of this affects a person using the editor, but it is why scripted levels take several short runs.
 - **New sprites appear at the view's centre**; their exact place is then typed.
 
+## Building level 4 (PP-042d2b)
+
+Level 4 (`assets/levels/level4.ron`, 2 020 × 1 520 units) is three corridors stacked in a zigzag. The bottom one
+holds the start and, at its far end, a pie and the gold key. A gap at the left leads to the middle corridor, and the
+gold door at its right end leads to the top corridor and the exit. Unlike level 3, every guard crosses the route, so
+walking along the walls is not enough:
+
+- **Bottom corridor:** a guard sweeps it up and down across the way to the key.
+- **Middle corridor:** a guard walks a 1 400 × 300 loop of four points, with a pie on its track.
+- **Top corridor:** a guard sweeps it up and down across the way to the exit, with a pie at the top of its walk.
+
+It was drawn in two editor runs (17 entities), and level 3's exit was pointed at it in a third. A scripted route timed
+against the guards' clocks (which start when the title is clicked) won it in 44 s without being caught. A second run
+that stood on the loop at its pie was caught and sent back to the start. Findings, beyond level 3's:
+
+- **Timing a route means working out the guards' positions on paper.** A path is a list of numbers with a speed, so
+  where a guard is after t seconds has to be calculated. That was manageable for three guards. It is the clearest
+  case so far for showing paths in the editor (still not planned: a dotted line along each guard's path would be
+  enough).
+- **A four-point loop is easy to type** as one line of RON. The game starts it at the first point, so the first point
+  sets where the guard is when the level starts.
+- **Fewer, longer walls** (whole corridors as single quads) kept the level at 17 entities, so the inspector never
+  reached the list's maximum height.
+
 ## Plan
 
 1. **PP-041 (done):** editor: add and remove game components (with defaults from the game's types), each one undo step;
@@ -159,8 +183,8 @@ in 40 s without being caught. Findings:
 5. **PP-042d:** split in two:
    - **PP-042d1 (done):** the level-check decision (`purplepie::Headless`, ADR-045) and its test, before more levels
      are drawn;
-   - **PP-042d2:** split in three: **d2a (done)** level 3; **d2b** level 4; **d2c** level 5 and a balance pass over
-     all five.
+   - **PP-042d2:** split in three: **d2a (done)** level 3; **d2b (done)** level 4; **d2c** level 5 and a balance
+     pass over all five.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and
    CHANGELOG; phase P6 complete. A 0.3.0 release follows if engine or editor APIs changed.
 

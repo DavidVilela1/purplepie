@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042d2b: Pie Heist level 4 built in the editor (about 2 000 × 1 500; a gold door, three guards incl. a long loop; must pass `tests/levels.rs`); level 3's exit leads on to it** · P1 · TODO ← **next task**
+- [ ] **PP-042d2c: Pie Heist level 5 (the last; uses every component) built in the editor; a balance pass over all five levels (guard speeds, distances, a target time each)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -64,6 +64,7 @@ _None._
 - [x] **PP-042c2: Pie Heist screens (title, pause, level complete, win with "Play again")** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042d1: Pie Heist level check (`purplepie::Headless`, ADR-045; `tests/levels.rs`)** · DONE (2026-11-03; verified on Linux)
 - [x] **PP-042d2a: Pie Heist level 3 built in the editor** · DONE (2026-11-03; verified on Linux; PP-042d2 split into d2a level 3, d2b level 4, d2c level 5 + balance)
+- [x] **PP-042d2b: Pie Heist level 4 built in the editor** · DONE (2026-11-03; verified on Linux)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -105,7 +106,6 @@ _None._
 
 P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042d2c: Pie Heist level 5 (the last; uses every component) built in the editor; a balance pass over all five levels (guard speeds, distances, a target time each)** · P2 · TODO
 - [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete (release 0.3.0 if APIs changed)** · P2 · TODO
 
 
@@ -494,14 +494,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042d2b: Pie Heist level 4 ← NEXT
+### PP-042d2c: Pie Heist level 5 and balance ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 7 (second part, 2 of 3) · Priority P1 · TODO |
-| Dependencies | PP-042d2a (DONE); [GAME3.md](GAME3.md) "Building level 3" for the scripted-editor method |
-| Why now | Level 3 is done and passes the level test; level 4 continues the set, harder than 3. |
-| Scope | `assets/levels/level4.ron`, about 2 000 × 1 500, drawn only in `pie-heist-editor` (under Xvfb, by the method in GAME3.md): rooms joined by gaps and doors, a gold door (a colour level 3 did not use) and its key, at least three guards, one walking a long loop of four or more points that the route has to time, a hint. Level 3's exit changed in the editor to lead to it. Passes `tests/levels.rs`; played through under Xvfb from the title. Findings added to GAME3.md. |
-| Acceptance criteria | Level 4 made in the editor; level test passes (order 1 → 2 → 3 → 4); a scripted play-through wins it; findings noted. |
+| Stage | Phase P6, item 7 (second part, 3 of 3) · Priority P1 · TODO |
+| Dependencies | PP-042d2b (DONE); [GAME3.md](GAME3.md) "Building level 3/4" for the method |
+| Why now | Levels 1–4 exist and pass the level test; level 5 completes the set of five, and a balance pass over all five makes the game's difficulty climb. |
+| Scope | `assets/levels/level5.ron` (about 2 000 × 1 500, the last level: its exit has `next: ""`), drawn only in `pie-heist-editor`, using every component and all three key colours; level 4's exit changed in the editor to lead to it. Balance pass: play each level by script, note its time, and adjust (in the editor) any guard that a careful route never meets or that makes a level unfair; aim for times that grow from level 1 to 5. Findings in GAME3.md. Split if it does not fit (level 5 first, balance after). |
+| Acceptance criteria | Level 5 made in the editor; level test passes (1 → 2 → 3 → 4 → 5); a scripted play-through wins it; balance changes made in the editor and recorded; findings noted. |
+
+### PP-042d2b: Pie Heist level 4
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 7 (second part, 2 of 3) · Priority P1 · **DONE** (2026-11-03; verified on Linux) |
+| Dependencies | PP-042d2a (DONE); [GAME3.md](GAME3.md) |
+| Why now | Level 3 was done; level 4 continues the set, harder than 3. |
+| Scope | Level 4 drawn only in the editor: a gold door and its key, three guards, one on a loop of four points the route has to time, a hint; level 3's exit leads to it; level test; scripted play-through; findings. |
+| Acceptance criteria | ✅ `assets/levels/level4.ron` drawn in `pie-heist-editor` under Xvfb in two runs (walls and door; sprites, guards and the hint, whose text box was found from a screenshot): 2 020 × 1 520 units, three corridors stacked in a zigzag (bottom → middle through a gap at the left, middle → top through a gold door at the right), 17 entities (6 walls, 1 door, 3 pies, the gold key, 3 guards, start, exit, a hint "Gold key, gold door. / Time the patrols."). Guards: one sweeping the bottom corridor up and down across the way to the key; one walking a 1 400 × 300 loop of four points around the middle corridor, with a pie on its track; one sweeping the top corridor across the way to the exit, with a pie at the top of its walk. ✅ Level 3's exit changed in the editor from `""` to `"levels/level4.ron"` (the only change in the file). ✅ `tests/levels.rs`: 1 → 2 → 3 → 4. ✅ Played from the title under Xvfb with a route timed against the three guards: "you win in 43.7 s, caught 0"; a second run that waited on the loop's track at the pie was caught and the level restarted (the loop guard does sweep the route). ✅ Findings in GAME3.md ("Building level 4"). |
 
 ### PP-042d2a: Pie Heist level 3
 | Field | Value |

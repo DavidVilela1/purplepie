@@ -18,7 +18,7 @@ break compatibility and a patch version (0.x.**y**) may not.
   game's own editor gives with the new `GameComponents::with_default::<T>(name)`, starting from `T::default()`) and
   removes one (the "x" after its field); both are one undo step.
 - `games/pie-heist/` and `games/pie-heist-editor/`: a third example game, whose levels are drawn in its own scene editor
-  (docs/GAME3.md). So far: three levels, movement with wall collision, the camera, pies, keys and doors, guards (being caught restarts
+  (docs/GAME3.md). So far: four levels, movement with wall collision, the camera, pies, keys and doors, guards (being caught restarts
   the level), exits and level progression, and title, pause, level-complete and win screens. A test loads every shipped level without a window and
   checks that it is playable (one start, one exit, exits leading through every level, no rotated walls, a key for
   every door).
