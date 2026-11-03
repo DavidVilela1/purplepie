@@ -20,7 +20,8 @@
 //! (PP-038i2); a file that does not exist yet opens as a new scene. A game's
 //! own editor gives its component types ([`GameComponents`], [`main_with`]),
 //! and their values are checked against them (PP-038j1). Closing the window
-//! with unsaved changes asks "Save / Don't save / Cancel" first (PP-044a1).
+//! with unsaved changes asks "Save / Don't save / Cancel" first (PP-044a1),
+//! and New, Open and Save As change scenes in one run (PP-044a2).
 //! The guide's section 15 ("The scene editor", `docs/GUIDE.md`) explains both.
 //!
 //! ```no_run
@@ -36,6 +37,7 @@
 
 mod components;
 mod editor;
+mod file;
 mod history;
 mod library;
 mod options;

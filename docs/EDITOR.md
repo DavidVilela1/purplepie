@@ -75,8 +75,8 @@ Each item is one task, split again at its start if it does not fit one session:
 2. **PP-044a:** split in two:
    - **PP-044a1 (done):** the engine lets a game handle the window's close request; the editor asks "Save /
      Don't save / Cancel" before closing a changed scene;
-   - **PP-044a2:** New, Open (a path field, with paths relative to the project) and Save As in one run, through the
-     same question. (The window title already shows the scene and `*` for unsaved changes.)
+   - **PP-044a2 (done):** New, Open (a path field, with paths relative to the project) and Save As in one run,
+     through the same question; the title follows the file.
 3. **PP-044b:** the project panel: the asset folder as a tree, click a scene to open it, refresh on changes.
 4. **PP-044c:** the console panel: the editor's messages with time and level; the status line shows the latest.
 5. **PP-044d:** Run and Stop: the project's run command, the game's output in the console, exit status,

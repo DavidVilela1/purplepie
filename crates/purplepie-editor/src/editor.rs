@@ -18,12 +18,14 @@ use purplepie::{Context, Game};
 
 use crate::components::GameComponents;
 use crate::history::{Edit, History};
-use crate::library;
 use crate::question::{self, Answer, Leave};
 use crate::select;
 use crate::snapshot::{DUPLICATE_OFFSET, NotCopied, Snapshot};
 use crate::summary::{details, entity_ids, summary};
 use crate::view;
+
+mod files;
+use files::PathPrompt;
 
 /// One line of feedback at the bottom of the window.
 struct Status {
@@ -108,8 +110,11 @@ const OUTLINE: egui::Color32 = egui::Color32::from_rgb(255, 200, 40);
 /// The editor's state: the scene file, the selection, the history and the
 /// view of the scene.
 pub(crate) struct Editor {
-    /// The scene file (opened and saved).
-    file: PathBuf,
+    /// The scene file (opened and saved); `None` for a new scene not saved
+    /// yet (Save asks where).
+    file: Option<PathBuf>,
+    /// The Open or Save As path field, while it is open.
+    prompt: Option<PathPrompt>,
     /// Fit the camera to the scene in the next frame (after opening, or asked
     /// for), when the panels' sizes are known.
     fit_pending: bool,
@@ -150,7 +155,8 @@ pub(crate) struct Editor {
 impl Editor {
     pub(crate) fn new(file: PathBuf, components: GameComponents, exit_after: Option<u32>) -> Self {
         Self {
-            file,
+            file: Some(file),
+            prompt: None,
             fit_pending: true,
             status: Status {
                 text: String::new(),
@@ -176,10 +182,13 @@ impl Editor {
     }
 
     fn file_name(&self) -> String {
-        self.file.file_name().map_or_else(
-            || self.file.display().to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        )
+        match &self.file {
+            Some(file) => file.file_name().map_or_else(
+                || file.display().to_string(),
+                |name| name.to_string_lossy().into_owned(),
+            ),
+            None => "untitled".to_owned(),
+        }
     }
 
     /// Shows `text` in the status line and prints it for the terminal.
@@ -194,6 +203,11 @@ impl Editor {
 
     fn save(&mut self, ctx: &mut Context<'_>) {
         self.finish_edits(ctx);
+        let Some(file) = self.file.clone() else {
+            // A new scene: ask where first.
+            self.start_save_as(ctx, None);
+            return;
+        };
         if self.keep_file {
             let text = format!(
                 "not saved: {} could not be opened, and saving would replace it",
@@ -202,10 +216,10 @@ impl Editor {
             self.report(text, true);
             return;
         }
-        match ctx.save_scene(&self.file) {
+        match ctx.save_scene(&file) {
             Ok(()) => {
                 self.history.mark_saved();
-                let text = format!("saved {}", self.file.display());
+                let text = format!("saved {}", file.display());
                 self.report(text, false);
             }
             Err(error) => self.report(format!("could not save: {}", explain(&error)), true),
@@ -615,8 +629,18 @@ impl Editor {
     /// arrow steps.
     fn shortcuts(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
         use egui::{Key, Modifiers};
+        // Ctrl+Shift+S before Ctrl+S, which also matches it.
+        if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::S)) {
+            self.start_save_as(ctx, None);
+        }
         if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::S)) {
             self.save(ctx);
+        }
+        if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::O)) {
+            self.start_open(ctx);
+        }
+        if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::N)) {
+            self.leave(ctx, Leave::New);
         }
         if ui.ctx().text_edit_focused() {
             return;
@@ -691,10 +715,8 @@ impl Editor {
             .min_size(180.0)
             .show(ui, |ui| {
                 ui.heading(self.file_name());
+                self.file_row(ctx, ui);
                 ui.horizontal(|ui| {
-                    if ui.button("Save").on_hover_text("Ctrl+S").clicked() {
-                        self.save(ctx);
-                    }
                     if ui.button("Fit view").on_hover_text("F").clicked() {
                         self.fit_pending = true;
                     }
@@ -1177,7 +1199,7 @@ impl Editor {
 
     /// Keeps the window title in step with unsaved changes ("* name").
     /// Does `leave` now if nothing is unsaved; otherwise asks first.
-    fn leave(&mut self, ctx: &mut Context<'_>, leave: Leave) {
+    pub(super) fn leave(&mut self, ctx: &mut Context<'_>, leave: Leave) {
         if self.is_dirty(ctx) {
             if self.question.is_none() {
                 self.report(format!("{} has unsaved changes", self.file_name()), false);
@@ -1189,18 +1211,20 @@ impl Editor {
     }
 
     /// Does `leave` (the question, if any, was answered).
-    fn go(&mut self, ctx: &mut Context<'_>, leave: Leave) {
+    pub(super) fn go(&mut self, ctx: &mut Context<'_>, leave: Leave) {
         match leave {
             Leave::Close => {
                 println!("editor: closing");
                 ctx.request_exit();
             }
+            Leave::Open(file) => self.open_scene(ctx, Some(file)),
+            Leave::New => self.open_scene(ctx, None),
         }
     }
 
     /// "Save / Don't save / Cancel" over everything while it is open.
     fn question_window(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
-        let Some(leave) = self.question else {
+        let Some(leave) = self.question.clone() else {
             return;
         };
         let name = self.file_name();
@@ -1229,6 +1253,11 @@ impl Editor {
             return;
         };
         self.question = None;
+        if answer == Answer::Save && self.file.is_none() {
+            // A new scene: Save As first, then go on if it was saved.
+            self.start_save_as(ctx, Some(leave));
+            return;
+        }
         let go_on = question::proceeds(answer, || {
             self.save(ctx);
             !self.is_dirty(ctx)
@@ -1437,54 +1466,7 @@ fn explain(error: &purplepie::Error) -> String {
 
 impl Game for Editor {
     fn init(&mut self, ctx: &mut Context<'_>) -> purplepie::Result<()> {
-        // A file that cannot be opened is reported, not fatal: the window
-        // stays open to show why.
-        match ctx.load_scene_keeping_unknown(&self.file) {
-            Ok(entities) => {
-                let mut text = format!(
-                    "opened {}: {} entities",
-                    self.file.display(),
-                    entities.len()
-                );
-                let (checked, problems) = self.check_game_components(ctx);
-                if checked > 0 {
-                    text.push_str(&format!(
-                        "; {checked} game component value(s) checked against the game's types"
-                    ));
-                }
-                match problems.first() {
-                    None => self.report(text, false),
-                    Some(first) => {
-                        for problem in &problems {
-                            eprintln!("editor: {problem}");
-                        }
-                        let count = problems.len();
-                        text.push_str(&format!(
-                            "; {count} do(es) not fit (in red in the inspector), first: {first}"
-                        ));
-                        self.report(text, true);
-                    }
-                }
-            }
-            Err(error) => {
-                // A missing file is a new scene; an existing one is kept safe.
-                self.keep_file = self.file.exists();
-                if self.keep_file {
-                    self.report(format!("could not open: {}", explain(&error)), true);
-                } else {
-                    let text = format!(
-                        "new scene: {} does not exist yet; saving (Ctrl+S) creates it",
-                        self.file.display()
-                    );
-                    self.report(text, false);
-                }
-            }
-        }
-        if let Some(root) = ctx.asset_root() {
-            self.images = library::files_under(root, library::IMAGES);
-            self.fonts = library::files_under(root, library::FONTS);
-        }
-        self.update_title(ctx);
+        self.load(ctx);
         Ok(())
     }
 
@@ -1499,7 +1481,7 @@ impl Game for Editor {
     }
 
     fn egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
-        if self.question.is_none() {
+        if self.question.is_none() && self.prompt.is_none() {
             self.shortcuts(ctx, ui);
         }
         // Side and bottom panels first, so the viewport is what they leave.
@@ -1507,6 +1489,7 @@ impl Game for Editor {
         self.status_line(ctx, ui);
         self.viewport(ctx, ui);
         self.question_window(ctx, ui);
+        self.path_prompt_window(ctx, ui);
         self.update_title(ctx);
     }
 }

@@ -262,8 +262,10 @@ right and below, selected, at the end of the list (20 entities); press Delete: i
 and press Delete: it disappears. Ctrl+Z three times: the square comes back, then the copy, then the copy goes again
 (19 entities). Click Quad in the "Add" row: a purple square appears in the middle of the view, selected; under
 Sprite, pick `textures/breakout/ball.png`: a ball appears there too. Ctrl+Z twice removes both.
-Ctrl+S prints "saved …". Close the window, then
-`fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
+Ctrl+S prints "saved …". Press Ctrl+Shift+S and type `C:\demo-again.ron`, then Enter: a red message says it is
+outside the asset folder (`assets`); press Escape. Press Ctrl+O, type `assets/scenes/demo.ron` and press Enter: the
+repository's demo scene opens with no question (nothing was changed) and the title says "demo.ron". Close the
+window, then `fc.exe /b assets\scenes\demo.ron $env:TEMP\demo-copy.ron` reports no differences.
 
 ```powershell
 cargo run -p purplepie-editor --example scene_demo_editor -- --assets assets $env:TEMP\demo-copy.ron

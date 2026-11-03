@@ -703,6 +703,10 @@ A file that does not exist yet opens as an empty scene; Ctrl+S creates it. In th
 - **Undo and save:** Ctrl+Z undoes every change, Ctrl+Shift+Z or Ctrl+Y redoes it, Ctrl+S saves; `*` in the title
   means unsaved changes. Close the window to quit (Escape only deselects): with unsaved changes it first asks
   "Save / Don't save / Cancel".
+- **Other scenes:** New (Ctrl+N) starts an empty one, Open… (Ctrl+O) opens another and Save As… (Ctrl+Shift+S)
+  saves under a new name, each asking about unsaved changes first. Paths are typed from your project folder (the one
+  holding the asset folder), for example `assets/levels/two.ron`, and must stay inside the asset folder, because a
+  scene's image and font paths are relative to it.
 
 Your own components (section 11) appear as one text field each, holding their value as RON, for example
 `(leads_to: "levels/two.ron")`; the small "x" next to one removes it from the entity. The editor above does not know
