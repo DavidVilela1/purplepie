@@ -42,11 +42,10 @@ use pie_heist::{
     Door, Exit, Guard, Key, KeyColor, Pie, PlayerStart, Wall, blocking, camera_target, drawn_rect,
     level_bounds, level_title, move_and_slide, next_level, patrol_offset, touched, wall_rect,
 };
+use pie_heist::{FIRST_LEVEL, PLAYER_SIZE};
 
 const WINDOW: (u32, u32) = (960, 640);
-const PLAYER_SIZE: f32 = 28.0;
 const PLAYER_SPEED: f32 = 220.0;
-const FIRST_LEVEL: &str = "levels/level1.ron";
 /// How a locked exit looks: its own colours, faded.
 const LOCKED_TINT: Color = Color::rgba(1.0, 1.0, 1.0, 0.3);
 /// How long the "Level N complete" banner stays (a click skips it).

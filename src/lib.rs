@@ -53,7 +53,7 @@ pub mod scene;
 mod time;
 pub mod ui;
 
-pub use app::{Context, Engine, EngineConfig, Game};
+pub use app::{Context, Engine, EngineConfig, Game, Headless};
 /// The [egui](https://docs.rs/egui/0.36) crate (0.36), for
 /// [`Game::egui`]. Only with PurplePie's optional `egui` feature (ADR-044).
 /// Use egui through this path rather than a dependency of your own, so your

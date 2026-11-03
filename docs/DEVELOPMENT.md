@@ -152,7 +152,7 @@ Plain `cargo test` at the root (the engine alone, its default member) or `--work
 checks the engine without features; the CI `msrv` job uses the latter. Tests in `crates/` must build asset paths
 from the workspace root, not their own `CARGO_MANIFEST_DIR`.
 
-Cowork has clippy 1.95, but the owner and CI use the latest stable, whose `clippy::chunks_exact_to_as_chunks` rejects
+Cowork's clippy can lag the latest stable (1.95, then 1.97 from 2026-11-03), and the owner and CI use the latest stable, whose `clippy::chunks_exact_to_as_chunks` rejects
 `chunks_exact(4)`-style calls with a constant size (R-19). Before delivering, this must print nothing; use
 `as_chunks::<N>()` / `as_chunks_mut::<N>()` instead:
 

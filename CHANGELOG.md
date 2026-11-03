@@ -9,6 +9,9 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ### Added
 
+- `Headless`: the engine without a window, GPU or audio device. `Headless::new(asset_root).context()` lends the same
+  `Context` games get, so tests and tools can register components, load scenes strictly (textures and fonts
+  decoded) and inspect the world, in `cargo test` (ADR-045).
 - `scene::component_text(&value)`: writes a game component as the one line of RON `save_scene` writes for it, for
   tools that add components as text (ADR-044).
 - Scene editor: the inspector adds a game component to the selected entity ("Game component: Add…", for the types a
@@ -16,7 +19,9 @@ break compatibility and a patch version (0.x.**y**) may not.
   removes one (the "x" after its field); both are one undo step.
 - `games/pie-heist/` and `games/pie-heist-editor/`: a third example game, whose levels are drawn in its own scene editor
   (docs/GAME3.md). So far: two levels, movement with wall collision, the camera, pies, keys and doors, guards (being caught restarts
-  the level), exits and level progression, and title, pause, level-complete and win screens.
+  the level), exits and level progression, and title, pause, level-complete and win screens. A test loads every shipped level without a window and
+  checks that it is playable (one start, one exit, exits leading through every level, no rotated walls, a key for
+  every door).
 
 ### Fixed
 

@@ -32,7 +32,8 @@ A small, modular, cross-platform **2D game engine** written in Rust, built on
   components registered with `Context::register_scene_component` (serde types; the game adds `serde` with the
   `derive` feature) as human-readable RON, with textures and fonts referenced by asset path. The folder a scene is
   saved into (e.g. `assets/scenes/`) must exist. `load_scene_keeping_unknown` opens scenes whose game components are
-  not registered, keeping them as text to save back unchanged (for tools such as a level editor).
+  not registered, keeping them as text to save back unchanged (for tools such as a level editor). `Headless` gives
+  the same `Context` without a window, so a test can load and check a game's levels in `cargo test`.
 - **Debug overlay (optional):** with the `debug-overlay` Cargo feature (Rust 1.95) and
   `EngineConfig::with_debug_overlay(true)`, an egui window over the game shows frame time and FPS, fixed steps,
   entity count, draw calls, camera, window and cursor; F12 shows or hides it, and clicks and the wheel on it do not

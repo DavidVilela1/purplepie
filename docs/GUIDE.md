@@ -453,6 +453,12 @@ entities first to replace a level.
 (`purplepie::scene::UnknownComponents`) and `save_scene` writes them back unchanged. A tool can change that text
 with `UnknownComponents::set(name, ron)`, which refuses anything that is not exactly one valid RON value.
 
+Levels can break without any code changing, so test them. `purplepie::Headless::new(asset_folder)` is the engine
+without a window, a GPU or sound, and its `context()` is the same `Context` your callbacks get: register your
+components with it, `load_scene` each level file exactly as the game does, and check the world you get (for example,
+that it has one start). It runs in `cargo test`. Pie Heist does this for every level in its
+`games/pie-heist/tests/levels.rs`.
+
 ## 12. Hot reload, errors and logs
 
 **Hot reload.** With `EngineConfig::with_hot_reload(true)`, saving a texture, font or sound file while the game runs

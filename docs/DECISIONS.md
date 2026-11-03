@@ -47,6 +47,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-032 | Audio playback control: `PlaybackId` per playback, `loop_sound`, `stop_sound`, `set_sound_volume`, `stop_all_sounds`, master volume, all as commands to the mixer; loops survive the voice limit | Accepted | Yes (PP-024a) |
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
 | ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | Yes (P5 complete): PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`), PP-038j2 (GUIDE §15; phase P5 complete 2026-10-14) |
+| ADR-045 | `purplepie::Headless`: the engine's state without a window, GPU or audio device, lending the same `Context` games get, so tests and tools can register components, load scenes strictly and inspect the world; Pie Heist checks every shipped level with it in `cargo test` | Accepted | Yes: PP-042d1 (`Headless::new`, `Headless::context`; `games/pie-heist/tests/levels.rs`, `pie_heist::check`) |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`; PP-042a: `games/pie-heist` + `games/pie-heist-editor`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -2957,6 +2958,79 @@ small and enough for the core interactions.
 - egui's API churn makes the public hook costly: wrap the needed parts behind engine types instead.
 - ron releases the fix: re-measure scene loading with game components and close R-31.
 - A game asks for live editing of a running game: build it on the same hook, not as an engine mode.
+
+
+---
+
+# ADR-045: `Headless`: a `Context` without a window, for tests and tools
+
+## Status
+Accepted (2026-11-03, PP-042d1). Builds on ADR-008 (the `Game` + `Context` API), ADR-035/036 (scene files and game
+components) and ADR-042 (example games in `games/`). Adds public API (one type, two functions) and no dependency.
+
+## Context
+Pie Heist's levels are scene files drawn in the editor (GAME3.md), and five of them are planned. A level can be
+broken without any code changing: two player starts, an exit whose `next` names a file that does not exist, a
+rotated wall, a door whose key is missing, a component typed wrong in the editor. Until now the only way to find
+out was to play the level, because `load_scene` is a `Context` method and a `Context` existed only inside a running
+`Engine` with a window. GAME3.md left two options open for PP-042d1:
+- a timed run under Xvfb, like Purple Swarm's autoplay;
+- a small engine API that reads a scene file without a window.
+
+Facts checked first: `Context` is a thin borrow of the crate-private `EngineState`, and `EngineState` needs no
+window, GPU or audio device. Textures and fonts are decoded on the CPU (the renderer uploads them later), audio
+starts silent, and the engine's own unit tests already build an `EngineState` and a `Context` directly.
+
+## Decision
+- Add **`purplepie::Headless`**: it owns an `EngineState`. `Headless::new(asset_root)` resolves the root like
+  `EngineConfig::with_asset_root` (relative to the working directory). `Headless::context()` lends a `Context` whose
+  `dt` is the default fixed step; the state, and everything loaded or spawned, stays between calls.
+- What works is everything that needs no window: the world; registering scene components; loading scenes strictly,
+  with every texture and font they name read and decoded; loading textures, fonts and sounds; the camera; the exit
+  flag. Nothing is drawn or heard: sounds play silently, no input is ever pressed, the viewport is zero, and time
+  does not advance.
+- Pie Heist uses it: `tests/levels.rs` registers the game's components with the game's own `register(ctx)`, loads
+  every file in `assets/levels/` with `load_scene` (strict, as the game does), and checks each loaded world with
+  `pie_heist::check::problems`:
+  - exactly one start and one exit;
+  - walls and doors are quads, not rotated;
+  - pickups, guards, the start and the exit can be touched;
+  - the start is clear of walls;
+  - every door colour has a key.
+
+  It then checks the chain of exits with `check::order`: it starts at level 1, ends at a last level, has no loops,
+  every `next` is a shipped level, and no level is unreached. It runs in `cargo test`, so CI checks every level.
+
+## Alternatives
+- **A timed Xvfb run of the game for each level.** It is not in `cargo test` (CI has no display or GPU), it is slow
+  and timing-dependent, and it reports a broken level only as a missing line of output.
+- **A read-only scene API** (`scene::read(text)` returning plain entity data). It would mirror every field of the
+  file format in public types, and a game's checks could not reuse its own queries over real components. It would
+  also check less: game components only as text, and assets only by their path.
+- **The game parsing the RON itself.** It would couple the game to the engine's private file format, and add `ron`,
+  which the engine holds at an exact version (R-31), to a game.
+- **Running a whole `Game` headless with simulated time and input.** Useful later for gameplay tests, but nothing
+  needs it yet.
+
+## Rationale
+It is the smallest public addition that lets a game check data exactly as it loads it at run time. Nothing is
+reimplemented: the same registration function, the same strict `load_scene`, the same components in the same world.
+It improves testability for every game, not only Pie Heist: a game's own unit tests can now use a real `Context` for
+anything that does not need a window.
+
+## Consequences
+- The public API grows by `Headless`, `Headless::new` and `Headless::context` (CHANGELOG, Unreleased). A `Context`
+  method that later starts to need a window has to say what it does headless. Today `viewport_size` is zero,
+  `cursor_world` is `None`, and the window-title and exit requests are only recorded.
+- Pie Heist's library gained `check` (with unit tests on built worlds), plus `FIRST_LEVEL` and `PLAYER_SIZE`, which
+  the game binary now takes from there.
+- Unchanged: the `Game` trait, `Engine`, the renderer, and the scene format.
+
+## Revisit Conditions
+- A game wants gameplay tests over several steps: add a way to run `Game` callbacks on a `Headless` with time and
+  input supplied by the test, in a new ADR.
+- `EngineState` gains something that needs a window or a device at construction: keep `Headless` working by making
+  that part lazy, or narrow what `Headless` offers.
 
 ---
 

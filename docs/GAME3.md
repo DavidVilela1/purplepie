@@ -67,7 +67,7 @@ layers, texts.
 | Level bounds for the camera clamp | Game code | The union of the wall rectangles, computed when the level loads. |
 | Grid snapping in the editor (aligning maze walls) | **Decided in PP-042a: not now** | Level 1's walls were placed by typing four numbers each (position x/y, size x/y) and came out exact; no wall needed dragging. Snapping only matters when walls are placed with the mouse. Revisit in PP-042d if drawing levels 2–5 by mouse is slow. |
 | Seeing guard paths in the editor | Not planned | The path is RON text relative to the guard; the designer reads it in the inspector. Revisit only if building levels 2–5 shows it is the slowest part. |
-| A test that every shipped level loads, with one `PlayerStart` and one `Exit` | **Decide in PP-042d** | Games cannot load a scene without a running engine (`load_scene` is a `Context` method). Either a timed Xvfb run like Purple Swarm's autoplay, or a small engine API to read a scene file's entities without a window. The choice is made when the five levels exist. |
+| A test that every shipped level loads, with one `PlayerStart` and one `Exit` | **Engine + game: PP-042d1, done** (ADR-045) | `load_scene` was a `Context` method, and a `Context` needed a running engine with a window. The engine now has `purplepie::Headless`, a `Context` without a window. `tests/levels.rs` loads every file in `assets/levels/` strictly with the game's own `register`, and checks each with `pie_heist::check` (one start and one exit; walls and doors not rotated; the start clear of walls; a key for every door colour). It also checks that the exits lead from level 1 through every level to a last one. It runs in `cargo test`, so CI checks every level. A timed Xvfb run was rejected: it is not in `cargo test`, and it is slow and timing-dependent. |
 | Changing a sprite's texture in the editor | Not planned | Delete and add again with the right image. Revisit if it shows up while building levels. |
 | Art | Game assets | Small PNGs made for the game (as Purple Swarm's) plus quads; the font and sounds copied from the engine. |
 
@@ -126,7 +126,8 @@ numbers that is only seen in the game (see "Seeing guard paths in the editor" ab
    - **PP-042c2 (done):** title, pause, level-complete and win screens, "Play again", the time in the HUD
      (`pie_heist::screen`).
 5. **PP-042d:** split in two:
-   - **PP-042d1:** the level-check decision and its test, before more levels are drawn;
+   - **PP-042d1 (done):** the level-check decision (`purplepie::Headless`, ADR-045) and its test, before more levels
+     are drawn;
    - **PP-042d2:** levels 3–5 built in the editor (level 2 exists); a balance pass over all five.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and
    CHANGELOG; phase P6 complete. A 0.3.0 release follows if engine or editor APIs changed.

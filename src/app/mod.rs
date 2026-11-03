@@ -3,6 +3,7 @@
 
 mod config;
 mod game;
+mod headless;
 mod keymap;
 mod logging;
 mod pacer;
@@ -11,6 +12,7 @@ mod state;
 
 pub use config::EngineConfig;
 pub use game::{Context, Game};
+pub use headless::Headless;
 
 use winit::event_loop::EventLoop;
 

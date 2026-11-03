@@ -12,7 +12,13 @@ use purplepie::math::{Rect, Transform2D, Vec2};
 use purplepie::render::Quad;
 use serde::{Deserialize, Serialize};
 
+pub mod check;
 pub mod screen;
+
+/// The level the game starts with, relative to the asset folder.
+pub const FIRST_LEVEL: &str = "levels/level1.ron";
+/// The player's width and height: what it touches and what stops it.
+pub const PLAYER_SIZE: f32 = 28.0;
 
 /// The names the components are saved under in level files.
 pub mod names {

@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-042d1: Pie Heist level check: decide how shipped levels are checked (one start, one exit, every `next` exists, loads strictly) and add the test** · P1 · TODO ← **next task**
+- [ ] **PP-042d2: Pie Heist: levels 3–5 built in the editor (each about 2 000 × 1 500, using every component; each must pass `tests/levels.rs`); a balance pass over all five; split at its start (likely one level per session)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -62,6 +62,7 @@ _None._
 - [x] **PP-042b2: Pie Heist keys and doors: a key opens every door of its colour (doors block like walls until then, then disappear); keys and doors drawn in their colour; HUD "Keys: Gold"; key and door sounds; level 2 gained a gold door before the exit and a gold key, in the editor; scripted play-through (phase P6, item 5)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042c1: Pie Heist guards and being caught** · DONE (2026-10-15; verified on Linux; PP-042c split into c1 and c2)
 - [x] **PP-042c2: Pie Heist screens (title, pause, level complete, win with "Play again")** · DONE (2026-10-15; verified on Linux)
+- [x] **PP-042d1: Pie Heist level check (`purplepie::Headless`, ADR-045; `tests/levels.rs`)** · DONE (2026-11-03; verified on Linux)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -103,7 +104,6 @@ _None._
 
 P6 Proof: Pie Heist ([GAME3.md](GAME3.md)), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-042d2: Pie Heist: levels 3–5 built in the editor (each about 2 000 × 1 500, using every component); a balance pass over all five** · P2 · TODO (split again at its start if needed)
 - [ ] **PP-042e: Pie Heist: findings from building the levels, CHECKLIST step, README/CHANGELOG; phase P6 complete (release 0.3.0 if APIs changed)** · P2 · TODO
 
 
@@ -492,14 +492,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-042d1: Pie Heist level check ← NEXT
+### PP-042d2: Pie Heist levels 3–5 ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P6, item 7 (first part; PP-042d split into d1 level check and d2 levels 3–5) · Priority P1 · TODO |
+| Stage | Phase P6, item 7 (second part) · Priority P1 · TODO |
+| Dependencies | PP-042d1 (DONE); [GAME3.md](GAME3.md) |
+| Why now | Every mechanic, screen and the level check exist; the game needs its full set of levels, and building them is the real test of the editor that P6 is about. |
+| Scope | Levels 3, 4 and 5, each about 2 000 × 1 500 units (bigger than the window, so the camera follows), drawn only in `pie-heist-editor`, together using every component (walls, pies, keys and doors of two or more colours, guards with longer paths, hints as `Text`). Level 2's exit leads on to level 3, and level 5's is the last. Each level passes `tests/levels.rs`. A balance pass over all five: guard speeds, distances, a target time per level. Write down what the editor made easy or slow while building (for PP-042e). Split at its start, likely one level per session (d2a level 3, d2b level 4, d2c level 5 + balance). |
+| Acceptance criteria | The new levels were made in the editor, pass the level test, and were played through under Xvfb; findings noted. |
+
+### PP-042d1: Pie Heist level check
+| Field | Value |
+|---|---|
+| Stage | Phase P6, item 7 (first part; PP-042d split into d1 level check and d2 levels 3–5) · Priority P1 · **DONE** (2026-11-03; verified on Linux) |
 | Dependencies | PP-042c2 (DONE); [GAME3.md](GAME3.md) gaps table, "A test that every shipped level loads" |
-| Why now | The game is complete for two levels; three more large levels come next, and a check that every shipped level is well formed should exist before they are drawn, so each one is checked as it is saved. |
-| Scope | Decide between the two options in GAME3.md: a timed Xvfb run (as Purple Swarm's autoplay) or a small engine API that reads a scene file's entities and components without a window (e.g. a `scene` function over the file's text, with the game's registered types). Record the decision (an ADR-035/036 note, or a new ADR if it adds public engine API). Then a test in `games/pie-heist` that, for every file in `assets/levels/`: it loads strictly with the game's components; it has exactly one `PlayerStart` and one `Exit`; every `Exit::next` names a shipped level and the chain from level 1 reaches a last level without loops; every wall and door is axis-aligned. Runs in `cargo test` (CI) if the chosen option allows it. |
-| Acceptance criteria | Decision recorded with its reasons; the test passes on levels 1–2 and fails (checked by a temporary edit) on a level with two starts, a missing `next` file or a rotated wall. |
+| Why now | The game was complete for two levels and three more large ones come next; a check of every shipped level should exist before they are drawn. |
+| Scope | Decide between a timed Xvfb run and a window-free way to load scenes; record it; add the test. |
+| Acceptance criteria | ✅ Decision: ADR-045, **`purplepie::Headless`** (`new(asset_root)`, `context()`), the engine's state without a window, GPU or audio device lending the same `Context` (it was already a borrow of a window-free `EngineState`); the Xvfb run, a read-only scene API and parsing RON in the game were rejected (reasons in the ADR). 3 engine unit tests (strict load fails until the demo scene's components are registered, then spawns quads, sprites with decoded textures and the game components; nothing pressed, `dt` 1/60, time 0, missing assets are errors, silent sounds; a relative root from the working directory) and a doctest. ✅ Game: `pie_heist::check::problems(world)` (one start, one exit, walls and doors quads and not rotated, pickups/guards/start/exit touchable, the start clear of walls and doors, a key for every door colour) and `check::order(first, next)` (a `next` that is not a level, a loop, the first level missing, a level no exit leads to); 3 unit tests on built worlds and chains (14 in the library). `FIRST_LEVEL` and `PLAYER_SIZE` moved to the library. ✅ `tests/levels.rs`: registers with the game's own `register`, loads every `assets/levels/*.ron` strictly, checks each and the order ("levels/level1.ron → levels/level2.ron"); passes. Confirmed to fail, by temporary edits that were then reverted (files compared with GitHub `main`): a rotated wall, a second start, `next` naming a missing file, and a misspelt component field (`colour`) that fails the load with the cause. ✅ GUIDE §11 paragraph. |
 
 ### PP-042c2: Pie Heist screens
 | Field | Value |
