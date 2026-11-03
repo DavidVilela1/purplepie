@@ -248,7 +248,9 @@ Copy-Item assets\scenes\demo.ron $env:TEMP\demo-copy.ron
 cargo run -p purplepie-editor -- --assets assets $env:TEMP\demo-copy.ron
 ```
 
-**Expect:** the scene editor: a list of 19 entities on the left (#8, #9 and #10 say "+1 game component"), the demo
+**Expect:** the scene editor: at the far left a "Project" panel with the `assets` folder as a tree (folders
+`fonts`, `scenes`, `sounds` and `textures`, with `breakout` inside `textures`; `demo.ron` under `scenes` in normal
+text, images, fonts and sounds greyed; `shaders` is not shown, it holds no such file), then a list of 19 entities (#8, #9 and #10 say "+1 game component"), the demo
 scene centred in the rest of the window, and "opened … 19 entities" at the bottom. Dragging with the right or middle
 button pans; the wheel zooms around the cursor; F fits the scene again. Click the green square: it gets an orange
 outline, its row lights up and its components appear under the list. Drag it a little to the right: the title gets a

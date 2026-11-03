@@ -9,7 +9,6 @@ use purplepie::egui;
 use super::{Editor, explain};
 use crate::file;
 use crate::history::History;
-use crate::library;
 use crate::question::Leave;
 
 /// Which path the field asks for.
@@ -253,10 +252,7 @@ impl Editor {
                 }
             },
         }
-        if let Some(root) = ctx.asset_root() {
-            self.images = library::files_under(root, library::IMAGES);
-            self.fonts = library::files_under(root, library::FONTS);
-        }
+        self.project.stale();
         self.update_title(ctx);
     }
 }

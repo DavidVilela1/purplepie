@@ -707,6 +707,8 @@ A file that does not exist yet opens as an empty scene; Ctrl+S creates it. In th
   saves under a new name, each asking about unsaved changes first. Paths are typed from your project folder (the one
   holding the asset folder), for example `assets/levels/two.ron`, and must stay inside the asset folder, because a
   scene's image and font paths are relative to it.
+- **Project panel:** the far-left panel shows the asset folder's scenes, images, fonts and sounds as a tree, read
+  again every second, so new files show up; click a scene to open it (with the same question about unsaved changes).
 
 Your own components (section 11) appear as one text field each, holding their value as RON, for example
 `(leads_to: "levels/two.ron")`; the small "x" next to one removes it from the entity. The editor above does not know

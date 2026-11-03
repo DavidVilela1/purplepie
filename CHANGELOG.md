@@ -15,6 +15,8 @@ break compatibility and a patch version (0.x.**y**) may not.
 - Scene editor: closing the window with unsaved changes asks "Save / Don't save / Cancel".
 - Scene editor: New (Ctrl+N), Open… (Ctrl+O) and Save As… (Ctrl+Shift+S) change scenes without restarting, asking
   about unsaved changes first; paths are typed from the project folder and must stay inside the asset folder.
+- Scene editor: a project panel shows the asset folder's scenes, images, fonts and sounds as a tree (new files appear
+  within a second); clicking a scene opens it.
 - `Headless`: the engine without a window, GPU or audio device. `Headless::new(asset_root).context()` lends the same
   `Context` games get, so tests and tools can register components, load scenes strictly (textures and fonts
   decoded) and inspect the world, in `cargo test` (ADR-045).

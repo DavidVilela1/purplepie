@@ -21,7 +21,8 @@
 //! own editor gives its component types ([`GameComponents`], [`main_with`]),
 //! and their values are checked against them (PP-038j1). Closing the window
 //! with unsaved changes asks "Save / Don't save / Cancel" first (PP-044a1),
-//! and New, Open and Save As change scenes in one run (PP-044a2).
+//! New, Open and Save As change scenes in one run (PP-044a2), and the
+//! project panel lists the asset folder's files and opens scenes (PP-044b).
 //! The guide's section 15 ("The scene editor", `docs/GUIDE.md`) explains both.
 //!
 //! ```no_run

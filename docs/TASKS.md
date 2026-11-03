@@ -10,7 +10,7 @@ Active task tracker. Rules are in [DEVELOPMENT.md §5](DEVELOPMENT.md#5-tasks).
 
 ## Current
 
-- [ ] **PP-044b: Engine editor: the project panel (the asset folder as a tree: scenes, images, fonts, sounds; click a scene to open it; refresh on changes)** · P1 · TODO ← **next task**
+- [ ] **PP-044c: Engine editor: the console panel (the editor's messages with time and level; the status line shows the latest)** · P1 · TODO ← **next task**
 
 ## In Progress
 
@@ -68,6 +68,7 @@ _None._
 - [x] **PP-043: P7 plan: the engine editor (docs/EDITOR.md, ADR-046); P6 parked** · DONE (2026-11-03)
 - [x] **PP-044a1: Engine: `EngineConfig::exit_on_close` + `Context::close_requested`; editor asks before closing a changed scene** · DONE (2026-11-03; verified on Linux; PP-044a split into a1 and a2)
 - [x] **PP-044a2: Engine editor: New, Open and Save As in one run** · DONE (2026-11-03; verified on Linux)
+- [x] **PP-044b: Engine editor: the project panel** · DONE (2026-11-03; verified on Linux)
 - [x] **PP-042b1: Pie Heist pies, exits and progression: pies collected, the exit opens when all are, exits load the next level or win; HUD and two sounds; level 1 completed and level 2 made in the editor; a scripted play-through of both levels (phase P6, item 4; PP-042b split into b1 and b2)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-042a: Pie Heist skeleton and its editor: `games/pie-heist` (components, `register`, engine-free rules: swept `move_and_slide`, `wall_rect`, `level_bounds`, `camera_target`; game binary: strict level load, player at the start, movement and wall collision, camera) and `games/pie-heist-editor` (`main_with` + `with_default`); level 1 drawn in the editor; grid snapping decided against; editor fix: new quads were invisible (phase P6, item 3)** · DONE (2026-10-15; verified on Linux)
 - [x] **PP-041: Editor: add and remove game components: "Game component: Add…" menu in the inspector (the game's types given with `GameComponents::with_default`, minus those the entity has), an "x" button per game component, each one undo step (`Edit::GameComponent`); engine `scene::component_text(&T)` writes a value exactly as `save_scene` does (phase P6, item 2)** · DONE (2026-10-15; verified on Linux)
@@ -109,7 +110,6 @@ _None._
 
 P7 Engine editor ([EDITOR.md](EDITOR.md), ADR-046), in order; each is split again at its start if it does not fit one session:
 
-- [ ] **PP-044c: Engine editor: the console panel (the editor's messages with time and level; the status line shows the latest)** · P2 · TODO
 - [ ] **PP-044d: Engine editor: Run (F5) and Stop: the project's run command as a separate process, its output in the console, exit status; `--run` and a code option for a game's editor; Pie Heist's editor configured** · P2 · TODO
 - [ ] **PP-044e: Engine editor: game hints in the view (a game's editor draws lines, rectangles and labels from its component values; ADR-044 note); Pie Heist's guard paths and door colours** · P2 · TODO
 - [ ] **PP-044f: Engine editor: image previews in the project panel and the sprite picker (decide: decode in the editor or an engine API for texture pixels)** · P2 · TODO
@@ -508,14 +508,23 @@ the same picture); `SpriteAnimation` (private playback state), `Velocity` and `u
 | Stage | Phase P3.5, item 5, part 2 · Priority P1 · **DONE** (2026-10-09; verified on Linux; tag pushed by the owner) |
 | Dependencies | PP-035a ✅, PP-033b ✅ (owner: checklist as expected), repository URL ✅ (`https://github.com/DavidVilela1/purplepie`), green CI incl. `msrv` and latest-deps ✅ (owner-reported) |
 | Acceptance criteria | ✅ `version = "0.1.0"`, `repository` set; `Cargo.lock` changed only in purplepie's own version line. ✅ CHANGELOG `[0.1.0] - 2026-10-09` + empty `[Unreleased]` + compare/tag links. ✅ README (status, dependency line, asset source), guide section 1 and RELEASING give the git-tag dependency. ✅ The git form was verified against the real repository: a fresh crate with `git = "https://github.com/DavidVilela1/purplepie", branch = "main"` (the tag does not exist yet) built and ran the guide game, frame identical to the PP-032a guide frame; the same crate by path against the 0.1.0 workspace too. ✅ GitHub `main` was byte-identical to the PP-035a archive before this change. Owner action: commit, push, wait for green CI, then `git tag -a v0.1.0` + `git push origin v0.1.0` (RELEASING §3). |
-### PP-044b: Engine editor: the project panel ← NEXT
+### PP-044c: Engine editor: the console ← NEXT
 | Field | Value |
 |---|---|
-| Stage | Phase P7, item 3 · Priority P1 · TODO |
-| Dependencies | PP-044a2 (DONE: `open_scene` through the save question); ADR-046; [EDITOR.md](EDITOR.md) |
-| Why now | Opening a scene still means typing its path; the panel shows the project's files and opens scenes with a click, the first step towards developing a game without a terminal. |
-| Scope | Editor only. A collapsible "Project" section (or a panel beside the entity list): the asset folder as a tree of folders and files (scenes `.ron`, images, fonts, sounds; other files hidden), sorted, folders collapsible; a click on a scene opens it through `Leave::Open` (the save question); the open scene is highlighted; refreshed when the folder changes (checked about once a second, as hot reload does, or on a Refresh button: decide). `library.rs` grows from flat image/font lists to the tree; the Add menus keep using it. Unit tests for the tree (kinds, order, hidden files, the 500-file cap); Xvfb: open level 1, click level 2 in the tree, change it, click level 3 (the question), a new file saved with Save As appears in the tree. |
-| Acceptance criteria | The tree shows the asset folder's scenes and assets; clicking a scene opens it through the question; new files appear; tests; GUIDE §15 notes it. |
+| Stage | Phase P7, item 4 · Priority P1 · TODO |
+| Dependencies | PP-044b (DONE); ADR-046; [EDITOR.md](EDITOR.md) |
+| Why now | Run (PP-044d) needs a place for the game's output; the editor's own messages already exceed one status line (opening reports, problems in game components, saves). |
+| Scope | Editor only. A bottom panel (collapsible, resizable) listing messages with their time (seconds since start, or clock time: decide) and level (info, warning, error; errors red, warnings yellow), newest at the bottom and followed while scrolled to the end; a Clear button; a cap (e.g. the last 1 000 lines). `report` writes there as well as the terminal; the status line keeps showing the latest. The list is a small model (`console.rs`: push, cap, levels) with unit tests, ready for a second source (the game) in PP-044d. Xvfb: open, change, save, a refused path, a component that does not fit: each appears in the console. |
+| Acceptance criteria | Messages appear with time and level; the cap holds; Clear works; unit tests; GUIDE §15 notes it. |
+
+### PP-044b: Engine editor: the project panel
+| Field | Value |
+|---|---|
+| Stage | Phase P7, item 3 · Priority P1 · **DONE** (2026-11-03; verified on Linux) |
+| Dependencies | PP-044a2 (DONE); ADR-046 |
+| Why now | Opening a scene meant typing its path. |
+| Scope | Editor only: the asset folder as a tree, a click on a scene opens it through the save question, new files appear. |
+| Acceptance criteria | ✅ `library::tree` (folders then files, sorted; scenes `.ron`, images, fonts `.ttf`/`.otf`, sounds `.wav`/`.ogg`, any case; hidden files and other kinds skipped, folders with nothing to show left out; at most 500 files, with a "more files" flag) and `library::Kind`; 2 unit tests. ✅ `src/editor/project.rs`: a "Project" panel at the far left (resizable, scrolls), folders collapsible and open at first, scenes selectable (the open one highlighted; a click on another goes through `Leave::Open`), other files greyed with their kind; read again at most every second and right after a save, also refreshing the Add menus' image and font lists (which `load` did before); unit test for paths relative to the asset folder. ✅ Decided: reading every second instead of a Refresh button. ✅ Xvfb (pie-heist-editor on copies of the levels): the tree shows fonts, levels, sounds and textures with level1 highlighted; a click on level 2 opened it; after a change, a click on level 3 asked, Don't save opened level 3 with level 2 unchanged; Save As `extra.ron` appeared highlighted at once; a file copied into the folder from outside appeared within the second. ✅ GUIDE §15, CHECKLIST step 9. |
 
 ### PP-044a2: Engine editor: New, Open and Save As
 | Field | Value |

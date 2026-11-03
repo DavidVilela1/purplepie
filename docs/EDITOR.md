@@ -77,7 +77,8 @@ Each item is one task, split again at its start if it does not fit one session:
      Don't save / Cancel" before closing a changed scene;
    - **PP-044a2 (done):** New, Open (a path field, with paths relative to the project) and Save As in one run,
      through the same question; the title follows the file.
-3. **PP-044b:** the project panel: the asset folder as a tree, click a scene to open it, refresh on changes.
+3. **PP-044b (done):** the project panel: the asset folder as a tree, click a scene to open it, read again every
+   second (decided over a Refresh button: cheap for a few hundred files, and nothing to remember to press).
 4. **PP-044c:** the console panel: the editor's messages with time and level; the status line shows the latest.
 5. **PP-044d:** Run and Stop: the project's run command, the game's output in the console, exit status,
    `--run`, and the code option for a game's editor; Pie Heist's editor configured.

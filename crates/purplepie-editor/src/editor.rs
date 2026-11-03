@@ -25,7 +25,9 @@ use crate::summary::{details, entity_ids, summary};
 use crate::view;
 
 mod files;
+mod project;
 use files::PathPrompt;
+use project::ProjectFiles;
 
 /// One line of feedback at the bottom of the window.
 struct Status {
@@ -115,6 +117,8 @@ pub(crate) struct Editor {
     file: Option<PathBuf>,
     /// The Open or Save As path field, while it is open.
     prompt: Option<PathPrompt>,
+    /// The asset folder's files, for the project panel.
+    project: ProjectFiles,
     /// Fit the camera to the scene in the next frame (after opening, or asked
     /// for), when the panels' sizes are known.
     fit_pending: bool,
@@ -157,6 +161,7 @@ impl Editor {
         Self {
             file: Some(file),
             prompt: None,
+            project: ProjectFiles::default(),
             fit_pending: true,
             status: Status {
                 text: String::new(),
@@ -219,6 +224,7 @@ impl Editor {
         match ctx.save_scene(&file) {
             Ok(()) => {
                 self.history.mark_saved();
+                self.project.stale(); // a new file shows up at once
                 let text = format!("saved {}", file.display());
                 self.report(text, false);
             }
@@ -1485,6 +1491,7 @@ impl Game for Editor {
             self.shortcuts(ctx, ui);
         }
         // Side and bottom panels first, so the viewport is what they leave.
+        self.project_panel(ctx, ui);
         self.entities_panel(ctx, ui);
         self.status_line(ctx, ui);
         self.viewport(ctx, ui);

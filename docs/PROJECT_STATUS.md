@@ -11,7 +11,8 @@ the engine's development interface, with scenes opened and saved in one run, a p
 the game as a separate process, game hints in the view and image previews ([EDITOR.md](EDITOR.md), ADR-046).
 PP-044a1 let a game handle the window's close request (`EngineConfig::with_exit_on_close(false)`,
 `Context::close_requested()`), and the editor now asks "Save / Don't save / Cancel" before closing a changed scene.
-PP-044a2 added New, Open and Save As within one run. Next: **PP-044b**, the project panel. **Phase P6 (proof) is parked** (owner, 2026-11-03): Pie Heist has four of its five
+PP-044a2 added New, Open and Save As within one run, and PP-044b a project panel with the asset folder as a tree
+(click a scene to open it). Next: **PP-044c**, the console. **Phase P6 (proof) is parked** (owner, 2026-11-03): Pie Heist has four of its five
 levels, every mechanic and screen, and a test of every level; level 5, the balance pass and the wrap-up wait.
 
 **Phase P5 (scene editor): complete (2026-10-14, verified on Linux).** `crates/purplepie-editor` (ADR-044) opens a
@@ -111,8 +112,8 @@ the editor (2 000 × 1 500, three rooms, red and blue doors, two guards, a hint)
 PP-042d2b drew level 4 (three corridors in a zigzag, a gold door, three guards whose patrols cross the route, one a
 four-point loop), and level 3 leads to it. P6 is parked there (owner, 2026-11-03); PP-043 planned phase P7, the
 engine editor ([EDITOR.md](EDITOR.md), ADR-046). PP-044a1 made closing the editor ask about unsaved changes (the
-engine gained `exit_on_close`), and PP-044a2 let it create, open and save other scenes in one run. Next:
-**PP-044b**, the project panel.
+engine gained `exit_on_close`), PP-044a2 let it create, open and save other scenes in one run, and PP-044b added the project panel. Next:
+**PP-044c**, the console.
 The long-term plan (in-game UI and an editor) is in
 [ROADMAP.md](ROADMAP.md#after-stage-10).
 
@@ -194,6 +195,7 @@ executable, else `assets/` in the working directory (ADR-025).
 - PP-024a: audio playback control and looping: `PlaybackId`, `loop_sound`, `stop_sound`, volumes (ADR-032).
 - PP-024b: OGG Vorbis decoding with `lewton`; format chosen by content; sandbox music is `loop.ogg` (ADR-033).
 - PP-026a: scene files, part 1a: `Context::save_scene` / `load_scene` (RON via private serde types; drawing components; assets by relative path), `examples/scene.rs` (ADR-035).
+- PP-044b: the editor's project panel (the asset folder as a tree; a click opens a scene; read every second).
 - PP-044a2: the editor's New, Open… and Save As… (typed paths from the project folder, inside the asset folder), each through the save question.
 - PP-044a1: `EngineConfig::exit_on_close` and `Context::close_requested` (ADR-046 notes); the editor asks "Save / Don't save / Cancel" before closing a changed scene.
 - PP-043: P7 plan, the engine editor ([EDITOR.md](EDITOR.md), ADR-046, risk R-32); P6 parked.
@@ -255,7 +257,7 @@ executable, else `assets/` in the working directory (ADR-025).
 
 ## Next
 
-- **PP-044b: Engine editor: the project panel** (phase P7, item 3): the asset folder as a tree (scenes, images, fonts, sounds); a click on a scene opens it through the save question; new files appear. See [TASKS.md](TASKS.md#pp-044b-engine-editor-the-project-panel--next).
+- **PP-044c: Engine editor: the console** (phase P7, item 4): a bottom panel listing the editor's messages with time and level, capped, with Clear; ready for the game's output (PP-044d). See [TASKS.md](TASKS.md#pp-044c-engine-editor-the-console--next).
 
 ## Blocked
 
@@ -295,11 +297,15 @@ executable, else `assets/` in the working directory (ADR-025).
 - `egui` hook (optional feature, PP-038c): an egui pass runs every frame while `with_egui` is on (cost not measured separately; the visible overlay costs about a quarter of the frame rate in debug builds on a software GPU); the game's UI covers the scene drawn under it (no separate viewport); the egui context is recreated when the platform suspends the app, so panel sizes and positions reset then. Seen only on Linux/lavapipe.
 - Scene editor (PP-038f, PP-038g): selects, moves (world-space entities only), edits transform, layer, hidden, quads, sprites (not the texture), texts (not the font) and kept game components (PP-038h1/h2), undoes and saves; game components are RON text checked as syntax, and against the game's types only in a game's own editor (PP-038j1), with no typed widgets; game components are added from a game's own editor's defaults (`with_default`) and removed with the "x" (PP-041); velocity, animation, buttons and screen-space anchors are read-only; entities can be added (quads, sprites, texts), deleted and duplicated (PP-038i1/i2); asset lists are read when the scene opens; there is no "New", "Open" or "Save as" (one file per run); screen-space entities are drawn relative to the whole window, so its panel can cover them; it runs no game logic (animations stay at their saved frame); Linux only so far (CHECKLIST step 9 has a Windows check).
 - `Headless` (ADR-045) runs no `Game` callbacks and never advances time or input: it is for loading and checking data, not for gameplay tests over several steps.
-- The editor (until P7 lands) has no project panel (scene paths are typed), no console beyond the status line and no Run button.
+- The editor (until P7 lands) has no console beyond the status line and no Run button; the project panel lists at most 500 files.
 - Pie Heist (PP-042a/b1/b2/c1/c2/d1/d2a/d2b; P6 parked): every planned mechanic and screen, but four of the five levels; the level test checks the rules, not whether every pie and key can be reached (that is still found by playing); guards walk through walls (paths are the designer's job); scripted runs have to click the title first; keys and doors are coloured by the game, not by the level file; walls must be axis-aligned (rotated ones are ignored with a warning); the sounds are simple generated tones.
 - The owner's copy is inside OneDrive (R-15).
 
 ## Recent Changes
+
+- **2026-11-03: PP-044b The editor's project panel.**
+  - A panel at the far left shows the asset folder's scenes, images, fonts and sounds as a tree; clicking a scene opens it (through "Save / Don't save / Cancel" when something is unsaved). It is read again every second and after each save, so new files show up.
+  - Checked under Xvfb on copies of Pie Heist's levels, including a file copied in from outside.
 
 - **2026-11-03: PP-044a2 New, Open and Save As in the editor.**
   - New (Ctrl+N), Open… (Ctrl+O) and Save As… (Ctrl+Shift+S) change scenes without restarting the editor, through "Save / Don't save / Cancel" when something is unsaved; a new scene's first Save asks where. Paths are typed from the project folder and must stay inside the asset folder; replacing another existing file needs a second confirm.
@@ -715,15 +721,16 @@ executable, else `assets/` in the working directory (ADR-025).
 ## Validation
 
 Executed in Cowork (Linux x86_64, Rust 1.97.0, Xvfb + Mesa lavapipe / llvmpipe, `libasound2-dev` installed) on 2026-11-03,
-after the final PP-044a2 change (the GPU-only `--ignored` tests last ran after PP-042d1; no rendering change since) (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
+after the final PP-044b change (the GPU-only `--ignored` tests last ran after PP-042d1; no rendering change since) (CI additionally runs the latest stable clippy and builds Windows/macOS, which Cowork cannot; R-19):
 
 | Command / check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ PASS |
 | `cargo check --locked --all-targets --all-features` | ✅ PASS |
 | `cargo clippy --locked --all-targets --all-features -- -D warnings` (Rust 1.95) | ✅ PASS (0 warnings) |
-| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 250 unit tests + 62 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 266 + 63, 13 ignored; editor 27 + 4 doctests; Purple Swarm 10; Pie Heist 14 + the level test |
+| `cargo test --locked` (and `--workspace`) | ✅ PASS (engine without features: `cargo test` or `--workspace --exclude purplepie-editor`): 250 unit tests + 62 doctests (14 of them the guide's blocks) with 1 doctest ignored (the guide's editor program, compiled as an example of the editor crate), 12 unit tests ignored (GPU); with `--workspace --all-features` 266 + 63, 13 ignored; editor 30 + 4 doctests; Purple Swarm 10; Pie Heist 14 + the level test |
 | `cargo test --locked -- --ignored` (lavapipe) | ✅ PASS: 12/12; with `--all-features` 13/13 (the overlay pixel test) |
+| Project panel (PP-044b) | ✅ GitHub `main` (`66ca558`) identical to this tree before the task. fmt; `cargo test --locked` and `--workspace --all-features`; clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb: tree shown, a click opened level 2, a click with unsaved changes asked (Don't save, file unchanged), a Save As file and a file copied in from outside both appeared |
 | New, Open, Save As (PP-044a2) | ✅ GitHub `main` (`337a34c`) identical to this tree before the task (its CI run's macOS job was not picked up by a GitHub runner, a capacity problem on GitHub's side; the other jobs passed). fmt; `cargo test --locked` and `--workspace --all-features`; clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb: Open through the question (Don't save, file unchanged), Save As a byte-identical copy, the replace warning and second confirm, a path outside the asset folder refused, New + Save asking where, the question's Save on an untitled scene then opening |
 | Asking before closing (PP-044a1) | ✅ This tree is GitHub `main` (`56655e1`) plus PP-043 (not pushed yet when this task started). fmt; `cargo test --locked` and `--workspace --all-features`; clippy `--workspace --all-targets --all-features` and, without features, `--exclude purplepie-editor --exclude pie-heist-editor` (+ `incompatible_msrv`); `cargo doc --workspace --all-features` (`-D warnings`). Xvfb with `WM_DELETE_WINDOW` close requests: unchanged scene closed; changed scene asked; Escape and Cancel kept it open; Don't save closed it with the file unchanged; Save wrote the change and closed; a refused save (unopenable file) kept it open and the file intact |
 | P7 plan (PP-043) | ✅ GitHub `main` (`56655e1`) identical to this tree before the task. No Rust code changed. fmt; `cargo test --locked` and `--workspace --all-features`. Spike: `cargo build -p pie-heist` while `cargo run -p pie-heist-editor` ran under Xvfb: not blocked by Cargo's lock (19 s) |
@@ -792,4 +799,4 @@ Stages 5–10 and text (PP-018a/b) on Windows have not been seen yet.
 
 ## Last Updated
 
-2026-11-03. PP-044a2 done (New, Open, Save As in the editor). PP-044b (the project panel) is next.
+2026-11-03. PP-044b done (the editor's project panel). PP-044c (the console) is next.
