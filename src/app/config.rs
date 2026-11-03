@@ -31,6 +31,15 @@ pub struct EngineConfig {
     /// Turn it off to use Escape yourself, e.g. for a pause menu, through
     /// [`Context::input`](crate::Context::input).
     pub exit_on_escape: bool,
+    /// Whether closing the window (its close button, Alt+F4, the system's
+    /// "quit") ends the application right away (default `true`).
+    ///
+    /// Turn it off to ask first, e.g. "save changes?": the request is then
+    /// only reported by [`Context::close_requested`](crate::Context::close_requested)
+    /// for one frame, and the game calls
+    /// [`Context::request_exit`](crate::Context::request_exit) when it is
+    /// ready to close (ADR-046).
+    pub exit_on_close: bool,
     /// Length of one fixed simulation step in seconds (default `1/60`). Must be
     /// finite and > 0.
     pub fixed_dt: f64,
@@ -104,6 +113,7 @@ impl EngineConfig {
             height: Self::DEFAULT_SIZE.1,
             resizable: true,
             exit_on_escape: true,
+            exit_on_close: true,
             fixed_dt: Self::DEFAULT_FIXED_DT,
             max_frame_dt: Self::DEFAULT_MAX_FRAME_DT,
             max_fixed_steps: Self::DEFAULT_MAX_FIXED_STEPS,
@@ -136,6 +146,23 @@ impl EngineConfig {
     #[must_use]
     pub fn with_exit_on_escape(mut self, exit_on_escape: bool) -> Self {
         self.exit_on_escape = exit_on_escape;
+        self
+    }
+
+    /// Sets whether closing the window ends the application right away
+    /// (`true`, the default) or only reports the request to the game through
+    /// [`Context::close_requested`](crate::Context::close_requested) (`false`).
+    ///
+    /// ```
+    /// use purplepie::EngineConfig;
+    ///
+    /// // An editor that asks before losing unsaved work.
+    /// let config = EngineConfig::new("My editor").with_exit_on_close(false);
+    /// assert!(!config.exit_on_close);
+    /// ```
+    #[must_use]
+    pub fn with_exit_on_close(mut self, exit_on_close: bool) -> Self {
+        self.exit_on_close = exit_on_close;
         self
     }
 
@@ -306,6 +333,7 @@ mod tests {
         assert_eq!((config.width, config.height), EngineConfig::DEFAULT_SIZE);
         assert!(config.resizable);
         assert!(config.exit_on_escape);
+        assert!(config.exit_on_close);
         assert_eq!(config.fixed_dt, 1.0 / 60.0);
         assert_eq!(config.max_frame_dt, 0.25);
         assert_eq!(config.max_fixed_steps, 5);
@@ -325,6 +353,7 @@ mod tests {
             .with_size(640, 480)
             .with_resizable(false)
             .with_exit_on_escape(false)
+            .with_exit_on_close(false)
             .with_fixed_dt(0.5)
             .with_max_frame_dt(2.0)
             .with_max_fixed_steps(3)
@@ -344,6 +373,7 @@ mod tests {
         assert_eq!((config.width, config.height), (640, 480));
         assert!(!config.resizable);
         assert!(!config.exit_on_escape);
+        assert!(!config.exit_on_close);
     }
 
     #[test]

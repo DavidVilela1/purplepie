@@ -435,6 +435,8 @@ impl<G: Game> Runner<G> {
             self.apply_window_title();
             self.exit_if_requested(event_loop);
         }
+        // Reported for one frame: update and the egui hook have seen it.
+        self.state.close_requested = false;
     }
 
     /// Hot reload (ADR-037): at most every [`RELOAD_INTERVAL`], re-read the
@@ -496,7 +498,15 @@ impl<G: Game> ApplicationHandler for Runner<G> {
             return;
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if self.config.exit_on_close {
+                    event_loop.exit();
+                } else {
+                    // The game decides in this frame (ADR-046).
+                    log::debug!("window close requested; left to the game");
+                    self.state.close_requested = true;
+                }
+            }
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,

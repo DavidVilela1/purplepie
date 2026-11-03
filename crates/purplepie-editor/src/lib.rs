@@ -19,8 +19,9 @@
 //! Add row places a quad, a sprite or a text at the centre of the view
 //! (PP-038i2); a file that does not exist yet opens as a new scene. A game's
 //! own editor gives its component types ([`GameComponents`], [`main_with`]),
-//! and their values are checked against them (PP-038j1). The guide's section
-//! 15 ("The scene editor", `docs/GUIDE.md`) explains both.
+//! and their values are checked against them (PP-038j1). Closing the window
+//! with unsaved changes asks "Save / Don't save / Cancel" first (PP-044a1).
+//! The guide's section 15 ("The scene editor", `docs/GUIDE.md`) explains both.
 //!
 //! ```no_run
 //! use purplepie_editor::Options;
@@ -38,6 +39,7 @@ mod editor;
 mod history;
 mod library;
 mod options;
+mod question;
 mod select;
 mod snapshot;
 mod summary;
@@ -128,7 +130,9 @@ fn run_frames(
         .with_egui(true)
         .with_console_log(true)
         // Escape must not throw away the work: close the window to quit.
-        .with_exit_on_escape(false);
+        .with_exit_on_escape(false)
+        // Closing asks first when the scene has unsaved changes (PP-044a1).
+        .with_exit_on_close(false);
     if let Some(assets) = assets {
         config = config.with_asset_root(assets);
     }

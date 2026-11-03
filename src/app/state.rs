@@ -12,6 +12,9 @@ use crate::time::Time;
 /// Grouped so that `Context` borrows one value instead of a growing list.
 pub(crate) struct EngineState {
     pub(crate) exit_requested: bool,
+    /// The window's close was requested in this frame and the game decides
+    /// (`EngineConfig::exit_on_close` off; ADR-046). Cleared when the frame ends.
+    pub(crate) close_requested: bool,
     pub(crate) time: Time,
     /// The single game world (ADR-008).
     pub(crate) world: World,
@@ -41,6 +44,7 @@ impl EngineState {
     pub(crate) fn new(fixed_dt: f64, assets: AssetRoot) -> Self {
         Self {
             exit_requested: false,
+            close_requested: false,
             time: Time::new(fixed_dt),
             world: World::new(),
             textures: Textures::default(),

@@ -32,7 +32,7 @@ git status --short
 cargo test
 ```
 
-**Expect:** `test result: ok. 246 passed; 0 failed; 12 ignored` and `test result: ok. 59 passed; 0 failed; 1 ignored` (the ignored one is the guide's editor program, compiled as an example of the editor crate). The guide's code
+**Expect:** `test result: ok. 250 passed; 0 failed; 12 ignored` and `test result: ok. 62 passed; 0 failed; 1 ignored` (the ignored one is the guide's editor program, compiled as an example of the editor crate). The guide's code
 blocks are part of the 59. **Report** the two `test result` lines.
 
 ## 2. GPU tests on your real graphics card
@@ -274,7 +274,9 @@ component value(s) checked against the game's types". Click the "#8 sprite … +
 `scene_demo::Spin` field, replace `0.8` with `fast` and press Enter: a red "… not changed: does not fit the type: …"
 message, and the field shows `0.8` again (the plain editor above accepts it: `fast` is valid RON, just not a number).
 Click the "#1 quad" row, then "Add…" next to "Game component", and pick `scene_demo::Spin`: the row appears with
-`(speed: 0.0, direction: Clockwise)`; the "x" after it removes it again. Close the window without saving.
+`(speed: 0.0, direction: Clockwise)`; the "x" after it removes it again. Close the window: a box asks "Save the
+changes to demo.ron before closing?". Click **Cancel** (the editor stays open), close the window again and click
+**Don't save** (it closes, and `assets/scenes/demo.ron` is unchanged: `git status` shows nothing).
 
 ## macOS or Linux
 

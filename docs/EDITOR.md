@@ -57,7 +57,7 @@ These become tasks only if building games shows a need:
 | Need | Where | Notes |
 |---|---|---|
 | Opening another scene in one run | Editor | `World::clear` then `load_scene_keeping_unknown`, as Pie Heist switches levels. History, selection and pending edits reset per scene. |
-| Asking before the window closes | **Engine (likely)** | Checked in PP-043: the runner exits on the window's close request (`WindowEvent::CloseRequested`), so no game can refuse it. PP-044a decides: a small engine API letting a game see and decline the request (an ADR-008 note), or the editor saving a recovery copy instead. |
+| Asking before the window closes | **Engine: PP-044a1, done** | The runner exited on the window's close request, so no game could refuse it. Now `EngineConfig::with_exit_on_close(false)` leaves it to the game: `Context::close_requested()` is `true` for one frame (ADR-046 notes). |
 | Reading a project's files | Editor (`library.rs`, std) | Already lists images and fonts. It grows to scenes and sounds, and a tree. |
 | Running the game, reading its output | Editor (std `process` + a reader thread per pipe, a channel read each frame) | No new dependency (ADR-013). The PP-043 spike: `cargo build -p pie-heist` while `cargo run -p pie-heist-editor` was running was not blocked by Cargo's build lock (Linux). Windows behaviour is checked by the owner when the task lands (R-32). |
 | Game hints | Editor (`GameComponents` learns a drawing function per type; values read with `scene::check_component`'s decoding) | The editor already decodes typed values to check them. The API is designed in its own task (an ADR-044 note). |
@@ -72,9 +72,11 @@ the engine gets an ADR note when its task starts.
 Each item is one task, split again at its start if it does not fit one session:
 
 1. **PP-043 (done):** this plan, ADR-046, P6 parked.
-2. **PP-044a:** scenes in one run: New, Open (a path field, with paths relative to the project), Save As, and the
-   "Save / Don't save / Cancel" question before switching scenes or closing; the window title shows the scene and
-   whether it has unsaved changes.
+2. **PP-044a:** split in two:
+   - **PP-044a1 (done):** the engine lets a game handle the window's close request; the editor asks "Save /
+     Don't save / Cancel" before closing a changed scene;
+   - **PP-044a2:** New, Open (a path field, with paths relative to the project) and Save As in one run, through the
+     same question. (The window title already shows the scene and `*` for unsaved changes.)
 3. **PP-044b:** the project panel: the asset folder as a tree, click a scene to open it, refresh on changes.
 4. **PP-044c:** the console panel: the editor's messages with time and level; the status line shows the latest.
 5. **PP-044d:** Run and Stop: the project's run command, the game's output in the console, exit status,

@@ -19,6 +19,7 @@ use purplepie::{Context, Game};
 use crate::components::GameComponents;
 use crate::history::{Edit, History};
 use crate::library;
+use crate::question::{self, Answer, Leave};
 use crate::select;
 use crate::snapshot::{DUPLICATE_OFFSET, NotCopied, Snapshot};
 use crate::summary::{details, entity_ids, summary};
@@ -139,6 +140,8 @@ pub(crate) struct Editor {
     components: GameComponents,
     /// Whether the window title shows the unsaved-changes marker.
     title_dirty: Option<bool>,
+    /// "Save / Don't save / Cancel" is open, for this action.
+    question: Option<Leave>,
     /// Frames to run before exiting, for automated checks.
     exit_after: Option<u32>,
     frames: u32,
@@ -165,6 +168,7 @@ impl Editor {
             fonts: Vec::new(),
             view_center: None,
             title_dirty: None,
+            question: None,
             components,
             exit_after,
             frames: 0,
@@ -1172,6 +1176,70 @@ impl Editor {
     }
 
     /// Keeps the window title in step with unsaved changes ("* name").
+    /// Does `leave` now if nothing is unsaved; otherwise asks first.
+    fn leave(&mut self, ctx: &mut Context<'_>, leave: Leave) {
+        if self.is_dirty(ctx) {
+            if self.question.is_none() {
+                self.report(format!("{} has unsaved changes", self.file_name()), false);
+            }
+            self.question = Some(leave);
+        } else {
+            self.go(ctx, leave);
+        }
+    }
+
+    /// Does `leave` (the question, if any, was answered).
+    fn go(&mut self, ctx: &mut Context<'_>, leave: Leave) {
+        match leave {
+            Leave::Close => {
+                println!("editor: closing");
+                ctx.request_exit();
+            }
+        }
+    }
+
+    /// "Save / Don't save / Cancel" over everything while it is open.
+    fn question_window(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
+        let Some(leave) = self.question else {
+            return;
+        };
+        let name = self.file_name();
+        let mut answer = None;
+        let modal =
+            egui::Modal::new(egui::Id::new("purplepie editor unsaved")).show(ui.ctx(), |ui| {
+                ui.heading("Unsaved changes");
+                ui.label(format!("Save the changes to {name} {}?", leave.before()));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        answer = Some(Answer::Save);
+                    }
+                    if ui.button("Don't save").clicked() {
+                        answer = Some(Answer::DontSave);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(Answer::Cancel);
+                    }
+                });
+            });
+        if answer.is_none() && modal.should_close() {
+            answer = Some(Answer::Cancel); // Escape or a click outside
+        }
+        let Some(answer) = answer else {
+            return;
+        };
+        self.question = None;
+        let go_on = question::proceeds(answer, || {
+            self.save(ctx);
+            !self.is_dirty(ctx)
+        });
+        if go_on {
+            self.go(ctx, leave);
+        } else if answer == Answer::Cancel {
+            self.report("kept open".to_owned(), false);
+        }
+    }
+
     fn update_title(&mut self, ctx: &mut Context<'_>) {
         let dirty = self.is_dirty(ctx);
         if self.title_dirty != Some(dirty) {
@@ -1421,6 +1489,9 @@ impl Game for Editor {
     }
 
     fn update(&mut self, ctx: &mut Context<'_>) {
+        if ctx.close_requested() {
+            self.leave(ctx, Leave::Close);
+        }
         self.frames += 1;
         if self.exit_after.is_some_and(|frames| self.frames >= frames) {
             ctx.request_exit();
@@ -1428,11 +1499,14 @@ impl Game for Editor {
     }
 
     fn egui(&mut self, ctx: &mut Context<'_>, ui: &mut egui::Ui) {
-        self.shortcuts(ctx, ui);
+        if self.question.is_none() {
+            self.shortcuts(ctx, ui);
+        }
         // Side and bottom panels first, so the viewport is what they leave.
         self.entities_panel(ctx, ui);
         self.status_line(ctx, ui);
         self.viewport(ctx, ui);
+        self.question_window(ctx, ui);
         self.update_title(ctx);
     }
 }

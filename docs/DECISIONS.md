@@ -48,7 +48,7 @@ directory on 2026-09-30, with no decision content changed.
 | ADR-033 | OGG Vorbis: `lewton` decodes `.ogg` completely on load; `load_sound` picks the decoder from the file's first bytes; no streaming yet | Accepted | Yes (PP-024b) |
 | ADR-044 | Scene editor (P5): a separate crate `crates/purplepie-editor` written as a `Game` on a public `Game::egui` hook behind a new optional `egui` feature (`EngineConfig::with_egui`, `purplepie::egui` re-export; the egui pass moves to the runner); viewport = the engine's own frame under egui panels; undo as editor commands; engine picking and lenient scene loading; scene parsing fixed first (ron quadratic number scan, measured) | Accepted | Yes (P5 complete): PP-038b (scene parsing linear; ron held at 0.12.1), PP-038c (`egui` feature, `Game::egui`, `with_egui`), PP-038d (`Context::entities_at`), PP-038e (`load_scene_keeping_unknown`, `scene::UnknownComponents`), PP-038f (`crates/purplepie-editor`: open, list, pan/zoom, save), PP-038g (select, move, undo: first slice complete), PP-038h1 (inspector edits transform, layer, hidden), PP-038h2 (inspector edits quads, sprites, texts, kept game components; `UnknownComponents::set`), PP-038i1 (delete and duplicate, undo with `World::spawn_at`), PP-038i2 (adding quads, sprites, texts; missing file = new scene), PP-038j1 (a game's own editor: `GameComponents`, `main_with`, `scene::check_component`), PP-038j2 (GUIDE §15; phase P5 complete 2026-10-14) |
 | ADR-045 | `purplepie::Headless`: the engine's state without a window, GPU or audio device, lending the same `Context` games get, so tests and tools can register components, load scenes strictly and inspect the world; Pie Heist checks every shipped level with it in `cargo test` | Accepted | Yes: PP-042d1 (`Headless::new`, `Headless::context`; `games/pie-heist/tests/levels.rs`, `pie_heist::check`) |
-| ADR-046 | The engine editor (P7): grow `crates/purplepie-editor` into the development interface (project from the asset folder, scenes opened and saved in one run, project panel, console, Run as a separate process, game hints, previews); the game never runs inside the editor's process; no project file | Accepted | No: planned in PP-043 ([EDITOR.md](EDITOR.md)); tasks PP-044a–g |
+| ADR-046 | The engine editor (P7): grow `crates/purplepie-editor` into the development interface (project from the asset folder, scenes opened and saved in one run, project panel, console, Run as a separate process, game hints, previews); the game never runs inside the editor's process; no project file | Accepted | Partly: planned in PP-043 ([EDITOR.md](EDITOR.md)); PP-044a1 (`EngineConfig::exit_on_close`, `Context::close_requested`, the editor's save question); next PP-044a2–g |
 | ADR-043 | Debug overlay (P4): egui inside the engine behind an optional, off-by-default `debug-overlay` feature; engine-owned, drawn in its own pass after the game, never in the ECS world; the feature needs Rust 1.95, the engine without it stays 1.90 | Accepted | Yes (PP-037b1 feature/config/F12/pass/view; PP-037b2 mouse routing; PP-037c stats; PP-037d1/d2 inspector; P4 complete) |
 | ADR-042 | Example games live in the repository under `games/<name>/` as workspace members with their own `assets/`, depending on the engine by path and only on its public API; CI builds, lints and tests the whole workspace | Accepted | Yes (PP-036c1: `games/purple-swarm`; PP-042a: `games/pie-heist` + `games/pie-heist-editor`) |
 | ADR-041 | Gameplay math in the engine: `math::Rng` (PCG32, seedable, deterministic, no dependency) and `math::Rect` / `circles_overlap` (overlap tests only, no physics) | Accepted | Yes (PP-036b) |
@@ -3103,6 +3103,21 @@ adds no dependency.
 - The editor starts child processes. Stopping them, and Windows file locks (a running game's executable cannot be
   rebuilt), are risk R-32.
 - P6 is parked: level 5, the balance pass and the wrap-up wait (TASKS "Parked").
+
+## Implementation Notes
+- **PP-044a1 (2026-11-03): closing the window can be left to the game.** Before, the runner exited on
+  `WindowEvent::CloseRequested`, so the editor could not ask about unsaved work. Decided: a config switch like the
+  existing Escape one.
+  - `EngineConfig::exit_on_close` (default `true`: unchanged behaviour) and `with_exit_on_close(false)`.
+  - With it off, the runner only records the request. `Context::close_requested()` is `true` for that frame's
+    `update` and egui hook, then cleared. A second click asks again, and the game calls `request_exit()` when it
+    agrees.
+  - Rejected: a `Game::close_requested(&mut self, ctx) -> bool` callback (a new trait method for one boolean); a
+    sticky flag the game must clear (one more call to forget); the editor writing a recovery copy instead of asking
+    (users lose nothing, but must learn where copies go).
+  - It is a public addition (CHANGELOG, Unreleased), and an ADR-008 detail rather than a new ADR.
+  - The editor runs with it off and asks "Save / Don't save / Cancel" (`question.rs`). A save it refuses (a file it
+    could not open) keeps the window open.
 
 ## Revisit Conditions
 - A game needs live editing while it runs: build it on the egui hook in the game's process (ADR-044), not in the

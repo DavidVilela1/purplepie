@@ -9,6 +9,10 @@ break compatibility and a patch version (0.x.**y**) may not.
 
 ### Added
 
+- `EngineConfig::exit_on_close` / `with_exit_on_close(false)` and `Context::close_requested()`: a game can decide
+  what happens when the window's close button is pressed (for example ask to save first), instead of the engine
+  quitting at once. The default is unchanged (ADR-046).
+- Scene editor: closing the window with unsaved changes asks "Save / Don't save / Cancel".
 - `Headless`: the engine without a window, GPU or audio device. `Headless::new(asset_root).context()` lends the same
   `Context` games get, so tests and tools can register components, load scenes strictly (textures and fonts
   decoded) and inspect the world, in `cargo test` (ADR-045).

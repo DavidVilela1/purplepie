@@ -591,6 +591,34 @@ impl<'a> Context<'a> {
     pub fn exit_requested(&self) -> bool {
         self.state.exit_requested
     }
+
+    /// Whether the user asked to close the window in this frame, with
+    /// [`EngineConfig::with_exit_on_close(false)`](crate::EngineConfig::with_exit_on_close)
+    /// (with the default, the engine closes at once and this is never `true`).
+    /// It is `true` in the frame's `update` and egui hook, then `false` again;
+    /// a second click on the close button asks again (ADR-046).
+    ///
+    /// The game decides: call [`request_exit`](Self::request_exit) to close,
+    /// or do nothing to keep running, for example to ask about unsaved work
+    /// first.
+    ///
+    /// ```
+    /// # struct Editor { unsaved: bool, asking: bool }
+    /// # impl purplepie::Game for Editor {
+    /// fn update(&mut self, ctx: &mut purplepie::Context<'_>) {
+    ///     if ctx.close_requested() {
+    ///         if self.unsaved {
+    ///             self.asking = true; // show "Save / Don't save / Cancel"
+    ///         } else {
+    ///             ctx.request_exit();
+    ///         }
+    ///     }
+    /// }
+    /// # }
+    /// ```
+    pub fn close_requested(&self) -> bool {
+        self.state.close_requested
+    }
 }
 
 #[cfg(test)]
@@ -610,6 +638,23 @@ mod tests {
         ctx.request_exit();
         assert!(ctx.exit_requested());
         assert!(state.exit_requested);
+    }
+
+    #[test]
+    fn a_close_request_is_reported_and_left_to_the_game() {
+        let mut state = EngineState::new(
+            0.25,
+            AssetRoot::Found(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")),
+        );
+        assert!(!Context::new(&mut state, 0.0).close_requested());
+        // What the runner does on the window's close request with
+        // `exit_on_close` off.
+        state.close_requested = true;
+        let ctx = Context::new(&mut state, 0.0);
+        assert!(ctx.close_requested());
+        assert!(!ctx.exit_requested(), "the game decides");
+        state.close_requested = false; // the frame ended
+        assert!(!Context::new(&mut state, 0.0).close_requested());
     }
 
     #[test]

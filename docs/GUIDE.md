@@ -95,7 +95,8 @@ fn main() -> purplepie::Result<()> {
 
 - All three methods are optional; leave out the ones you do not need.
 - Escape quits by default (`EngineConfig::with_exit_on_escape(false)` hands Escape to your game). The game can quit
-  itself with `ctx.request_exit()`.
+  itself with `ctx.request_exit()`. Closing the window quits too; with `with_exit_on_close(false)` the game is told
+  instead (`ctx.close_requested()` is `true` for one frame) and decides, for example to ask about saving first.
 - Put gameplay in `fixed_update`: it runs at the same rate on every machine, so the game behaves the same whatever
   the frame rate. Key presses are reported once to each callback, so both can react to them.
 
@@ -700,7 +701,8 @@ A file that does not exist yet opens as an empty scene; Ctrl+S creates it. In th
   position, rotation, scale, layer, hidden, and its quad, sprite or text. Add a quad, a sprite (an image from the
   asset folder) or a text with the "Add" row; Ctrl+D duplicates the selection, Delete removes it.
 - **Undo and save:** Ctrl+Z undoes every change, Ctrl+Shift+Z or Ctrl+Y redoes it, Ctrl+S saves; `*` in the title
-  means unsaved changes. Close the window to quit (Escape only deselects).
+  means unsaved changes. Close the window to quit (Escape only deselects): with unsaved changes it first asks
+  "Save / Don't save / Cancel".
 
 Your own components (section 11) appear as one text field each, holding their value as RON, for example
 `(leads_to: "levels/two.ron")`; the small "x" next to one removes it from the entity. The editor above does not know
