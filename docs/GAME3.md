@@ -110,6 +110,37 @@ back-and-forth walk. Guards walk through walls (the designer keeps paths inside 
 first point whenever the level restarts. Typing the path was quick for a straight walk; a longer path is a list of
 numbers that is only seen in the game (see "Seeing guard paths in the editor" above, still not planned).
 
+## Building level 3 (PP-042d2a)
+
+Level 3 (`assets/levels/level3.ron`, 2 020 × 1 520 units) was drawn in `pie-heist-editor` under Xvfb, in three
+editor runs. The first placed 9 walls and 2 doors; the second the start, 3 pies, 2 keys, the exit, 2 guards and a
+hint; the third gave the hint its two lines. Then, in a fourth run, level 2's exit was pointed at it. The level has
+three rooms:
+
+- **Left:** the start, a pie and the red key.
+- **Middle, through a gap:** a pie, the blue key, and a guard walking a 400 × 400 square.
+- **Right, behind the blue door:** a pie and a guard walking 480 units across. Below a wall, behind the red door, is
+  the exit.
+
+The guards punish cutting across a room; walking along the walls avoids them. A scripted run from the title won it
+in 40 s without being caught. Findings:
+
+- **Typing exact numbers stays quick** at 21 entities; no grid snapping was missed (decision unchanged).
+- **The editor shows doors in their file colour** (the default light lavender), while the game colours them by key.
+  Telling a red door from a blue one in the editor means reading the inspector. A small fix would be to set each
+  door's quad colour to its key colour when placing it; it is not needed for the game.
+- **Guard paths cannot be seen in the editor** (known, see the gaps table). The square path was planned on paper
+  around the room's walls and checked only by playing.
+- **A `Text` hint's content is a multi-line field.** Return adds a line, and the edit is kept when the field loses
+  focus.
+- **Scripted editing:**
+  - The inspector moves as the entity list grows, until the list reaches its maximum height. The panel's width also
+    changes with its content: list rows wrap when it is narrow.
+  - The script made the window taller (1500 × 980) so menus at the bottom fit.
+  - To find the field it needed, it read a screenshot: the dark text field, or the exit's colour in the view.
+  - None of this affects a person using the editor, but it is why scripted levels take several short runs.
+- **New sprites appear at the view's centre**; their exact place is then typed.
+
 ## Plan
 
 1. **PP-041 (done):** editor: add and remove game components (with defaults from the game's types), each one undo step;
@@ -128,7 +159,8 @@ numbers that is only seen in the game (see "Seeing guard paths in the editor" ab
 5. **PP-042d:** split in two:
    - **PP-042d1 (done):** the level-check decision (`purplepie::Headless`, ADR-045) and its test, before more levels
      are drawn;
-   - **PP-042d2:** levels 3–5 built in the editor (level 2 exists); a balance pass over all five.
+   - **PP-042d2:** split in three: **d2a (done)** level 3; **d2b** level 4; **d2c** level 5 and a balance pass over
+     all five.
 6. **PP-042e:** findings from building the levels (what the editor made easy or slow), CHECKLIST step, README and
    CHANGELOG; phase P6 complete. A 0.3.0 release follows if engine or editor APIs changed.
 
